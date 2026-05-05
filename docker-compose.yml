@@ -1,0 +1,60 @@
+# Hermes Agent — 개발 세션 동반 실행 (메모리·학습 레이어)
+#
+# 목적
+#   Claude Code (코딩 실행자) 와 짝을 이루는 *참조·학습 문서 백엔드*.
+#   Hermes 는 ASIS 컨텍스트(CLAUDE.md, .claude/rules/**)를 자동 로드하고,
+#   ~/.hermes/memories/ 와 ~/.hermes/skills/ 에 누적된 지식을 Claude Code 의
+#   codebase-mentor sub-agent 가 파일 시스템으로 직접 read 하여 활용한다.
+#
+# 운영 (ASIS 디렉토리 안에서)
+#   docker compose up -d            # Hermes 가동 (.env 자동 로드)
+#   open http://127.0.0.1:9119      # 대시보드 (모델·API 키·toolset)
+#   docker compose logs -f          # 두 컨테이너 로그
+#   docker compose down             # 정지
+#
+# 또는 npm script (동일 동작):
+#   npm run hermes:up / hermes:dashboard / hermes:logs / hermes:down
+#
+# UID/GID 매핑은 같은 디렉토리의 `.env` 가 자동 로드. 새 머신에서는
+# `.env.example` 을 카피해서 본인 `id -u` / `id -g` 값으로 채울 것.
+#
+# 첫 셋업 후 toolset 권장 (대시보드에서 토글)
+#   ON :  memory, session_search, skills, web, search, todo, clarify
+#   OFF:  terminal, file, code_execution, delegation, browser,
+#         vision, image_gen, tts, cronjob, homeassistant, spotify,
+#         discord_admin, rl, messaging  (messaging 은 게이트웨이 셋업 후 ON)
+#
+# 보안 주의
+#   - 대시보드는 호스트의 127.0.0.1:9119 만 노출 (LAN 차단)
+#   - API 서버는 기본 비활성. 필요 시 별도 환경변수 추가
+#   - ASIS 디렉토리는 read-only 마운트. Hermes 가 ASIS 코드를 직접 수정하지
+#     못하도록 함 — 코드 변경은 Claude Code 단독.
+
+services:
+  gateway:
+    image: nousresearch/hermes-agent:latest
+    container_name: asis-hermes-gateway
+    restart: 'no'
+    volumes:
+      - ~/.hermes:/opt/data
+      - /Users/andy/OpenSource/ASIS:/workspace/asis:ro
+    working_dir: /workspace/asis
+    environment:
+      - HERMES_UID=${HERMES_UID:-10000}
+      - HERMES_GID=${HERMES_GID:-10000}
+    command: ['gateway', 'run']
+
+  dashboard:
+    image: nousresearch/hermes-agent:latest
+    container_name: asis-hermes-dashboard
+    restart: 'no'
+    depends_on:
+      - gateway
+    ports:
+      - '127.0.0.1:9119:9119'
+    volumes:
+      - ~/.hermes:/opt/data
+    environment:
+      - HERMES_UID=${HERMES_UID:-10000}
+      - HERMES_GID=${HERMES_GID:-10000}
+    command: ['dashboard', '--host', '0.0.0.0', '--no-open']

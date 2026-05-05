@@ -1,0 +1,84 @@
+{
+  "name": "asis",
+  "version": "0.1.0",
+  "description": "macOS screenshot capture and annotation tool",
+  "main": "./out/main/index.js",
+  "packageManager": "pnpm@10.28.2",
+  "author": "",
+  "homepage": "",
+  "scripts": {
+    "dev": "docker compose up -d && concurrently -n hermes,app -c blue,green \"docker compose logs -f\" \"electron-vite dev\"",
+    "dev:app": "electron-vite dev",
+    "dev:hermes": "docker compose up -d && docker compose logs -f",
+    "start": "electron-vite preview",
+    "build": "pnpm typecheck && pnpm lint && electron-vite build",
+    "build:unpack": "pnpm build && electron-builder --dir",
+    "build:mac": "electron-vite build && electron-builder --mac",
+    "build:win": "pnpm build && electron-builder --win",
+    "build:linux": "electron-vite build && electron-builder --linux",
+    "lint": "eslint --cache .",
+    "lint:fix": "eslint --cache --fix .",
+    "format": "prettier --write \"**/*.{md,json,yaml,yml,css,html}\" --ignore-path .prettierignore",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
+    "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
+    "typecheck": "pnpm typecheck:node && pnpm typecheck:web",
+    "commitlint": "commitlint --edit",
+    "hermes:up": "docker compose up -d",
+    "hermes:down": "docker compose down",
+    "hermes:logs": "docker compose logs -f",
+    "hermes:dashboard": "open http://127.0.0.1:9119",
+    "postinstall": "electron-builder install-app-deps",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx,mjs,cjs}": [
+      "eslint --cache --fix"
+    ],
+    "*.{md,json,yaml,yml,css,html}": [
+      "prettier --write"
+    ]
+  },
+  "dependencies": {
+    "@electron-toolkit/preload": "^3.0.2",
+    "@electron-toolkit/utils": "^4.0.0",
+    "konva": "^9.3.16",
+    "react-konva": "^19.0.0",
+    "react-konva-utils": "^2.0.0",
+    "zustand": "^5.0.2"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron",
+      "esbuild"
+    ]
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^20.5.2",
+    "@commitlint/config-conventional": "^20.5.0",
+    "@electron-toolkit/eslint-config-prettier": "^3.0.0",
+    "@electron-toolkit/eslint-config-ts": "^3.1.0",
+    "@electron-toolkit/tsconfig": "^2.0.0",
+    "@stylistic/eslint-plugin": "^5.10.0",
+    "@types/node": "^22.19.1",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.1",
+    "babel-plugin-react-compiler": "^1.0.0",
+    "concurrently": "^9.2.1",
+    "electron": "^39.2.6",
+    "electron-builder": "^26.0.12",
+    "electron-vite": "^5.0.0",
+    "eslint": "^9.39.1",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-compiler": "^19.1.0-rc.2",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.4.24",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
+    "prettier": "^3.7.4",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.2.6"
+  }
+}

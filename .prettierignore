@@ -1,0 +1,18 @@
+node_modules
+out
+dist
+build
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+LICENSE.md
+tsconfig.json
+tsconfig.*.json
+
+# 코드 파일은 ESLint(@stylistic)가 포맷팅을 담당. Prettier는 비코드 파일만.
+**/*.ts
+**/*.tsx
+**/*.js
+**/*.jsx
+**/*.mjs
+**/*.cjs

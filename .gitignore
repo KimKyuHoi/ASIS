@@ -1,0 +1,9 @@
+node_modules
+dist
+out
+.DS_Store
+.eslintcache
+*.log*
+
+# 머신별 환경 — .env.example 을 카피해서 본인 값 채우세요
+.env

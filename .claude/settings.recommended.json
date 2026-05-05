@@ -1,0 +1,36 @@
+{
+  "_comment": "이 파일은 권장 설정 템플릿입니다. 실제 적용하려면 이 내용을 .claude/settings.json 으로 복사해 사용하세요. (Claude는 자기 권한 설정 파일을 직접 만들 수 없어 템플릿만 제공합니다.)",
+  "permissions": {
+    "allow": [
+      "Bash(npm run dev)",
+      "Bash(npm run build)",
+      "Bash(npm run build:*)",
+      "Bash(npm run lint)",
+      "Bash(npm run lint:fix)",
+      "Bash(npm run typecheck)",
+      "Bash(npm run typecheck:*)",
+      "Bash(npm run format)",
+      "Bash(npm run start)",
+      "Bash(npx eslint:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx commitlint:*)",
+      "Bash(npx lint-staged:*)",
+      "Bash(npx vite:*)",
+      "Bash(npx electron-vite:*)"
+    ],
+    "deny": [
+      "Bash(rm -rf:*)",
+      "Bash(git push --force:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(npm publish:*)"
+    ],
+    "ask": [
+      "Bash(npm install:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(npm update:*)",
+      "Bash(git push:*)",
+      "Bash(git commit:*)",
+      "Bash(gh pr create:*)"
+    ]
+  }
+}

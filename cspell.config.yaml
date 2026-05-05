@@ -1,0 +1,95 @@
+version: '0.2'
+language: en
+
+# ASIS 프로젝트의 기술 용어·고유명사·라이브러리 이름 사전.
+# Cursor / VS Code 의 Code Spell Checker 익스텐션이 이 파일을 자동 로드한다
+# (https://cspell.org/configuration/).
+#
+# ESLint 와는 별개 도구다 (cspell 은 *철자 검사* 만 하고, lint 룰과 무관).
+# 새 라이브러리 / 도메인 용어를 도입할 때마다 여기에 추가한다.
+
+words:
+  # 프로젝트
+  - asis
+  - pinkfong
+
+  # 도메인
+  - screencapture
+  - viewfinder
+  - frosted
+  - tooltip
+
+  # Stack 핵심
+  - electron
+  - konva
+  - zustand
+  - tsconfig
+  - vite
+  - rollup
+  - babel
+  - pnpm
+  - corepack
+
+  # 빌드·도구
+  - rsvg
+  - qlmanage
+  - librsvg
+  - homebrew
+  - sips
+
+  # Hermes
+  - hermes
+  - nousresearch
+
+  # MCP / Claude
+  - mcp
+  - claude
+  - anthropic
+  - dotclaude
+  - subagent
+  - subagents
+
+  # 기술 용어 (영어 일반 단어인데 일부 cspell 사전 누락 케이스)
+  - lifecycle
+  - stderr
+  - stdout
+  - stdio
+  - readonly
+  - tabular
+  - cubic
+  - frontmatter
+  - composable
+  - middleware
+  - debouncer
+  - throttler
+
+  # 프로토콜·포맷
+  - dataurl
+  - dataURL
+  - readme
+
+  # macOS / Cocoa
+  - notarization
+  - hiddenInset
+  - retina
+  - autofill
+
+  # 비교 product
+  - cleanshot
+  - shottr
+  - skitch
+
+ignoreRegExpList:
+  # 한국어 텍스트는 검사 안 함 (한글 단어는 cspell 영어 사전에 없는 게 당연).
+  - '/[ㄱ-힝]+/u'
+  # base64 / hex 같은 긴 임의 문자열도 무시.
+  - '/[A-Za-z0-9+/]{40,}={0,2}/'
+
+ignorePaths:
+  - 'node_modules/**'
+  - 'dist/**'
+  - 'out/**'
+  - 'pnpm-lock.yaml'
+  - 'package-lock.json'
+  - '*.png'
+  - '*.svg'

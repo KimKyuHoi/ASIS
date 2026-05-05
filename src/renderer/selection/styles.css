@@ -1,0 +1,405 @@
+/*
+ * ASIS 영역 선택 오버레이 스타일.
+ * 디자인 결: macOS Sonoma + 드래프팅 도구의 hairline 정밀함.
+ */
+
+:root {
+  --line: rgba(255, 255, 255, 0.96);
+  --line-edge: rgba(0, 0, 0, 0.28);
+  --dim: rgba(0, 0, 0, 0.42);
+  --guide: rgba(255, 255, 255, 0.06);
+  --chip-bg: rgba(22, 22, 24, 0.82);
+  --chip-border: rgba(255, 255, 255, 0.09);
+  --chip-text: rgba(255, 255, 255, 0.96);
+  --chip-secondary: rgba(255, 255, 255, 0.52);
+  --chip-divider: rgba(255, 255, 255, 0.14);
+  --accent: #5ea2ff;
+  --accent-soft: rgba(94, 162, 255, 0.42);
+
+  --font-system:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue',
+    'Apple SD Gothic Neo', 'Pretendard', sans-serif;
+  --font-mono: 'SF Mono', 'JetBrains Mono', Menlo, ui-monospace, 'Roboto Mono', monospace;
+
+  --ease-mac: cubic-bezier(0.32, 0.72, 0, 1);
+  --duration-fast: 80ms;
+  --duration-mid: 140ms;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-app-region: no-drag;
+}
+
+body {
+  font-family: var(--font-system);
+  font-feature-settings: 'cv11', 'ss01', 'ss03';
+  -webkit-font-smoothing: antialiased;
+  cursor: crosshair;
+  color: var(--chip-text);
+}
+
+/* ── overlay container ─────────────────────────────── */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* ── dim layer ─────────────────────────────────────── */
+
+.dim,
+.dim-strip {
+  position: fixed;
+  background: var(--dim);
+  pointer-events: none;
+}
+
+.dim--full {
+  inset: 0;
+  animation: dimAppear var(--duration-mid) var(--ease-mac);
+}
+
+.dim-strip--top {
+  top: 0;
+  left: 0;
+  right: 0;
+}
+
+.dim-strip--bottom {
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+.dim-strip--left {
+  left: 0;
+}
+
+.dim-strip--right {
+  right: 0;
+}
+
+@keyframes dimAppear {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ── crosshair guides ────────────────────────────── */
+
+.guide {
+  position: fixed;
+  background: var(--guide);
+  pointer-events: none;
+  animation: guideAppear var(--duration-fast) var(--ease-mac);
+}
+
+.guide--horizontal {
+  left: 0;
+  right: 0;
+  height: 1px;
+}
+
+.guide--vertical {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+
+@keyframes guideAppear {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ── 선택 박스 ───────────────────────────────────── */
+
+.selection {
+  position: fixed;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  border: 1px solid var(--line);
+  box-shadow:
+    0 0 0 1px var(--line-edge),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  animation: selectionAppear var(--duration-fast) var(--ease-mac);
+}
+
+.overlay--committed .selection {
+  animation: selectionCommit 90ms var(--ease-mac) forwards;
+}
+
+@keyframes selectionAppear {
+  from {
+    opacity: 0.4;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes selectionCommit {
+  0% {
+    border-color: var(--line);
+    box-shadow: 0 0 0 1px var(--line-edge);
+  }
+  60% {
+    border-color: var(--accent);
+    box-shadow:
+      0 0 0 1px var(--accent),
+      0 0 22px var(--accent-soft);
+  }
+  100% {
+    opacity: 0.92;
+    border-color: var(--accent);
+    box-shadow:
+      0 0 0 1px var(--accent),
+      0 0 0 var(--accent-soft);
+  }
+}
+
+/* corner ticks — architectural L-marks */
+
+.corner {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  pointer-events: none;
+}
+
+.corner::before,
+.corner::after {
+  content: '';
+  position: absolute;
+  background: var(--line);
+}
+
+.corner::before {
+  height: 1px;
+  width: 10px;
+}
+
+.corner::after {
+  width: 1px;
+  height: 10px;
+}
+
+.corner--tl {
+  top: -1px;
+  left: -1px;
+}
+.corner--tl::before {
+  top: 0;
+  left: 0;
+}
+.corner--tl::after {
+  top: 0;
+  left: 0;
+}
+
+.corner--tr {
+  top: -1px;
+  right: -1px;
+}
+.corner--tr::before {
+  top: 0;
+  right: 0;
+}
+.corner--tr::after {
+  top: 0;
+  right: 0;
+}
+
+.corner--bl {
+  bottom: -1px;
+  left: -1px;
+}
+.corner--bl::before {
+  bottom: 0;
+  left: 0;
+}
+.corner--bl::after {
+  bottom: 0;
+  left: 0;
+}
+
+.corner--br {
+  bottom: -1px;
+  right: -1px;
+}
+.corner--br::before {
+  bottom: 0;
+  right: 0;
+}
+.corner--br::after {
+  bottom: 0;
+  right: 0;
+}
+
+/* ── 좌표·크기 chip ──────────────────────────────── */
+
+.chip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px 6px 8px;
+  height: 28px;
+  background: var(--chip-bg);
+  border: 1px solid var(--chip-border);
+  border-radius: 7px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 8px 24px rgba(0, 0, 0, 0.34),
+    0 1px 1px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: chipAppear var(--duration-fast) var(--ease-mac);
+}
+
+.chip__indicator {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent-soft);
+}
+
+.chip__primary {
+  color: var(--chip-text);
+}
+
+.chip__divider {
+  width: 1px;
+  height: 10px;
+  background: var(--chip-divider);
+}
+
+.chip__secondary {
+  color: var(--chip-secondary);
+  font-size: 11px;
+}
+
+@keyframes chipAppear {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ── ESC hint — macOS 키캡 결 ────────────────────── */
+
+.hint {
+  position: fixed;
+  bottom: 36px;
+  left: 50%;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 14px 7px 7px;
+  background: rgba(22, 22, 24, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 10px 28px rgba(0, 0, 0, 0.4),
+    0 1px 2px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  font-size: 12px;
+  letter-spacing: 0.005em;
+  pointer-events: none;
+  transform: translateX(-50%);
+  transition:
+    opacity var(--duration-mid) var(--ease-mac),
+    transform var(--duration-mid) var(--ease-mac);
+}
+
+.hint--visible {
+  opacity: 1;
+}
+
+.hint--hidden {
+  opacity: 0;
+  transform: translateX(-50%) translateY(8px);
+}
+
+.hint__key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 22px;
+  padding: 0 7px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-bottom-color: rgba(255, 255, 255, 0.04);
+  border-radius: 5px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.32);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.hint__label {
+  color: rgba(255, 255, 255, 0.74);
+  font-weight: 500;
+}
+
+.hint__divider {
+  width: 1px;
+  height: 12px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.hint__instruction {
+  color: rgba(255, 255, 255, 0.92);
+  font-weight: 500;
+}
+
+/* ── 전환: commit 시 부속 요소 fade-out ─────────────── */
+
+.overlay--committed .chip,
+.overlay--committed .guide,
+.overlay--committed .corner {
+  transition: opacity 90ms var(--ease-mac);
+  opacity: 0.4;
+}
