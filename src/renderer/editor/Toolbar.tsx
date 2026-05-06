@@ -21,9 +21,13 @@ const TOOL_ITEMS: { tool: Tool; label: string; key: string }[] = [
 export function Toolbar({
   onCopy,
   onCancel,
+  onImageFiles,
+  onPin,
 }: {
   onCopy: () => void;
   onCancel: () => void;
+  onImageFiles: (files: FileList) => void;
+  onPin: () => void;
 }): JSX.Element {
   const tool = useEditorStore((s) => s.tool);
   const color = useEditorStore((s) => s.color);
@@ -198,6 +202,33 @@ export function Toolbar({
         >
           ↷
         </ToolbarButton>
+        <label
+          className="iconbtn"
+          title="이미지 첨부 (드롭 · ⌘V 도 가능)"
+        >
+          <ImageIcon />
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            style={{ display: 'none' }}
+            onChange={(e): void => {
+              if (e.target.files && e.target.files.length > 0) {
+                onImageFiles(e.target.files);
+              }
+              // 같은 파일 재선택 가능하도록 reset.
+              e.target.value = '';
+            }}
+          />
+        </label>
+        <button
+          type="button"
+          className="iconbtn"
+          onClick={onPin}
+          title="화면에 핀 — 위에 떠있는 윈도우로 박아두기"
+        >
+          <PinIcon />
+        </button>
       </div>
 
       <div className="toolbar__spacer" />
@@ -244,6 +275,54 @@ function ToolButton({
       <span className="tool__label">{label}</span>
       <span className="tool__shortcut">{shortcut}</span>
     </button>
+  );
+}
+
+/**
+ * lucide 의 `image` 아이콘 inline 사본 — 의존성 없이 stroke 기반 SVG.
+ * 24×24 viewBox, currentColor 로 부모 색 상속.
+ * 출처: https://lucide.dev/icons/image (path 만 발췌, 라이선스: ISC).
+ */
+function ImageIcon(): JSX.Element {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+      <circle cx="9" cy="9" r="2" />
+      <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+    </svg>
+  );
+}
+
+/**
+ * lucide 의 `pin` 아이콘 — 떠있는 핀 윈도우 띄우기 액션.
+ * 출처: https://lucide.dev/icons/pin (path 만 발췌, 라이선스: ISC).
+ */
+function PinIcon(): JSX.Element {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 17v5" />
+      <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" />
+    </svg>
   );
 }
 

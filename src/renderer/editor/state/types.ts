@@ -92,6 +92,21 @@ export type BlurShape = {
   blurRadius: number;
 };
 
+/**
+ * 외부 이미지 첨부 — 클립보드 paste / drag-drop / 파일 선택으로 추가.
+ * src 는 base64 data URL — store 에 자체 포함 (외부 파일 의존 없음 + export 일관).
+ * 큰 이미지는 첨부 시점에 maxDim 으로 thumbnail resize 거쳐 store 부풀림 방지.
+ */
+export type ImageShape = Rotatable & {
+  kind: 'image';
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  src: string;
+};
+
 export type Shape =
   | RectShape |
   EllipseShape |
@@ -99,4 +114,5 @@ export type Shape =
   PenShape |
   TextShape |
   HighlightShape |
-  BlurShape;
+  BlurShape |
+  ImageShape;

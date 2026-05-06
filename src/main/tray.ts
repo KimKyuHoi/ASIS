@@ -11,6 +11,8 @@ export type TrayMenuHandlers = {
   onFullscreen: () => void;
   onWindow: () => void;
   onRegion: () => void;
+  onDisableClickThrough: () => void;
+  onCloseAllPins: () => void;
 };
 
 export class TrayManager {
@@ -68,6 +70,20 @@ export class TrayManager {
         label: '영역 캡처',
         accelerator: 'CommandOrControl+Shift+A',
         click: handlers.onRegion,
+      },
+
+      { type: 'separator' },
+
+      // 핀 관리 — click-through 활성 핀은 마우스/키보드로 잡을 수 없어
+      // 글로벌 단축키 또는 이 메뉴가 유일한 회수 경로.
+      {
+        label: '모든 핀 click-through 해제',
+        accelerator: 'CommandOrControl+Shift+X',
+        click: handlers.onDisableClickThrough,
+      },
+      {
+        label: '모든 핀 닫기',
+        click: handlers.onCloseAllPins,
       },
 
       { type: 'separator' },

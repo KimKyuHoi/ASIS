@@ -17,6 +17,7 @@ const CHANNEL_LOAD_IMAGE = 'editor:load-image';
 const CHANNEL_READY = 'editor:ready';
 const CHANNEL_COPY = 'editor:copy';
 const CHANNEL_CANCEL = 'editor:cancel';
+const CHANNEL_PIN = 'editor:pin';
 
 /**
  * 어노테이션 에디터 윈도우 — Konva 기반 React 페이지를 띄우고 사용자 어노테이션
@@ -33,6 +34,14 @@ const CHANNEL_CANCEL = 'editor:cancel';
  */
 export class EditorWindowManager {
   private win: BrowserWindow | null = null;
+  /** PinWindowManager.pin 으로 위임할 콜백 — index.ts 에서 setPinHandler 로 주입. */
+  private pinHandler:
+    | ((dataUrl: string, w: number, h: number) => void) |
+    null = null;
+
+  setPinHandler(handler: (dataUrl: string, w: number, h: number) => void): void {
+    this.pinHandler = handler;
+  }
 
   show(imagePath: string): Promise<EditorResult> {
     if (this.win) {
@@ -139,6 +148,7 @@ export class EditorWindowManager {
         if (settled) return;
         settled = true;
         ipcMain.removeHandler(CHANNEL_COPY);
+        ipcMain.removeHandler(CHANNEL_PIN);
         ipcMain.removeAllListeners(CHANNEL_CANCEL);
         ipcMain.removeAllListeners(CHANNEL_READY);
         if (!win.isDestroyed()) {
@@ -167,6 +177,17 @@ export class EditorWindowManager {
       ipcMain.once(CHANNEL_CANCEL, () => {
         settle({ kind: 'canceled' });
       });
+
+      // 핀 — 어노테이션 결과를 떠있는 핀 윈도우로 띄움. 에디터는 닫지 않음.
+      ipcMain.handle(
+        CHANNEL_PIN,
+        (_event, dataUrl: string, w: number, h: number) => {
+          if (!this.pinHandler) {
+            throw new Error('editor: pinHandler 미설정 — main 부트스트랩 확인');
+          }
+          this.pinHandler(dataUrl, w, h);
+        },
+      );
 
       win.on('closed', () => {
         this.win = null;

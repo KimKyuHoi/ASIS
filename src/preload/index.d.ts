@@ -19,6 +19,15 @@ type EditorAPI = {
   ready: () => void;
   copy: (dataUrl: string) => Promise<void>;
   cancel: () => void;
+  pin: (dataUrl: string, w: number, h: number) => Promise<void>;
+};
+
+type PinAPI = {
+  onLoadImage: (callback: (src: string, w: number, h: number) => void) => void;
+  ready: () => void;
+  close: () => void;
+  setSize: (w: number, h: number) => void;
+  setClickThrough: (enabled: boolean) => void;
 };
 
 declare global {
@@ -27,5 +36,6 @@ declare global {
     electron: ElectronAPI;
     selection: SelectionAPI;
     editor: EditorAPI;
+    pin: PinAPI;
   }
 }

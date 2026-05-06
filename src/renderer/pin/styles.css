@@ -1,0 +1,66 @@
+/* Pin Window — 배경 transparent, 이미지만 떠있는 듯 보이도록. */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+button {
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+  cursor: pointer;
+}
+
+/* ── Close button — 핀 hover 시 우상단에만 살짝 노출 (Snipaste 결) ─────── */
+
+.pin-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  color: rgba(255, 255, 255, 0.92);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition:
+    opacity 0.12s ease-out,
+    background 0.12s ease-out;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+/* 핀 윈도우에 hover 할 때만 닫기 버튼 노출. */
+#root:hover .pin-close {
+  opacity: 1;
+}
+
+.pin-close:hover {
+  background: rgba(255, 95, 86, 0.95); /* hover 시 macOS close 빨강 */
+}
+
+.pin-close__glyph {
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 600;
+  display: block;
+  margin-top: -1px; /* × 글리프가 시각적으로 가운데 오도록 미세 보정 */
+}

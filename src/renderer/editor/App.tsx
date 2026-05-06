@@ -9,7 +9,7 @@ import {
 } from 'react-konva';
 import type Konva from 'konva';
 import { useEditorStore } from './state/store';
-import type { Shape as ShapeData, TextShape, Tool } from './state/types';
+import type { ImageShape, Shape as ShapeData, TextShape, Tool } from './state/types';
 import { Shape } from './Shape';
 import { Toolbar } from './Toolbar';
 import { TextEditor } from './TextEditor';
@@ -18,6 +18,80 @@ type Marquee = { x: number; y: number; w: number; h: number };
 
 function clamp(v: number, min: number, max: number): number {
   return Math.min(Math.max(v, min), max);
+}
+
+/**
+ * 이미지 src 를 디코드 후 maxDim 보다 큰 변이 있으면 canvas 로 thumbnail resize.
+ * undo 스택·복사용 dataURL 무거워지지 않도록 store 에 박기 전에 1회 거치는 게이트.
+ */
+async function loadAndResize(
+  src: string,
+  maxDim: number,
+): Promise<{ src: string; w: number; h: number }> {
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const el = new Image();
+    el.onload = (): void => resolve(el);
+    el.onerror = (): void => reject(new Error('이미지 디코드 실패'));
+    el.src = src;
+  });
+  const longest = Math.max(img.width, img.height);
+  if (longest <= maxDim) {
+    return { src, w: img.width, h: img.height };
+  }
+  const scale = maxDim / longest;
+  const w = Math.round(img.width * scale);
+  const h = Math.round(img.height * scale);
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('canvas 2d context 사용 불가 — 환경 검증 필요');
+  }
+  ctx.drawImage(img, 0, 0, w, h);
+  return { src: canvas.toDataURL('image/png'), w, h };
+}
+
+/**
+ * File 또는 Blob 또는 dataURL 을 받아 ImageShape 를 store 에 추가.
+ * 이미지를 캔버스에 *드롭 위치* 또는 *중앙* 에 배치.
+ */
+async function addImageFromSource(
+  source: Blob | string,
+  options: {
+    centerX: number;
+    centerY: number;
+    imageWidth: number;
+    imageHeight: number;
+    addShape: (shape: ImageShape) => void;
+  },
+): Promise<void> {
+  const dataUrl = typeof source === 'string'
+    ? source
+    : await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (): void => resolve(String(reader.result));
+      reader.onerror = (): void => reject(new Error('FileReader 실패'));
+      reader.readAsDataURL(source);
+    });
+  const { src, w, h } = await loadAndResize(dataUrl, 2048);
+  // 캡처보다 너무 크면 캡처 최대 폭의 60% 로 더 줄여 표시 (편집 편의).
+  const maxOnCanvas = Math.min(options.imageWidth, options.imageHeight) * 0.6;
+  const longestOnCanvas = Math.max(w, h);
+  const fit = longestOnCanvas > maxOnCanvas ? maxOnCanvas / longestOnCanvas : 1;
+  const dispW = w * fit;
+  const dispH = h * fit;
+  // 드롭/페이스트 위치를 *중심* 으로 두고 양쪽으로 절반씩.
+  const id = `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+  options.addShape({
+    kind: 'image',
+    id,
+    x: clamp(options.centerX - dispW / 2, 0, options.imageWidth - dispW),
+    y: clamp(options.centerY - dispH / 2, 0, options.imageHeight - dispH),
+    w: dispW,
+    h: dispH,
+    src,
+  });
 }
 
 /**
@@ -77,6 +151,8 @@ function shapeBBox(shape: ShapeData): Marquee | null {
         h: lines.length * shape.fontSize * 1.2,
       };
     }
+    case 'image':
+      return { x: shape.x, y: shape.y, w: shape.w, h: shape.h };
     default: {
       const _exhaustive: never = shape;
       return _exhaustive;
@@ -137,6 +213,25 @@ export default function App(): JSX.Element {
   const setTool = useEditorStore((s) => s.setTool);
   const editingId = useEditorStore((s) => s.editingId);
   const setEditingId = useEditorStore((s) => s.setEditingId);
+
+  // 이미지 첨부 — paste/drop/picker 모두 통과. 위치는 캔버스 중앙 또는 drop 위치.
+  const addImage = (source: Blob | string, hint?: { x: number; y: number }): void => {
+    if (imageWidth === 0 || imageHeight === 0) return;
+    const center = hint ?? { x: imageWidth / 2, y: imageHeight / 2 };
+    addImageFromSource(source, {
+      centerX: center.x,
+      centerY: center.y,
+      imageWidth,
+      imageHeight,
+      addShape: (s) => {
+        startDrawing(s);
+        finishDrawing();
+        selectShape(s.id);
+      },
+    }).catch((err: unknown) => {
+      console.error('[asis editor] addImage 실패', err);
+    });
+  };
 
   // marquee 드래그 중인지 추적 — pointermove 에서 marquee 갱신, pointerup 에서
   // hit 판정 후 selectedIds set. ref 로 두어 재렌더 안 일으킴.
@@ -213,6 +308,25 @@ export default function App(): JSX.Element {
       if (isMeta && e.code === 'KeyC') {
         e.preventDefault();
         copyToClipboard(stageRef.current);
+      } else if (isMeta && e.code === 'KeyV') {
+        e.preventDefault();
+        // 클립보드 → 이미지 ImageShape. 텍스트는 무시 (필요 시 후속).
+        // 첫 번째 이미지 type 가진 item 만 처리해 await-in-loop 회피.
+        navigator.clipboard.read().then((items) => {
+          const firstImageItem = items.find((it) =>
+            it.types.some((t) => t.startsWith('image/')),
+          );
+          if (!firstImageItem) return undefined;
+          const imageType = firstImageItem.types.find((t) =>
+            t.startsWith('image/'),
+          );
+          if (!imageType) return undefined;
+          return firstImageItem.getType(imageType).then((blob) => {
+            addImage(blob);
+          });
+        }).catch((err: unknown) => {
+          console.error('[asis editor] paste 실패', err);
+        });
       } else if (isMeta && !e.shiftKey && e.code === 'KeyZ') {
         e.preventDefault();
         undo();
@@ -405,6 +519,8 @@ export default function App(): JSX.Element {
         case 'blur':
           return { ...shape, w: x - shape.x, h: y - shape.y };
         case 'text':
+        case 'image':
+          // image 는 mouse drag 로 그리지 않음 — paste/drop/picker 로만 추가.
           return shape;
         default: {
           const _exhaustive: never = shape;
@@ -455,6 +571,7 @@ export default function App(): JSX.Element {
           return dx * dx + dy * dy < 16;
         }
         case 'text':
+        case 'image':
           return false;
         default: {
           const _exhaustive: never = drawing;
@@ -477,6 +594,19 @@ export default function App(): JSX.Element {
 
   const onCancelClick = (): void => {
     cancelEditor();
+  };
+
+  const onPinClick = (): void => {
+    const stage = stageRef.current;
+    if (!stage) {
+      console.error('[asis editor] pin: stage null');
+      return;
+    }
+    const dataUrl = stage.toDataURL({ pixelRatio: 2 });
+    // 핀 윈도우는 *원본 이미지 픽셀 크기* 그대로 — 큰 캡처면 큰 핀, 작은 캡처면 작은 핀.
+    window.editor.pin(dataUrl, imageWidth, imageHeight).catch((err: unknown) => {
+      console.error('[asis editor] pin 실패', err);
+    });
   };
 
   // 다중 drag — react-konva Stage prop 으로는 자식 drag 가 안 잡혀 imperative 등록.
@@ -607,7 +737,11 @@ export default function App(): JSX.Element {
     ? (shapes.find((s) => s.id === selectedIds[0]) ?? null)
     : null;
   const canRotate = !!singleSelected && (
-    singleSelected.kind === 'rect' || singleSelected.kind === 'ellipse'
+    singleSelected.kind === 'rect' ||
+    singleSelected.kind === 'ellipse' ||
+    singleSelected.kind === 'arrow' ||
+    singleSelected.kind === 'pen' ||
+    singleSelected.kind === 'image'
   );
   const canResize = true;
 
@@ -646,6 +780,23 @@ export default function App(): JSX.Element {
               if (useEditorStore.getState().editingId === null) {
                 stageWrap?.focus();
               }
+            }}
+            onDragOver={(e): void => {
+              // OS 가 파일을 새 탭에서 열어버리지 않도록 default 막기.
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'copy';
+            }}
+            onDrop={(e): void => {
+              e.preventDefault();
+              const file = Array.from(e.dataTransfer.files).find((f) =>
+                f.type.startsWith('image/'),
+              );
+              if (!file) return;
+              // drop 위치를 stage 좌표로 변환.
+              const rect = e.currentTarget.getBoundingClientRect();
+              const dropX = (e.clientX - rect.left) / stageScale;
+              const dropY = (e.clientY - rect.top) / stageScale;
+              addImage(file, { x: dropX, y: dropY });
             }}
           >
             <Stage
@@ -837,7 +988,16 @@ export default function App(): JSX.Element {
         )}
       </div>
 
-      <Toolbar onCopy={onCopyClick} onCancel={onCancelClick} />
+      <Toolbar
+        onCopy={onCopyClick}
+        onCancel={onCancelClick}
+        onPin={onPinClick}
+        onImageFiles={(files): void => {
+          Array.from(files)
+            .filter((f) => f.type.startsWith('image/'))
+            .forEach((f) => addImage(f));
+        }}
+      />
     </div>
   );
 }

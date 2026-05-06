@@ -20,6 +20,7 @@ export default defineConfig({
           index: resolve('src/renderer/index.html'),
           selection: resolve('src/renderer/selection/index.html'),
           editor: resolve('src/renderer/editor/index.html'),
+          pin: resolve('src/renderer/pin/index.html'),
         },
       },
     },

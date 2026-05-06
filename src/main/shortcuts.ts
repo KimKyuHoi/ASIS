@@ -4,6 +4,9 @@ export type ShortcutHandlers = {
   onRegion: () => void;
   onFullscreen: () => void;
   onWindow: () => void;
+  /** 모든 핀의 click-through 해제 — click-through 활성 핀이 키보드/마우스를
+   *  못 받으니 외부 글로벌 단축키만이 유일한 회수 경로. */
+  onDisableClickThrough: () => void;
 };
 
 /**
@@ -27,6 +30,7 @@ export class ShortcutManager {
       ['CommandOrControl+Shift+A', handlers.onRegion],
       ['CommandOrControl+Shift+F', handlers.onFullscreen],
       ['CommandOrControl+Shift+W', handlers.onWindow],
+      ['CommandOrControl+Shift+X', handlers.onDisableClickThrough],
     ];
 
     for (const [accelerator, callback] of bindings) {

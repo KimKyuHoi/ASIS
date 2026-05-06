@@ -10,6 +10,7 @@ import {
 } from './capture';
 import { SelectionOverlayManager } from './windows/selectionOverlay';
 import { EditorWindowManager } from './windows/editorWindow';
+import { PinWindowManager } from './windows/pinWindow';
 
 /**
  * ASIS — macOS 메뉴바 캡처·어노테이션 도구.
@@ -27,6 +28,8 @@ const trayManager = new TrayManager();
 const shortcutManager = new ShortcutManager();
 const selectionOverlay = new SelectionOverlayManager();
 const editorWindow = new EditorWindowManager();
+const pinWindow = new PinWindowManager();
+editorWindow.setPinHandler((dataUrl, w, h) => pinWindow.pin(dataUrl, w, h));
 
 // 단일 인스턴스 보장.
 const gotInstanceLock = app.requestSingleInstanceLock();
@@ -118,8 +121,25 @@ app.whenReady().then(() => {
   const onRegion = (): void => {
     handleRegionCapture();
   };
+  const onDisableClickThrough = (): void => {
+    pinWindow.disableAllClickThrough();
+    if (pinWindow.count() > 0) {
+      notifyInfo(`핀 ${pinWindow.count()}개 click-through 해제`);
+    }
+  };
+  const onCloseAllPins = (): void => {
+    const n = pinWindow.count();
+    pinWindow.closeAll();
+    if (n > 0) notifyInfo(`핀 ${n}개 닫음`);
+  };
 
-  const handlers = { onFullscreen, onWindow, onRegion };
+  const handlers = {
+    onFullscreen,
+    onWindow,
+    onRegion,
+    onDisableClickThrough,
+    onCloseAllPins,
+  };
   trayManager.start(handlers);
   shortcutManager.start(handlers);
 });
@@ -135,4 +155,5 @@ app.on('before-quit', () => {
   trayManager.stop();
   selectionOverlay.stop();
   editorWindow.stop();
+  pinWindow.closeAll();
 });

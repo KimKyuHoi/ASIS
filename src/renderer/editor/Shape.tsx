@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { JSX } from 'react';
 import {
   Arrow as KArrow,
@@ -10,7 +10,7 @@ import {
 } from 'react-konva';
 import Konva from 'konva';
 import { useEditorStore } from './state/store';
-import type { Shape as ShapeData } from './state/types';
+import type { ImageShape, Shape as ShapeData } from './state/types';
 
 /**
  * 단일 도형 렌더 컴포넌트.
@@ -149,6 +149,7 @@ export function Shape({
         <KArrow
           id={shape.id}
           points={shape.points}
+          rotation={shape.rotation ?? 0}
           stroke={shape.stroke}
           strokeWidth={shape.strokeWidth}
           fill={shape.stroke}
@@ -168,6 +169,8 @@ export function Shape({
             e.target.position({ x: 0, y: 0 });
           }}
           onTransformEnd={(e): void => {
+            // Arrow 의 rotation 은 Konva 노드 prop 으로 보존, scale 만 points 에 baking.
+            // node.x/y 는 dragend 와 같은 형태 — points 시작점으로 흡수.
             const node = e.target;
             const sx = node.scaleX();
             const sy = node.scaleY();
@@ -179,7 +182,10 @@ export function Shape({
             const newPoints = shape.points.map((v, i) =>
               i % 2 === 0 ? v * sx + dx : v * sy + dy,
             );
-            updateShape(shape.id, { points: newPoints });
+            updateShape(shape.id, {
+              points: newPoints,
+              rotation: node.rotation(),
+            });
           }}
         />
       );
@@ -189,6 +195,7 @@ export function Shape({
         <KLine
           id={shape.id}
           points={shape.points}
+          rotation={shape.rotation ?? 0}
           stroke={shape.stroke}
           strokeWidth={shape.strokeWidth}
           tension={0.4}
@@ -219,7 +226,10 @@ export function Shape({
             const newPoints = shape.points.map((v, i) =>
               i % 2 === 0 ? v * sx + dx : v * sy + dy,
             );
-            updateShape(shape.id, { points: newPoints });
+            updateShape(shape.id, {
+              points: newPoints,
+              rotation: node.rotation(),
+            });
           }}
         />
       );
@@ -346,9 +356,89 @@ export function Shape({
         />
       );
 
+    case 'image':
+      return (
+        <ImageShapeNode
+          shape={shape}
+          draggable={draggable}
+          onSelect={onSelect}
+          onDragEnd={(node): void => {
+            if (isMultiDrag()) return;
+            updateShape(shape.id, { x: node.x(), y: node.y() });
+          }}
+          onTransformEnd={(node): void => {
+            const sx = node.scaleX();
+            const sy = node.scaleY();
+            node.scaleX(1);
+            node.scaleY(1);
+            updateShape(shape.id, {
+              x: node.x(),
+              y: node.y(),
+              w: Math.max(10, shape.w * sx),
+              h: Math.max(10, shape.h * sy),
+              rotation: node.rotation(),
+            });
+          }}
+        />
+      );
+
     default: {
       const _exhaustive: never = shape;
       return _exhaustive;
     }
   }
+}
+
+/**
+ * 이미지 도형 — src(data URL) 을 HTMLImageElement 로 디코딩 후 KImage 렌더.
+ * src 는 store 에 base64 로 저장되어 있어 mount 시 1회 디코드.
+ */
+function ImageShapeNode({
+  shape,
+  draggable,
+  onSelect,
+  onDragEnd,
+  onTransformEnd,
+}: {
+  shape: ImageShape;
+  draggable: boolean;
+  onSelect: (e?: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => void;
+  onDragEnd: (node: Konva.Image) => void;
+  onTransformEnd: (node: Konva.Image) => void;
+}): JSX.Element | null {
+  const [img, setImg] = useState<HTMLImageElement | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const el = new Image();
+    el.onload = (): void => {
+      if (active) setImg(el);
+    };
+    el.onerror = (): void => {
+      console.error('[asis editor] ImageShape src 로드 실패', shape.id);
+    };
+    el.src = shape.src;
+    return () => {
+      active = false;
+    };
+  }, [shape.src, shape.id]);
+
+  if (!img) return null;
+
+  return (
+    <KImage
+      id={shape.id}
+      image={img}
+      x={shape.x}
+      y={shape.y}
+      width={shape.w}
+      height={shape.h}
+      rotation={shape.rotation ?? 0}
+      draggable={draggable}
+      onClick={onSelect}
+      onTap={onSelect}
+      onDragEnd={(e): void => onDragEnd(e.target as Konva.Image)}
+      onTransformEnd={(e): void => onTransformEnd(e.target as Konva.Image)}
+    />
+  );
 }
