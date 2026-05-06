@@ -479,83 +479,79 @@ export default function App(): JSX.Element {
     cancelEditor();
   };
 
-  // 다중 drag 핸들러 — Stage 에 bubble 된 도형 drag 이벤트 처리.
-  // selectedIds.length > 1 일 때만 그룹 동기화. 단일 선택은 Shape.tsx 의 자기 onDragEnd 가 처리.
-  const onStageDragStart = (e: Konva.KonvaEventObject<DragEvent>): void => {
-    const id = e.target.id();
-    if (!id) return;
-    if (!selectedIds.includes(id) || selectedIds.length <= 1) return;
+  // 다중 drag — react-konva Stage prop 으로는 자식 drag 가 안 잡혀 imperative 등록.
+  // selectedIds 가 변할 때마다 listener 갱신.
+  useEffect(() => {
     const stage = stageRef.current;
-    if (!stage) return;
-    const positions = new Map<string, { x: number; y: number }>();
-    selectedIds.forEach((sid) => {
-      const node = stage.findOne(`#${sid}`);
-      if (node) positions.set(sid, { x: node.x(), y: node.y() });
-    });
-    dragStartPositionsRef.current = positions;
-    dragLeaderIdRef.current = id;
-  };
+    if (!stage) return undefined;
 
-  const onStageDragMove = (e: Konva.KonvaEventObject<DragEvent>): void => {
-    const positions = dragStartPositionsRef.current;
-    const leaderId = dragLeaderIdRef.current;
-    if (!positions || !leaderId) return;
-    if (e.target.id() !== leaderId) return;
-    const start = positions.get(leaderId);
-    if (!start) return;
-    const dx = e.target.x() - start.x;
-    const dy = e.target.y() - start.y;
-    const stage = stageRef.current;
-    if (!stage) return;
-    positions.forEach((startPos, sid) => {
-      if (sid === leaderId) return;
-      const node = stage.findOne(`#${sid}`);
-      if (!node) return;
-      node.x(startPos.x + dx);
-      node.y(startPos.y + dy);
-    });
-    stage.batchDraw();
-  };
+    const onDragStart = (e: Konva.KonvaEventObject<DragEvent>): void => {
+      const id = e.target.id();
+      if (!id) return;
+      const sel = useEditorStore.getState().selectedIds;
+      if (!sel.includes(id) || sel.length <= 1) return;
+      const positions = new Map<string, { x: number; y: number }>();
+      sel.forEach((sid) => {
+        const node = stage.findOne(`#${sid}`);
+        if (node) positions.set(sid, { x: node.x(), y: node.y() });
+      });
+      dragStartPositionsRef.current = positions;
+      dragLeaderIdRef.current = id;
+    };
 
-  const onStageDragEnd = (e: Konva.KonvaEventObject<DragEvent>): void => {
-    const positions = dragStartPositionsRef.current;
-    const leaderId = dragLeaderIdRef.current;
-    if (!positions || !leaderId) {
-      return;
-    }
-    if (e.target.id() !== leaderId) return;
-    const start = positions.get(leaderId);
-    if (!start) return;
-    const dx = e.target.x() - start.x;
-    const dy = e.target.y() - start.y;
-    // 모든 selected 도형 store patch (도형 종류별 좌표 model 다름).
-    const allShapes = useEditorStore.getState().shapes;
-    positions.forEach((startPos, sid) => {
-      const sh = allShapes.find((s) => s.id === sid);
-      if (!sh) return;
-      switch (sh.kind) {
-        case 'rect':
-        case 'highlight':
-        case 'blur':
-        case 'text':
-          updateShape(sid, { x: startPos.x + dx, y: startPos.y + dy });
-          break;
-        case 'ellipse':
-          updateShape(sid, { cx: startPos.x + dx, cy: startPos.y + dy });
-          break;
-        case 'arrow':
-        case 'pen': {
-          const newPoints = sh.points.map((v, i) =>
-            i % 2 === 0 ? v + dx : v + dy,
-          );
-          updateShape(sid, { points: newPoints });
-          break;
+    const onDragMove = (e: Konva.KonvaEventObject<DragEvent>): void => {
+      const positions = dragStartPositionsRef.current;
+      const leaderId = dragLeaderIdRef.current;
+      if (!positions || !leaderId) return;
+      if (e.target.id() !== leaderId) return;
+      const start = positions.get(leaderId);
+      if (!start) return;
+      const dx = e.target.x() - start.x;
+      const dy = e.target.y() - start.y;
+      positions.forEach((startPos, sid) => {
+        if (sid === leaderId) return;
+        const node = stage.findOne(`#${sid}`);
+        if (!node) return;
+        node.x(startPos.x + dx);
+        node.y(startPos.y + dy);
+      });
+      stage.batchDraw();
+    };
+
+    const onDragEnd = (e: Konva.KonvaEventObject<DragEvent>): void => {
+      const positions = dragStartPositionsRef.current;
+      const leaderId = dragLeaderIdRef.current;
+      if (!positions || !leaderId) return;
+      if (e.target.id() !== leaderId) return;
+      const start = positions.get(leaderId);
+      if (!start) return;
+      const dx = e.target.x() - start.x;
+      const dy = e.target.y() - start.y;
+      const allShapes = useEditorStore.getState().shapes;
+      positions.forEach((startPos, sid) => {
+        const sh = allShapes.find((s) => s.id === sid);
+        if (!sh) return;
+        switch (sh.kind) {
+          case 'rect':
+          case 'highlight':
+          case 'blur':
+          case 'text':
+            updateShape(sid, { x: startPos.x + dx, y: startPos.y + dy });
+            break;
+          case 'ellipse':
+            updateShape(sid, { cx: startPos.x + dx, cy: startPos.y + dy });
+            break;
+          case 'arrow':
+          case 'pen': {
+            const newPoints = sh.points.map((v, i) =>
+              i % 2 === 0 ? v + dx : v + dy,
+            );
+            updateShape(sid, { points: newPoints });
+            break;
+          }
         }
-      }
-    });
-    // arrow/pen 의 노드 position 도 reset (points 에 baking 했으므로).
-    const stage = stageRef.current;
-    if (stage) {
+      });
+      // arrow/pen 의 노드 position 을 0 으로 reset (points 에 baking 했으므로).
       positions.forEach((_, sid) => {
         const node = stage.findOne(`#${sid}`);
         if (!node) return;
@@ -564,10 +560,19 @@ export default function App(): JSX.Element {
           node.position({ x: 0, y: 0 });
         }
       });
-    }
-    dragStartPositionsRef.current = null;
-    dragLeaderIdRef.current = null;
-  };
+      dragStartPositionsRef.current = null;
+      dragLeaderIdRef.current = null;
+    };
+
+    stage.on('dragstart', onDragStart);
+    stage.on('dragmove', onDragMove);
+    stage.on('dragend', onDragEnd);
+    return () => {
+      stage.off('dragstart', onDragStart);
+      stage.off('dragmove', onDragMove);
+      stage.off('dragend', onDragEnd);
+    };
+  }, [updateShape, bgImage]);
 
   // Transformer 를 selectedIds 의 도형들에 attach. select 도구일 때만 보임.
   useEffect(() => {
@@ -606,6 +611,22 @@ export default function App(): JSX.Element {
   );
   const canResize = true;
 
+  // 다중 선택 시 그룹 bbox — 박스 안 빈 공간 클릭으로도 group drag 가능하도록
+  // invisible draggable rect 영역 결정.
+  const groupBBox = ((): Marquee | null => {
+    if (selectedIds.length <= 1) return null;
+    const selected = shapes.filter((s) => selectedIds.includes(s.id));
+    const boxes = selected
+      .map((s) => shapeBBox(s))
+      .filter((b): b is Marquee => b !== null);
+    if (boxes.length === 0) return null;
+    const minX = Math.min(...boxes.map((b) => b.x));
+    const minY = Math.min(...boxes.map((b) => b.y));
+    const maxX = Math.max(...boxes.map((b) => b.x + b.w));
+    const maxY = Math.max(...boxes.map((b) => b.y + b.h));
+    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+  })();
+
   return (
     <div className="editor">
       <div className="editor__canvas" ref={containerRef}>
@@ -636,9 +657,6 @@ export default function App(): JSX.Element {
               onPointerDown={onStagePointerDown}
               onPointerMove={onStagePointerMove}
               onPointerUp={onStagePointerUp}
-              onDragStart={onStageDragStart}
-              onDragMove={onStageDragMove}
-              onDragEnd={onStageDragEnd}
               style={{ cursor: tool === 'select' ? 'default' : 'crosshair' }}
             >
               <Layer listening={false}>
@@ -651,6 +669,109 @@ export default function App(): JSX.Element {
                 clipWidth={imageWidth}
                 clipHeight={imageHeight}
               >
+                {/* 다중 선택 그룹 박스 — 빈 공간 클릭으로도 그룹 drag 가능.
+                    도형들보다 *먼저* 렌더해서 z-order 아래로 → 도형 hit 우선,
+                    도형 없는 빈 공간만 이 rect 가 잡아 group drag 시작. */}
+                {groupBBox ? (
+                  <KRect
+                    id="__group_drag__"
+                    x={groupBBox.x}
+                    y={groupBBox.y}
+                    width={groupBBox.w}
+                    height={groupBBox.h}
+                    fill="rgba(0,0,0,0.001)"
+                    draggable
+                    onDragStart={(): void => {
+                      const stage = stageRef.current;
+                      if (!stage) return;
+                      const positions = new Map<string, { x: number; y: number }>();
+                      selectedIds.forEach((sid) => {
+                        const node = stage.findOne(`#${sid}`);
+                        if (node) positions.set(sid, { x: node.x(), y: node.y() });
+                      });
+                      dragStartPositionsRef.current = positions;
+                      dragLeaderIdRef.current = '__group_drag__';
+                      // 그룹 rect 자기 시작 위치도 기록.
+                      positions.set('__group_drag__', {
+                        x: groupBBox.x,
+                        y: groupBBox.y,
+                      });
+                    }}
+                    onDragMove={(e): void => {
+                      const positions = dragStartPositionsRef.current;
+                      if (!positions) return;
+                      const start = positions.get('__group_drag__');
+                      if (!start) return;
+                      const dx = e.target.x() - start.x;
+                      const dy = e.target.y() - start.y;
+                      const stage = stageRef.current;
+                      if (!stage) return;
+                      selectedIds.forEach((sid) => {
+                        const startPos = positions.get(sid);
+                        const node = stage.findOne(`#${sid}`);
+                        if (!startPos || !node) return;
+                        node.x(startPos.x + dx);
+                        node.y(startPos.y + dy);
+                      });
+                      stage.batchDraw();
+                    }}
+                    onDragEnd={(e): void => {
+                      const positions = dragStartPositionsRef.current;
+                      if (!positions) return;
+                      const start = positions.get('__group_drag__');
+                      if (!start) return;
+                      const dx = e.target.x() - start.x;
+                      const dy = e.target.y() - start.y;
+                      const allShapes = useEditorStore.getState().shapes;
+                      selectedIds.forEach((sid) => {
+                        const sh = allShapes.find((s) => s.id === sid);
+                        const startPos = positions.get(sid);
+                        if (!sh || !startPos) return;
+                        switch (sh.kind) {
+                          case 'rect':
+                          case 'highlight':
+                          case 'blur':
+                          case 'text':
+                            updateShape(sid, {
+                              x: startPos.x + dx,
+                              y: startPos.y + dy,
+                            });
+                            break;
+                          case 'ellipse':
+                            updateShape(sid, {
+                              cx: startPos.x + dx,
+                              cy: startPos.y + dy,
+                            });
+                            break;
+                          case 'arrow':
+                          case 'pen': {
+                            const newPoints = sh.points.map((v, i) =>
+                              i % 2 === 0 ? v + dx : v + dy,
+                            );
+                            updateShape(sid, { points: newPoints });
+                            break;
+                          }
+                        }
+                      });
+                      // arrow/pen 노드 position reset.
+                      const stage = stageRef.current;
+                      if (stage) {
+                        selectedIds.forEach((sid) => {
+                          const sh = allShapes.find((s) => s.id === sid);
+                          const node = stage.findOne(`#${sid}`);
+                          if (!node || !sh) return;
+                          if (sh.kind === 'arrow' || sh.kind === 'pen') {
+                            node.position({ x: 0, y: 0 });
+                          }
+                        });
+                      }
+                      // 그룹 rect 자기 위치도 reset (다음 렌더에서 groupBBox 새로 계산).
+                      e.target.position({ x: groupBBox.x, y: groupBBox.y });
+                      dragStartPositionsRef.current = null;
+                      dragLeaderIdRef.current = null;
+                    }}
+                  />
+                ) : null}
                 {shapes.map((s) => (
                   <Shape
                     key={s.id}
@@ -658,9 +779,6 @@ export default function App(): JSX.Element {
                     selected={selectedIds.includes(s.id)}
                     bgImage={bgImage}
                     isEditing={s.id === editingId}
-                    imageWidth={imageWidth}
-                    imageHeight={imageHeight}
-                    stageScale={stageScale}
                     onSelect={(evt): void => {
                       // 도형 클릭 시 어느 도구든 선택 가능 (Figma 결).
                       // shift 누르면 토글 추가 선택.
@@ -673,9 +791,6 @@ export default function App(): JSX.Element {
                     shape={drawing}
                     selected={false}
                     bgImage={bgImage}
-                    imageWidth={imageWidth}
-                    imageHeight={imageHeight}
-                    stageScale={stageScale}
                     onSelect={(): void => {}}
                   />
                 ) : null}

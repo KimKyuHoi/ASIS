@@ -27,9 +27,6 @@ export function Shape({
   selected,
   bgImage,
   isEditing = false,
-  imageWidth,
-  imageHeight,
-  stageScale,
   onSelect,
 }: {
   shape: ShapeData;
@@ -37,10 +34,6 @@ export function Shape({
   bgImage: HTMLImageElement | null;
   /** 텍스트 인라인 편집 중일 때 KText 를 숨김. */
   isEditing?: boolean;
-  /** 캡처 이미지 영역 — drag 가 이 안에서만 가능하도록 제한. */
-  imageWidth: number;
-  imageHeight: number;
-  stageScale: number;
   onSelect: (e?: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => void;
 }): JSX.Element | null {
   const updateShape = useEditorStore((s) => s.updateShape);
@@ -74,22 +67,8 @@ export function Shape({
   const isMultiDrag = (): boolean =>
     useEditorStore.getState().selectedIds.length > 1;
 
-  /**
-   * drag 시 도형이 캡처 영역 [0, imageW] x [0, imageH] 안에 머물도록 제한.
-   * Konva 의 dragBoundFunc 은 노드의 *Stage 좌표계 후보 위치* (scale 적용된 px) 를 받음.
-   * 입력 위치를 [0, imageW*scale] 로 clamp → 노드 width 도 scale 적용해서 max 빼줌.
-   */
-  const makeDragBound = (
-    nodeW: number,
-    nodeH: number,
-  ): ((pos: { x: number; y: number }) => { x: number; y: number }) => {
-    const maxX = Math.max(0, (imageWidth - nodeW) * stageScale);
-    const maxY = Math.max(0, (imageHeight - nodeH) * stageScale);
-    return (pos) => ({
-      x: Math.min(Math.max(pos.x, 0), maxX),
-      y: Math.min(Math.max(pos.y, 0), maxY),
-    });
-  };
+  // dragBoundFunc 은 폐기 — 도형 종류별 좌표계가 달라(특히 arrow/pen 의 node.position 이 (0,0))
+  // 일률적 clamp 가 음수 방향 이동을 막아 막혔다. Layer clip 이 시각 안전망 역할.
 
   switch (shape.kind) {
     case 'rect':
@@ -103,8 +82,9 @@ export function Shape({
           rotation={shape.rotation ?? 0}
           stroke={shape.stroke}
           strokeWidth={shape.strokeWidth}
+          // 시각상 투명 fill — 박스 안쪽 클릭으로도 hit 받아 drag 시작 가능 (PPT/Figma 결).
+          fill="rgba(0,0,0,0.001)"
           draggable={draggable}
-          dragBoundFunc={makeDragBound(Math.abs(shape.w), Math.abs(shape.h))}
           onClick={onSelect}
           onTap={onSelect}
           onDragEnd={(e): void => {
@@ -139,8 +119,8 @@ export function Shape({
           rotation={shape.rotation ?? 0}
           stroke={shape.stroke}
           strokeWidth={shape.strokeWidth}
+          fill="rgba(0,0,0,0.001)"
           draggable={draggable}
-          dragBoundFunc={makeDragBound(0, 0)}
           onClick={onSelect}
           onTap={onSelect}
           onDragEnd={(e): void => {
@@ -175,7 +155,6 @@ export function Shape({
           pointerLength={Math.max(8, shape.strokeWidth * 3)}
           pointerWidth={Math.max(8, shape.strokeWidth * 3)}
           draggable={draggable}
-          dragBoundFunc={makeDragBound(0, 0)}
           onClick={onSelect}
           onTap={onSelect}
           onDragEnd={(e): void => {
@@ -216,7 +195,6 @@ export function Shape({
           lineCap="round"
           lineJoin="round"
           draggable={draggable}
-          dragBoundFunc={makeDragBound(0, 0)}
           onClick={onSelect}
           onTap={onSelect}
           onDragEnd={(e): void => {
@@ -259,7 +237,6 @@ export function Shape({
           padding={4}
           visible={!isEditing}
           draggable={draggable}
-          dragBoundFunc={makeDragBound(0, 0)}
           onClick={onSelect}
           onTap={onSelect}
           onDblClick={(): void => setEditingId(shape.id)}
@@ -293,7 +270,6 @@ export function Shape({
           height={shape.h}
           fill={shape.fill}
           draggable={draggable}
-          dragBoundFunc={makeDragBound(Math.abs(shape.w), Math.abs(shape.h))}
           onClick={onSelect}
           onTap={onSelect}
           onDragEnd={(e): void => {
@@ -348,7 +324,6 @@ export function Shape({
           filters={[Konva.Filters.Blur]}
           blurRadius={shape.blurRadius}
           draggable={draggable}
-          dragBoundFunc={makeDragBound(Math.abs(shape.w), Math.abs(shape.h))}
           onClick={onSelect}
           onTap={onSelect}
           onDragEnd={(e): void => {
