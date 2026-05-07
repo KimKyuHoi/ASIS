@@ -1,0 +1,36 @@
+import { useEditorStore } from './store';
+
+/**
+ * Editor 윈도우의 IPC bridge 초기화 — *모듈 스코프 single init*.
+ *
+ * .claude/rules/side-effects.md 룰 부합:
+ *   "외부 store·시스템에서 React 가 상태를 읽음" — main 의 image path 송신은
+ *   React lifecycle 무관 외부 이벤트. useEffect 로 컴포넌트 안에서 구독하면
+ *   race/tearing 위험 (mount 전 message 도착, double-fire 등). 모듈 스코프 init
+ *   으로 옮기면 컴포넌트 lifecycle 과 분리되어 안전.
+ *
+ * 이 파일은 editor/main.tsx 에서 *createRoot 전에* 한 번 import 만 해도 init 됨.
+ */
+
+let initialized = false;
+
+export function ensureEditorIpcBridge(): void {
+  if (initialized) return;
+  initialized = true;
+
+  const api = window.editor;
+  if (!api) {
+    console.error('[asis editor] window.editor 미노출 — preload 셋업 확인.');
+    throw new Error('window.editor 가 노출되지 않았다.');
+  }
+
+  // main → renderer 단발 init: image path + 크기. zustand store 에 직접 commit.
+  api.onLoadImage((path, w, h) => {
+    console.info(`[asis editor] onLoadImage path=${path} w=${w} h=${h}`);
+    useEditorStore.getState().loadImage(`file://${path}`, w, h);
+  });
+
+  // listener 등록 *후* main 에 ready 신호 — race 방지.
+  api.ready();
+  console.info('[asis editor] IPC bridge 초기화 완료, api.ready() 호출');
+}

@@ -11,6 +11,9 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 asarUnpack:
   - resources/**
+  # ffmpeg binary 는 child_process.spawn 으로 실행 — asar 안이면 spawn 불가능.
+  # GIF 인코딩 (시퀀스/녹화/어노테이션 시퀀스) 의존성.
+  - '**/node_modules/ffmpeg-static/**'
 win:
   executableName: test-app
 nsis:

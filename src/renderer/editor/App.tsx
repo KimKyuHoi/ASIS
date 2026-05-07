@@ -53,19 +53,18 @@ async function loadAndResize(
 }
 
 /**
- * File 또는 Blob 또는 dataURL 을 받아 ImageShape 를 store 에 추가.
- * 이미지를 캔버스에 *드롭 위치* 또는 *중앙* 에 배치.
+ * File / Blob / dataURL → ImageShape 추가 (모듈 함수).
+ *
+ * 컴포넌트 closure 의존 없음 — useEditorStore.getState() 로 최신 state 직접 read.
+ * 호출처 (paste / drop / picker) 모두 같은 함수 사용. 이전 버전의 컴포넌트 안
+ * thin wrapper (addImage) 폐기 — 매 render 마다 새 closure 생성하던 문제 해소.
  */
 async function addImageFromSource(
   source: Blob | string,
-  options: {
-    centerX: number;
-    centerY: number;
-    imageWidth: number;
-    imageHeight: number;
-    addShape: (shape: ImageShape) => void;
-  },
+  hint?: { x: number; y: number },
 ): Promise<void> {
+  const state = useEditorStore.getState();
+  if (state.imageWidth === 0 || state.imageHeight === 0) return;
   const dataUrl = typeof source === 'string'
     ? source
     : await new Promise<string>((resolve, reject) => {
@@ -76,22 +75,25 @@ async function addImageFromSource(
     });
   const { src, w, h } = await loadAndResize(dataUrl, 2048);
   // 캡처보다 너무 크면 캡처 최대 폭의 60% 로 더 줄여 표시 (편집 편의).
-  const maxOnCanvas = Math.min(options.imageWidth, options.imageHeight) * 0.6;
+  const maxOnCanvas = Math.min(state.imageWidth, state.imageHeight) * 0.6;
   const longestOnCanvas = Math.max(w, h);
   const fit = longestOnCanvas > maxOnCanvas ? maxOnCanvas / longestOnCanvas : 1;
   const dispW = w * fit;
   const dispH = h * fit;
-  // 드롭/페이스트 위치를 *중심* 으로 두고 양쪽으로 절반씩.
+  const center = hint ?? { x: state.imageWidth / 2, y: state.imageHeight / 2 };
   const id = `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
-  options.addShape({
+  const shape: ImageShape = {
     kind: 'image',
     id,
-    x: clamp(options.centerX - dispW / 2, 0, options.imageWidth - dispW),
-    y: clamp(options.centerY - dispH / 2, 0, options.imageHeight - dispH),
+    x: clamp(center.x - dispW / 2, 0, state.imageWidth - dispW),
+    y: clamp(center.y - dispH / 2, 0, state.imageHeight - dispH),
     w: dispW,
     h: dispH,
     src,
-  });
+  };
+  state.startDrawing(shape);
+  state.finishDrawing();
+  state.selectShape(id);
 }
 
 /**
@@ -198,7 +200,6 @@ export default function App(): JSX.Element {
   const drawing = useEditorStore((s) => s.drawing);
   const selectedIds = useEditorStore((s) => s.selectedIds);
   const marquee = useEditorStore((s) => s.marquee);
-  const loadImage = useEditorStore((s) => s.loadImage);
   const startDrawing = useEditorStore((s) => s.startDrawing);
   const updateDrawing = useEditorStore((s) => s.updateDrawing);
   const finishDrawing = useEditorStore((s) => s.finishDrawing);
@@ -214,25 +215,6 @@ export default function App(): JSX.Element {
   const editingId = useEditorStore((s) => s.editingId);
   const setEditingId = useEditorStore((s) => s.setEditingId);
 
-  // 이미지 첨부 — paste/drop/picker 모두 통과. 위치는 캔버스 중앙 또는 drop 위치.
-  const addImage = (source: Blob | string, hint?: { x: number; y: number }): void => {
-    if (imageWidth === 0 || imageHeight === 0) return;
-    const center = hint ?? { x: imageWidth / 2, y: imageHeight / 2 };
-    addImageFromSource(source, {
-      centerX: center.x,
-      centerY: center.y,
-      imageWidth,
-      imageHeight,
-      addShape: (s) => {
-        startDrawing(s);
-        finishDrawing();
-        selectShape(s.id);
-      },
-    }).catch((err: unknown) => {
-      console.error('[asis editor] addImage 실패', err);
-    });
-  };
-
   // marquee 드래그 중인지 추적 — pointermove 에서 marquee 갱신, pointerup 에서
   // hit 판정 후 selectedIds set. ref 로 두어 재렌더 안 일으킴.
   const marqueeStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -242,21 +224,8 @@ export default function App(): JSX.Element {
   const dragLeaderIdRef = useRef<string | null>(null);
   const dragStartPositionsRef = useRef<Map<string, { x: number; y: number }> | null>(null);
 
-  // 1) main → renderer: 이미지 path / 크기 받음.
-  useEffect(() => {
-    console.info('[asis editor] App mounted');
-    const api = window.editor;
-    if (!api) {
-      console.error('[asis editor] window.editor 미노출');
-      throw new Error('window.editor 가 노출되지 않았다 — preload 셋업 확인.');
-    }
-    api.onLoadImage((path, w, h) => {
-      console.info(`[asis editor] onLoadImage 콜백 path=${path} w=${w} h=${h}`);
-      loadImage(`file://${path}`, w, h);
-    });
-    api.ready();
-    console.info('[asis editor] api.ready() 호출');
-  }, [loadImage]);
+  // main → renderer image init 은 모듈 스코프 ensureEditorIpcBridge() 가 처리.
+  // 컴포넌트는 zustand store 의 imageSrc/Width/Height 를 read 만 (selector 위에 있음).
 
   // 2) imageSrc 변하면 HTMLImageElement 로 디코딩.
   useEffect(() => {
@@ -308,6 +277,9 @@ export default function App(): JSX.Element {
       if (isMeta && e.code === 'KeyC') {
         e.preventDefault();
         copyToClipboard(stageRef.current);
+      } else if (isMeta && e.code === 'KeyS') {
+        e.preventDefault();
+        savePngFile(stageRef.current);
       } else if (isMeta && e.code === 'KeyV') {
         e.preventDefault();
         // 클립보드 → 이미지 ImageShape. 텍스트는 무시 (필요 시 후속).
@@ -322,7 +294,9 @@ export default function App(): JSX.Element {
           );
           if (!imageType) return undefined;
           return firstImageItem.getType(imageType).then((blob) => {
-            addImage(blob);
+            addImageFromSource(blob).catch((err: unknown) => {
+              console.error('[asis editor] paste image 실패', err);
+            });
           });
         }).catch((err: unknown) => {
           console.error('[asis editor] paste 실패', err);
@@ -796,7 +770,9 @@ export default function App(): JSX.Element {
               const rect = e.currentTarget.getBoundingClientRect();
               const dropX = (e.clientX - rect.left) / stageScale;
               const dropY = (e.clientY - rect.top) / stageScale;
-              addImage(file, { x: dropX, y: dropY });
+              addImageFromSource(file, { x: dropX, y: dropY }).catch(
+                (err: unknown) => console.error('[asis editor] drop 실패', err),
+              );
             }}
           >
             <Stage
@@ -995,7 +971,11 @@ export default function App(): JSX.Element {
         onImageFiles={(files): void => {
           Array.from(files)
             .filter((f) => f.type.startsWith('image/'))
-            .forEach((f) => addImage(f));
+            .forEach((f) => {
+              addImageFromSource(f).catch((err: unknown) =>
+                console.error('[asis editor] picker 실패', err),
+              );
+            });
         }}
       />
     </div>
@@ -1023,4 +1003,25 @@ function cancelEditor(): void {
     throw new Error('window.editor 미노출 — preload 셋업 확인.');
   }
   api.cancel();
+}
+
+function savePngFile(stage: Konva.Stage | null): void {
+  const api = window.editor;
+  if (!api) {
+    throw new Error('window.editor 미노출 — preload 셋업 확인.');
+  }
+  if (!stage) {
+    throw new Error('Stage ref 가 null — 이미지 로드 실패 가능.');
+  }
+  const dataUrl = stage.toDataURL({ pixelRatio: 2 });
+  api.save(dataUrl).then(
+    (result) => {
+      if (result.saved && result.path) {
+        console.info(`[asis editor] PNG 저장 완료: ${result.path}`);
+      }
+    },
+    (err: unknown) => {
+      console.error('[asis editor] save rejected', err);
+    },
+  );
 }

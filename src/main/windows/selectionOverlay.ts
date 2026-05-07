@@ -1,4 +1,7 @@
-import { BrowserWindow, ipcMain, screen } from 'electron';
+import { BrowserWindow, globalShortcut, ipcMain, screen } from 'electron';
+import { spawn } from 'node:child_process';
+import { readFile, unlink } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 type Rect = {
@@ -14,6 +17,7 @@ export type SelectionResult =
 
 const CHANNEL_REGION = 'capture:region';
 const CHANNEL_CANCEL = 'capture:cancel';
+const CHANNEL_BACKGROUND = 'capture:background';
 
 /**
  * 영역 선택 오버레이 — 풀스크린 transparent BrowserWindow lifecycle 관리.
@@ -66,6 +70,13 @@ export class SelectionOverlayManager {
     // 다른 앱이 fullscreen 이어도 그 위에 표시.
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
+    // macOS 26β 에서 transparent+alwaysOnTop 윈도우가 자동 focus 못 받는 회귀.
+    // ready-to-show 시점에 명시 focus 호출 — ESC 단축키가 keydown 으로 들어옴.
+    win.once('ready-to-show', () => {
+      win.focus();
+      win.webContents.focus();
+    });
+
     win.webContents.on('did-fail-load', (_e, code, desc, url) => {
       console.error(
         `[asis] selectionOverlay did-fail-load code=${code} desc=${desc} url=${url}`,
@@ -85,6 +96,17 @@ export class SelectionOverlayManager {
       console.error('[asis] selectionOverlay loadFile failed', err);
     });
 
+    // Color picker / Magnifier 용 background 캡처 — overlay 띄우기 전 시점의 화면.
+    // overlay 가 mount 되면 IPC 로 dataURL 전송 → renderer 가 픽셀 read.
+    captureBackgroundForOverlay(win).catch((err: unknown) => {
+      console.warn('[asis] background 캡처 실패 (color picker 비활성):', err);
+    });
+
+    // macOS 26β 에서 transparent+alwaysOnTop 윈도우가 keydown 을 못 받는 회귀 우회.
+    // selection 활성 시점에만 ESC 를 globalShortcut 으로 잡고, settle 시 unregister.
+    // 부작용: selection 떠있는 동안 다른 앱의 ESC 도 우리한테 옴 — 의도된 trade-off
+    // (사용자가 캡처하려 한 컨텍스트라 OK).
+    const ESC_ACCEL = 'Escape';
     return new Promise<SelectionResult>((resolve) => {
       let settled = false;
       const settle = (result: SelectionResult): void => {
@@ -93,11 +115,22 @@ export class SelectionOverlayManager {
         // 핸들러·리스너 cleanup — leak 방지.
         ipcMain.removeHandler(CHANNEL_REGION);
         ipcMain.removeAllListeners(CHANNEL_CANCEL);
+        globalShortcut.unregister(ESC_ACCEL);
         if (!win.isDestroyed()) {
           win.close();
         }
         resolve(result);
       };
+
+      // ESC 글로벌 fallback — renderer keydown 이 안 잡힐 때를 대비.
+      const escOk = globalShortcut.register(ESC_ACCEL, () => {
+        settle({ kind: 'canceled' });
+      });
+      if (!escOk) {
+        console.warn(
+          '[asis] selectionOverlay: ESC globalShortcut 등록 실패 — renderer keydown 만 의지',
+        );
+      }
 
       ipcMain.handleOnce(CHANNEL_REGION, (_event, rect: Rect) => {
         settle({ kind: 'selected', rect });
@@ -122,4 +155,41 @@ export class SelectionOverlayManager {
     }
     this.win = null;
   }
+}
+
+/**
+ * Color picker / Magnifier 용 background 캡처.
+ *
+ * overlay 가 *띄워지기 전* 시점의 화면을 screencapture 로 잡고, dataURL 로
+ * renderer 에 전송. overlay 가 mount 후 그걸 받아 픽셀 read 에 사용.
+ *
+ * 한계: overlay 가 떠있는 동안 화면 변화는 반영 안 됨 (정적 background).
+ * 일반 캡처 도구의 동작과 일치 — color picker 는 *영역 선택 시점의 화면* 의미.
+ */
+async function captureBackgroundForOverlay(
+  win: BrowserWindow,
+): Promise<void> {
+  const tmpPath = join(
+    tmpdir(),
+    `asis-bg-${Date.now()}-${process.pid}.png`,
+  );
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn('/usr/sbin/screencapture', [
+      '-x',
+      '-t',
+      'png',
+      tmpPath,
+    ]);
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`screencapture exit ${code}`));
+    });
+  });
+  const buf = await readFile(tmpPath);
+  const dataUrl = `data:image/png;base64,${buf.toString('base64')}`;
+  if (!win.isDestroyed()) {
+    win.webContents.send(CHANNEL_BACKGROUND, dataUrl);
+  }
+  await unlink(tmpPath).catch(() => {});
 }

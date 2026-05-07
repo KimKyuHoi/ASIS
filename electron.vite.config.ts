@@ -21,6 +21,7 @@ export default defineConfig({
           selection: resolve('src/renderer/selection/index.html'),
           editor: resolve('src/renderer/editor/index.html'),
           pin: resolve('src/renderer/pin/index.html'),
+          recorder: resolve('src/renderer/recorder/index.html'),
         },
       },
     },

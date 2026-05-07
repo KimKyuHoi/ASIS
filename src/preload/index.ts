@@ -15,6 +15,12 @@ const selection = {
   capture: (rect: Rect): Promise<void> =>
     ipcRenderer.invoke('capture:region', rect),
   cancel: (): void => ipcRenderer.send('capture:cancel'),
+  /** Color picker / Magnifier 용 — overlay 띄우기 전 화면의 dataURL. */
+  onBackground: (callback: (dataUrl: string) => void): void => {
+    ipcRenderer.on('capture:background', (_event, dataUrl: string) => {
+      callback(dataUrl);
+    });
+  },
 };
 
 /**
@@ -45,6 +51,8 @@ const editor = {
   cancel: (): void => ipcRenderer.send('editor:cancel'),
   pin: (dataUrl: string, w: number, h: number): Promise<void> =>
     ipcRenderer.invoke('editor:pin', dataUrl, w, h),
+  save: (dataUrl: string): Promise<{ saved: boolean; path?: string }> =>
+    ipcRenderer.invoke('editor:save', dataUrl),
 };
 
 /**
@@ -74,12 +82,37 @@ const pin = {
     ipcRenderer.send('pin:set-click-through', enabled),
 };
 
+/**
+ * 녹화 컨트롤 IPC 브릿지.
+ *  - stop(): GIF 인코딩 + 결과 처리
+ *  - cancel(): 폐기
+ *  - getFrameCount(): 현재 frame 수 polling
+ *  - onEncoding(cb): main 이 인코딩 시작했음을 알림 → UI 가 'encoding' 상태로
+ */
+const recorder = {
+  stop: (): void => ipcRenderer.send('recorder:stop'),
+  cancel: (): void => ipcRenderer.send('recorder:cancel'),
+  getFrameCount: (): Promise<number> =>
+    ipcRenderer.invoke('recorder:get-frame-count'),
+  onEncoding: (callback: () => void): void => {
+    ipcRenderer.on('recorder:encoding', () => callback());
+  },
+  /** main 이 외부 트리거 (단축키/트레이) 로 정지 요청. renderer 가 자기 stop 흐름 실행. */
+  onTriggerStop: (callback: () => void): void => {
+    ipcRenderer.on('recorder:trigger-stop', () => callback());
+  },
+  onTriggerCancel: (callback: () => void): void => {
+    ipcRenderer.on('recorder:trigger-cancel', () => callback());
+  },
+};
+
 if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('electron', electronAPI);
     contextBridge.exposeInMainWorld('selection', selection);
     contextBridge.exposeInMainWorld('editor', editor);
     contextBridge.exposeInMainWorld('pin', pin);
+    contextBridge.exposeInMainWorld('recorder', recorder);
   } catch (err) {
     console.error('preload: contextBridge expose failed', err);
   }

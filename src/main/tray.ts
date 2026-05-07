@@ -13,6 +13,8 @@ export type TrayMenuHandlers = {
   onRegion: () => void;
   onDisableClickThrough: () => void;
   onCloseAllPins: () => void;
+  onSequenceGif: () => void;
+  onClipboardPin: () => void;
 };
 
 export class TrayManager {
@@ -70,6 +72,21 @@ export class TrayManager {
         label: '영역 캡처',
         accelerator: 'CommandOrControl+Shift+A',
         click: handlers.onRegion,
+      },
+
+      { type: 'separator' },
+
+      // GIF — 영역 선택 후 시퀀스 캡처 → GIF 인코딩.
+      {
+        label: '시퀀스 GIF 녹화…',
+        accelerator: 'CommandOrControl+Shift+G',
+        click: handlers.onSequenceGif,
+      },
+      // 클립보드 이미지 → 바로 Pin (Snipaste F3 결).
+      {
+        label: '클립보드를 핀으로',
+        accelerator: 'CommandOrControl+Shift+V',
+        click: handlers.onClipboardPin,
       },
 
       { type: 'separator' },

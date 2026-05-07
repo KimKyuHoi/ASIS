@@ -1,4 +1,4 @@
-import { app, Notification } from 'electron';
+import { app, clipboard, Notification } from 'electron';
 import { electronApp, optimizer } from '@electron-toolkit/utils';
 import { TrayManager } from './tray';
 import { ShortcutManager } from './shortcuts';
@@ -11,6 +11,7 @@ import {
 import { SelectionOverlayManager } from './windows/selectionOverlay';
 import { EditorWindowManager } from './windows/editorWindow';
 import { PinWindowManager } from './windows/pinWindow';
+import { RecorderWindowManager } from './windows/recorderWindow';
 
 /**
  * ASIS — macOS 메뉴바 캡처·어노테이션 도구.
@@ -29,6 +30,7 @@ const shortcutManager = new ShortcutManager();
 const selectionOverlay = new SelectionOverlayManager();
 const editorWindow = new EditorWindowManager();
 const pinWindow = new PinWindowManager();
+const recorderWindow = new RecorderWindowManager();
 editorWindow.setPinHandler((dataUrl, w, h) => pinWindow.pin(dataUrl, w, h));
 
 // 단일 인스턴스 보장.
@@ -97,6 +99,61 @@ const handleRegionCapture = (): void => {
   );
 };
 
+/**
+ * 클립보드 이미지를 *바로 Pin* (Snipaste F3).
+ * 클립보드가 빈 이미지면 알림으로 안내.
+ */
+const handleClipboardPin = (): void => {
+  const image = clipboard.readImage();
+  if (image.isEmpty()) {
+    notifyInfo('클립보드에 이미지가 없습니다');
+    return;
+  }
+  const { width, height } = image.getSize();
+  const dataUrl = image.toDataURL();
+  pinWindow.pin(dataUrl, width, height);
+};
+
+const handleSequenceGif = (): void => {
+  // 녹화 중이면 정지 (toggle) — 알약 안 띄우니 *유일한 회수 경로*.
+  if (recorderWindow.isActive()) {
+    notifyInfo('GIF 인코딩 중…');
+    recorderWindow.triggerStop();
+    return;
+  }
+  // 영역 선택 → 시퀀스 캡처 → GIF 저장.
+  selectionOverlay.show().then(
+    (selResult) => {
+      if (selResult.kind !== 'selected') return;
+      const showPromise = recorderWindow.show(selResult.rect);
+      // recorderWindow.show 안에서 placement 결정. hidden 면 알림으로 안내.
+      if (recorderWindow.isHidden()) {
+        notifyInfo('GIF 녹화 중 — ⌘⇧G 다시 눌러 정지');
+      }
+      showPromise.then(
+        (recResult) => {
+          if (recResult.kind === 'saved') {
+            notifyInfo(`시퀀스 GIF 저장 — ${recResult.path}`);
+          } else if (recResult.kind === 'failed') {
+            notifyError(`GIF 인코딩 실패: ${recResult.error.message}`);
+          }
+        },
+        (err: unknown) => {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error('[asis] recorder failed', err);
+          notifyError(`GIF 녹화 실패: ${message}`);
+        },
+      );
+    },
+    // selectionOverlay 실패 분기.
+    (err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('[asis] 시퀀스 캡처 영역 선택 실패', err);
+      notifyError(`시퀀스 GIF 시작 실패: ${message}`);
+    },
+  );
+};
+
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.pinkfong.asis');
 
@@ -132,6 +189,12 @@ app.whenReady().then(() => {
     pinWindow.closeAll();
     if (n > 0) notifyInfo(`핀 ${n}개 닫음`);
   };
+  const onSequenceGif = (): void => {
+    handleSequenceGif();
+  };
+  const onClipboardPin = (): void => {
+    handleClipboardPin();
+  };
 
   const handlers = {
     onFullscreen,
@@ -139,6 +202,8 @@ app.whenReady().then(() => {
     onRegion,
     onDisableClickThrough,
     onCloseAllPins,
+    onSequenceGif,
+    onClipboardPin,
   };
   trayManager.start(handlers);
   shortcutManager.start(handlers);
@@ -156,4 +221,5 @@ app.on('before-quit', () => {
   selectionOverlay.stop();
   editorWindow.stop();
   pinWindow.closeAll();
+  recorderWindow.stop();
 });

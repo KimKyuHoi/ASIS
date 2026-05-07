@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { JSX } from 'react';
 import {
   Arrow as KArrow,
@@ -10,7 +10,7 @@ import {
 } from 'react-konva';
 import Konva from 'konva';
 import { useEditorStore } from './state/store';
-import type { ImageShape, Shape as ShapeData } from './state/types';
+import type { BlurShape, ImageShape, Shape as ShapeData } from './state/types';
 
 /**
  * 단일 도형 렌더 컴포넌트.
@@ -38,24 +38,6 @@ export function Shape({
 }): JSX.Element | null {
   const updateShape = useEditorStore((s) => s.updateShape);
   const setEditingId = useEditorStore((s) => s.setEditingId);
-  const blurRef = useRef<Konva.Image>(null);
-
-  // 블러 cache — shape props 변화 시 다시 cache.
-  useEffect(() => {
-    if (shape.kind !== 'blur') return undefined;
-    const node = blurRef.current;
-    if (!node) return undefined;
-    node.cache();
-    node.getLayer()?.batchDraw();
-    return undefined;
-  }, [
-    shape.kind,
-    shape.kind === 'blur' ? shape.x : 0,
-    shape.kind === 'blur' ? shape.y : 0,
-    shape.kind === 'blur' ? shape.w : 0,
-    shape.kind === 'blur' ? shape.h : 0,
-    shape.kind === 'blur' ? shape.blurRadius : 0,
-  ]);
 
   // 도형 자체의 색은 *선택 여부와 무관하게* 원본 유지.
   // 선택 표시는 Transformer 의 box + 앵커가 담당 (App.tsx 에서 처리).
@@ -155,6 +137,9 @@ export function Shape({
           fill={shape.stroke}
           pointerLength={Math.max(8, shape.strokeWidth * 3)}
           pointerWidth={Math.max(8, shape.strokeWidth * 3)}
+          // stroke 가 얇아도 hit 잡기 쉽도록 — 이거 없으면 marquee 후 drag 시
+          // 사용자가 화살표 외곽선 정확히 안 누르면 hit 안 받아 그룹 drag 실패.
+          hitStrokeWidth={Math.max(20, shape.strokeWidth + 16)}
           draggable={draggable}
           onClick={onSelect}
           onTap={onSelect}
@@ -201,6 +186,7 @@ export function Shape({
           tension={0.4}
           lineCap="round"
           lineJoin="round"
+          hitStrokeWidth={Math.max(20, shape.strokeWidth + 16)}
           draggable={draggable}
           onClick={onSelect}
           onTap={onSelect}
@@ -303,45 +289,17 @@ export function Shape({
       );
 
     case 'blur':
-      if (!bgImage) {
-        return (
-          <KRect
-            id={shape.id}
-            x={shape.x}
-            y={shape.y}
-            width={shape.w}
-            height={shape.h}
-            fill="rgba(18, 18, 22, 0.94)"
-            onClick={onSelect}
-          />
-        );
-      }
       return (
-        <KImage
-          id={shape.id}
-          ref={blurRef}
-          image={bgImage}
-          x={shape.x}
-          y={shape.y}
-          width={shape.w}
-          height={shape.h}
-          crop={{
-            x: shape.x,
-            y: shape.y,
-            width: shape.w,
-            height: shape.h,
-          }}
-          filters={[Konva.Filters.Blur]}
-          blurRadius={shape.blurRadius}
+        <BlurShapeNode
+          shape={shape}
+          bgImage={bgImage}
           draggable={draggable}
-          onClick={onSelect}
-          onTap={onSelect}
-          onDragEnd={(e): void => {
+          onSelect={onSelect}
+          onDragEnd={(node): void => {
             if (isMultiDrag()) return;
-            updateShape(shape.id, { x: e.target.x(), y: e.target.y() });
+            updateShape(shape.id, { x: node.x(), y: node.y() });
           }}
-          onTransformEnd={(e): void => {
-            const node = e.target;
+          onTransformEnd={(node): void => {
             const sx = node.scaleX();
             const sy = node.scaleY();
             node.scaleX(1);
@@ -434,6 +392,73 @@ function ImageShapeNode({
       width={shape.w}
       height={shape.h}
       rotation={shape.rotation ?? 0}
+      draggable={draggable}
+      onClick={onSelect}
+      onTap={onSelect}
+      onDragEnd={(e): void => onDragEnd(e.target as Konva.Image)}
+      onTransformEnd={(e): void => onTransformEnd(e.target as Konva.Image)}
+    />
+  );
+}
+
+/**
+ * 블러 도형 — 배경 이미지에서 *crop 영역만* Konva.Filters.Blur 로 가우시안 블러.
+ * 별도 sub-component 인 이유:
+ *   - shape.kind === 'blur' 로 type narrowed → useEffect deps 가 단순 (conditional 없음)
+ *   - blur 노드 ref + cache 호출이 다른 도형과 lifecycle 다름
+ */
+function BlurShapeNode({
+  shape,
+  bgImage,
+  draggable,
+  onSelect,
+  onDragEnd,
+  onTransformEnd,
+}: {
+  shape: BlurShape;
+  bgImage: HTMLImageElement | null;
+  draggable: boolean;
+  onSelect: (e?: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => void;
+  onDragEnd: (node: Konva.Image) => void;
+  onTransformEnd: (node: Konva.Image) => void;
+}): JSX.Element {
+  const [node, setNode] = useState<Konva.Image | null>(null);
+
+  // 블러 props 변화 시 cache 다시 — Konva 표준 패턴.
+  // type narrowed 라 deps 에 conditional 없이 깔끔.
+  useEffect(() => {
+    if (!node) return;
+    node.cache();
+    node.getLayer()?.batchDraw();
+  }, [node, shape.x, shape.y, shape.w, shape.h, shape.blurRadius]);
+
+  // bgImage 미로드 — 검정 placeholder.
+  if (!bgImage) {
+    return (
+      <KRect
+        id={shape.id}
+        x={shape.x}
+        y={shape.y}
+        width={shape.w}
+        height={shape.h}
+        fill="rgba(18, 18, 22, 0.94)"
+        onClick={onSelect}
+      />
+    );
+  }
+
+  return (
+    <KImage
+      id={shape.id}
+      ref={setNode}
+      image={bgImage}
+      x={shape.x}
+      y={shape.y}
+      width={shape.w}
+      height={shape.h}
+      crop={{ x: shape.x, y: shape.y, width: shape.w, height: shape.h }}
+      filters={[Konva.Filters.Blur]}
+      blurRadius={shape.blurRadius}
       draggable={draggable}
       onClick={onSelect}
       onTap={onSelect}

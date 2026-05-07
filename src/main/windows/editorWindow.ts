@@ -2,11 +2,12 @@ import {
   app,
   BrowserWindow,
   clipboard,
+  dialog,
   ipcMain,
   nativeImage,
   screen,
 } from 'electron';
-import { unlink } from 'node:fs/promises';
+import { unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 export type EditorResult =
@@ -18,6 +19,7 @@ const CHANNEL_READY = 'editor:ready';
 const CHANNEL_COPY = 'editor:copy';
 const CHANNEL_CANCEL = 'editor:cancel';
 const CHANNEL_PIN = 'editor:pin';
+const CHANNEL_SAVE = 'editor:save';
 
 /**
  * 어노테이션 에디터 윈도우 — Konva 기반 React 페이지를 띄우고 사용자 어노테이션
@@ -149,6 +151,7 @@ export class EditorWindowManager {
         settled = true;
         ipcMain.removeHandler(CHANNEL_COPY);
         ipcMain.removeHandler(CHANNEL_PIN);
+        ipcMain.removeHandler(CHANNEL_SAVE);
         ipcMain.removeAllListeners(CHANNEL_CANCEL);
         ipcMain.removeAllListeners(CHANNEL_READY);
         if (!win.isDestroyed()) {
@@ -186,6 +189,31 @@ export class EditorWindowManager {
             throw new Error('editor: pinHandler 미설정 — main 부트스트랩 확인');
           }
           this.pinHandler(dataUrl, w, h);
+        },
+      );
+
+      // 저장 — dataURL 을 PNG 파일로. dialog → fs.writeFile.
+      ipcMain.handle(
+        CHANNEL_SAVE,
+        async (_event, dataUrl: string): Promise<{
+          saved: boolean;
+          path?: string;
+        }> => {
+          const defaultPath = join(
+            app.getPath('pictures'),
+            `ASIS-${Date.now()}.png`,
+          );
+          const result = await dialog.showSaveDialog(win, {
+            defaultPath,
+            filters: [{ name: 'PNG', extensions: ['png'] }],
+          });
+          if (result.canceled || !result.filePath) {
+            return { saved: false };
+          }
+          // dataURL → Buffer.
+          const base64 = dataUrl.replace(/^data:image\/[a-z]+;base64,/, '');
+          await writeFile(result.filePath, Buffer.from(base64, 'base64'));
+          return { saved: true, path: result.filePath };
         },
       );
 

@@ -7,6 +7,10 @@ export type ShortcutHandlers = {
   /** 모든 핀의 click-through 해제 — click-through 활성 핀이 키보드/마우스를
    *  못 받으니 외부 글로벌 단축키만이 유일한 회수 경로. */
   onDisableClickThrough: () => void;
+  /** 시퀀스 GIF 녹화 시작 — 영역 선택 → 일정 간격 캡처 → GIF. */
+  onSequenceGif: () => void;
+  /** 클립보드 이미지를 바로 Pin window 로 (Snipaste F3 결). */
+  onClipboardPin: () => void;
 };
 
 /**
@@ -31,6 +35,9 @@ export class ShortcutManager {
       ['CommandOrControl+Shift+F', handlers.onFullscreen],
       ['CommandOrControl+Shift+W', handlers.onWindow],
       ['CommandOrControl+Shift+X', handlers.onDisableClickThrough],
+      ['CommandOrControl+Shift+G', handlers.onSequenceGif],
+      // F3 충돌 (Mission Control) 회피해 ⌘⇧V — Snipaste 의 F3 와 같은 동작.
+      ['CommandOrControl+Shift+V', handlers.onClipboardPin],
     ];
 
     for (const [accelerator, callback] of bindings) {
