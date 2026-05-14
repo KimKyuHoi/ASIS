@@ -1,21 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22" fill="none">
   <!--
-    ASIS 트레이 아이콘 — 영역 selection marquee 의 시각 정수.
+    ASIS 트레이 아이콘 — ASIS 로고 그리드.
 
     macOS template image 컨벤션: 검은 픽셀 + alpha 만 사용한다.
     라이트/다크 모드는 macOS 가 자동으로 색을 반전한다.
   -->
 
-  <!-- 둥근 모서리 점선 사각형 — 영역 선택의 marquee 결 -->
-  <rect
-    x="3" y="3" width="16" height="16" rx="2.5"
-    fill="none"
-    stroke="black"
-    stroke-width="1.5"
-    stroke-dasharray="2.2 2.2"
-    stroke-linecap="round"
-  />
+  <!-- outer rounded border -->
+  <rect x="1" y="1" width="20" height="20" rx="5" stroke="black" stroke-width="1.5"/>
 
-  <!-- 중앙 focus dot -->
-  <circle cx="11" cy="11" r="1.5" fill="black"/>
+  <!-- top-left — full -->
+  <rect x="5" y="5" width="5" height="5" rx="1" fill="black"/>
+  <!-- top-right — 60% -->
+  <rect x="12" y="5" width="5" height="5" rx="1" fill="black" opacity="0.6"/>
+  <!-- bottom-left — 60% -->
+  <rect x="5" y="12" width="5" height="5" rx="1" fill="black" opacity="0.6"/>
+  <!-- bottom-right — 30% -->
+  <rect x="12" y="12" width="5" height="5" rx="1" fill="black" opacity="0.3"/>
 </svg>
