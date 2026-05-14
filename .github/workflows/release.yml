@@ -49,6 +49,23 @@ jobs:
             pnpm electron-builder --mac --publish always
           fi
 
+      - name: Update release notes from changelog
+        if: >
+          github.event_name == 'push' ||
+          (github.event_name == 'workflow_dispatch' && github.event.inputs.tag != '')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          # 이전 태그 찾기 (없으면 전체 커밋 사용)
+          PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${TAG}$" | head -1)
+          if [ -n "$PREV_TAG" ]; then
+            pnpm changelogen --from "$PREV_TAG" --to "$TAG" --output CHANGELOG_RELEASE.md
+          else
+            pnpm changelogen --to "$TAG" --output CHANGELOG_RELEASE.md
+          fi
+          gh release edit "$TAG" --notes-file CHANGELOG_RELEASE.md
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
