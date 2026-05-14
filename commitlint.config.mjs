@@ -29,6 +29,9 @@ const scopes = [
   'state',       // zustand 스토어 / undo·redo
   'window',      // BrowserWindow 라이프사이클
 
+  // ── Other ────────────────────────────────────────────────────
+  'landing',      // 랜딩 페이지
+
   // ── Cross-cutting ────────────────────────────────────────────
   'build',
   'deps',
