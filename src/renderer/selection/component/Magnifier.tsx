@@ -90,6 +90,8 @@ export function Magnifier({
         role="button"
         tabIndex={-1}
         title="클릭해서 복사"
+        onPointerDown={(e) => e.stopPropagation()}
+        onPointerUp={(e) => e.stopPropagation()}
         onClick={handleCopy}
       >
         <span

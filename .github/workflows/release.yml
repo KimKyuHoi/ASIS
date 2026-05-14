@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '릴리즈할 태그 (예: v1.0.0) — 없으면 현재 커밋으로 빌드만 수행'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -14,6 +20,9 @@ jobs:
     runs-on: macos-13
     steps:
       - uses: actions/checkout@v4
+        with:
+          # workflow_dispatch에서 태그를 입력했으면 그 ref로 체크아웃
+          ref: ${{ github.event.inputs.tag || github.ref }}
 
       - uses: pnpm/action-setup@v4
 
@@ -32,7 +41,13 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: pnpm electron-builder --mac --publish always
+        # tag push면 GitHub Release에 publish, 수동 실행이면 아티팩트만 업로드
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -z "${{ github.event.inputs.tag }}" ]; then
+            pnpm electron-builder --mac --publish never
+          else
+            pnpm electron-builder --mac --publish always
+          fi
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
