@@ -70,6 +70,7 @@ export default defineConfig(
       '**/out',
       '**/build/**/*.js',
       '**/.husky/_/**',
+      'docs/assets/**',
     ],
   },
 

@@ -2,6 +2,8 @@ node_modules
 out
 dist
 build
+docs/react
+docs/assets
 package-lock.json
 pnpm-lock.yaml
 yarn.lock

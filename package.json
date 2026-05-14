@@ -4,8 +4,8 @@
   "description": "macOS screenshot capture and annotation tool",
   "main": "./out/main/index.js",
   "packageManager": "pnpm@10.28.2",
-  "author": "",
-  "homepage": "",
+  "author": "KimKyuHoi",
+  "homepage": "https://kimkyuhoi.github.io/ASIS",
   "scripts": {
     "dev": "docker compose up -d && concurrently -n hermes,app -c blue,green \"docker compose logs -f\" \"electron-vite dev\"",
     "dev:app": "electron-vite dev",
@@ -48,6 +48,64 @@
     "react-konva": "^19.0.0",
     "react-konva-utils": "^2.0.0",
     "zustand": "^5.0.2"
+  },
+  "build": {
+    "appId": "com.pinkfong.asis",
+    "productName": "ASIS",
+    "copyright": "Copyright © 2025 KimKyuHoi",
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "files": [
+      "out/**/*",
+      "!out/**/*.map"
+    ],
+    "mac": {
+      "category": "public.app-category.utilities",
+      "icon": "build/icon.icns",
+      "identity": null,
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "NSScreenCaptureUsageDescription": "캡처 기능에 화면 녹화 권한이 필요합니다.",
+        "NSAccessibilityUsageDescription": "UI 자동 감지에 손쉬운 사용 권한이 필요합니다."
+      },
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ]
+    },
+    "dmg": {
+      "title": "ASIS ${version}",
+      "artifactName": "ASIS-${version}-${arch}.dmg",
+      "window": {
+        "width": 512,
+        "height": 320
+      }
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Utility"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "KimKyuHoi",
+      "repo": "ASIS"
+    }
   },
   "pnpm": {
     "onlyBuiltDependencies": [
