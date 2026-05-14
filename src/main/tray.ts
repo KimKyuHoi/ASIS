@@ -1,12 +1,12 @@
 import { Tray, Menu, app, nativeImage } from 'electron';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import devIconPath from '../../resources/trayTemplate.png?asset';
 
-// 패키징된 앱에서는 extraResources 경로, 개발 중에는 ?asset 절대경로 사용.
+// extraResources 경로가 실제로 존재하면 사용, 아니면 ?asset 경로(dev 또는 asarUnpack fallback).
 function resolveIconPath(): string {
-  return app.isPackaged
-    ? join(process.resourcesPath, 'trayTemplate.png')
-    : devIconPath;
+  const resourcesPath = join(process.resourcesPath, 'trayTemplate.png');
+  return existsSync(resourcesPath) ? resourcesPath : devIconPath;
 }
 
 /**

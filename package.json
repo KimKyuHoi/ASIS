@@ -62,6 +62,9 @@
       "out/**/*",
       "!out/**/*.map"
     ],
+    "asarUnpack": [
+      "**/resources/trayTemplate*.png"
+    ],
     "extraResources": [
       {
         "from": "resources/trayTemplate.png",
