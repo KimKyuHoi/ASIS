@@ -7,3 +7,6 @@ out
 
 # 머신별 환경 — .env.example 을 카피해서 본인 값 채우세요
 .env
+
+# pnpm 프로젝트 — npm이 생성하는 lockfile은 무시
+package-lock.json
