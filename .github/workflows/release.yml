@@ -16,8 +16,8 @@ permissions:
 
 jobs:
   build-mac:
-    # macOS 13 Ventura — 앱의 minimumSystemVersion(13.0)에서 빌드·검증
-    runs-on: macos-13
+    # macos-latest 로 빌드 (minimumSystemVersion 13.0은 electron-builder 설정으로 보장)
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
         with:
