@@ -18,6 +18,7 @@ import { RecorderWindowManager } from './windows/recorderWindow';
 import { SettingsWindowManager } from './windows/settingsWindow';
 import { HistoryWindowManager } from './windows/historyWindow';
 import { getEntries } from './captureHistory';
+import { checkPermissionsOnLaunch, guardCapture, openPermissionSettings } from './permissions';
 
 /**
  * ASIS — macOS 메뉴바 캡처·어노테이션 도구.
@@ -66,48 +67,52 @@ const handleCapture = (
   label: string,
   capture: () => Promise<CaptureResult>,
 ): void => {
-  capture().then(
-    (result) => {
-      if (result.kind !== 'success') return;
-      editorWindow.show(result.path).then(
-        (editorResult) => {
-          if (editorResult.kind === 'copied') {
-            notifyInfo(`${label} — 클립보드에 복사되었습니다`);
-            if (settingsStore.get('misc').captureSound && process.platform === 'darwin') {
-              spawn('afplay', ['/System/Library/Sounds/Tink.aiff']).on('error', () => {});
+  guardCapture().then((ok) => {
+    if (!ok) return;
+    capture().then(
+      (result) => {
+        if (result.kind !== 'success') return;
+        editorWindow.show(result.path).then(
+          (editorResult) => {
+            if (editorResult.kind === 'copied') {
+              notifyInfo(`${label} — 클립보드에 복사되었습니다`);
+              if (settingsStore.get('misc').captureSound && process.platform === 'darwin') {
+                spawn('afplay', ['/System/Library/Sounds/Tink.aiff']).on('error', () => {});
+              }
             }
-          }
-        },
-        (err: unknown) => {
-          const message = err instanceof Error ? err.message : String(err);
-          console.error(`[asis] ${label} 에디터 실패`, err);
-          notifyError(`${label} 에디터 실패: ${message}`);
-        },
-      );
-    },
-    (err: unknown) => {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error(`[asis] ${label} 실패`, err);
-      notifyError(
-        `${label} 실패: ${message}\n시스템 설정 → 개인정보 보호 및 보안 → 화면 기록에서 ASIS 권한을 확인해 주세요.`,
-      );
-    },
-  );
+          },
+          (err: unknown) => {
+            const message = err instanceof Error ? err.message : String(err);
+            console.error(`[asis] ${label} 에디터 실패`, err);
+            notifyError(`${label} 에디터 실패: ${message}`);
+          },
+        );
+      },
+      (err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`[asis] ${label} 실패`, err);
+        notifyError(`${label} 실패: ${message}`);
+      },
+    );
+  });
 };
 
 const handleRegionCapture = (): void => {
-  selectionOverlay.show().then(
-    (result) => {
-      if (result.kind === 'selected') {
-        handleCapture('영역 캡처', () => captureRegion(result.rect));
-      }
-    },
-    (err: unknown) => {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error('[asis] 영역 선택 오버레이 실패', err);
-      notifyError(`영역 선택 실패: ${message}`);
-    },
-  );
+  guardCapture().then((ok) => {
+    if (!ok) return;
+    selectionOverlay.show().then(
+      (result) => {
+        if (result.kind === 'selected') {
+          handleCapture('영역 캡처', () => captureRegion(result.rect));
+        }
+      },
+      (err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error('[asis] 영역 선택 오버레이 실패', err);
+        notifyError(`영역 선택 실패: ${message}`);
+      },
+    );
+  });
 };
 
 /**
@@ -133,35 +138,38 @@ const handleRecorderGif = (mode: 'sequence' | 'video', label: string): void => {
     return;
   }
   // 영역 선택 → 녹화 → GIF 저장.
-  selectionOverlay.show().then(
-    (selResult) => {
-      if (selResult.kind !== 'selected') return;
-      const showPromise = recorderWindow.show(selResult.rect, mode);
-      if (recorderWindow.isHidden()) {
-        notifyInfo(`${label} 녹화 중 — 단축키로 정지`);
-      }
-      showPromise.then(
-        (recResult) => {
-          if (recResult.kind === 'saved') {
-            notifyInfo(`${label} 저장 — ${recResult.path}`);
-          } else if (recResult.kind === 'failed') {
-            notifyError(`GIF 인코딩 실패: ${recResult.error.message}`);
-          }
-        },
-        (err: unknown) => {
-          const message = err instanceof Error ? err.message : String(err);
-          console.error('[asis] recorder failed', err);
-          notifyError(`GIF 녹화 실패: ${message}`);
-        },
-      );
-    },
-    // selectionOverlay 실패 분기.
-    (err: unknown) => {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error(`[asis] ${label} 영역 선택 실패`, err);
-      notifyError(`${label} 시작 실패: ${message}`);
-    },
-  );
+  guardCapture().then((ok) => {
+    if (!ok) return;
+    selectionOverlay.show().then(
+      (selResult) => {
+        if (selResult.kind !== 'selected') return;
+        const showPromise = recorderWindow.show(selResult.rect, mode);
+        if (recorderWindow.isHidden()) {
+          notifyInfo(`${label} 녹화 중 — 단축키로 정지`);
+        }
+        showPromise.then(
+          (recResult) => {
+            if (recResult.kind === 'saved') {
+              notifyInfo(`${label} 저장 — ${recResult.path}`);
+            } else if (recResult.kind === 'failed') {
+              notifyError(`GIF 인코딩 실패: ${recResult.error.message}`);
+            }
+          },
+          (err: unknown) => {
+            const message = err instanceof Error ? err.message : String(err);
+            console.error('[asis] recorder failed', err);
+            notifyError(`GIF 녹화 실패: ${message}`);
+          },
+        );
+      },
+      // selectionOverlay 실패 분기.
+      (err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`[asis] ${label} 영역 선택 실패`, err);
+        notifyError(`${label} 시작 실패: ${message}`);
+      },
+    );
+  });
 };
 
 const handleSequenceGif = (): void => handleRecorderGif('sequence', '시퀀스 GIF');
@@ -258,6 +266,9 @@ app.whenReady().then(() => {
   const onHistory = (): void => {
     historyWindow.show();
   };
+  const onOpenPermissions = (): void => {
+    openPermissionSettings();
+  };
 
   const handlers = {
     onFullscreen,
@@ -270,9 +281,19 @@ app.whenReady().then(() => {
     onClipboardPin,
     onSettings,
     onHistory,
+    onOpenPermissions,
   };
   trayManager.start(handlers);
   shortcutManager.start(handlers);
+
+  // 앱 시작 직후 권한 상태 확인 — 거부/미설정 시 안내 다이얼로그 표시.
+  checkPermissionsOnLaunch().catch((err: unknown) => {
+    console.error('[asis] permission check failed', err);
+  });
+}).catch((err: unknown) => {
+  // app.whenReady() 체인의 미처리 에러가 조용히 삼켜지는 걸 방지.
+  console.error('[asis] app initialization failed', err);
+  dialog.showErrorBox('ASIS 시작 실패', String(err instanceof Error ? err.message : err));
 });
 
 app.on('window-all-closed', () => {

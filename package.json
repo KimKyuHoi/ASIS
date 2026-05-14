@@ -61,6 +61,16 @@
       "out/**/*",
       "!out/**/*.map"
     ],
+    "extraResources": [
+      {
+        "from": "resources/trayTemplate.png",
+        "to": "trayTemplate.png"
+      },
+      {
+        "from": "resources/trayTemplate@2x.png",
+        "to": "trayTemplate@2x.png"
+      }
+    ],
     "mac": {
       "category": "public.app-category.utilities",
       "icon": "build/icon.icns",
@@ -91,6 +101,7 @@
     "dmg": {
       "title": "ASIS ${version}",
       "artifactName": "ASIS-${version}-${arch}.dmg",
+      "format": "UDZO",
       "window": {
         "width": 512,
         "height": 320

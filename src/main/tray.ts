@@ -1,5 +1,13 @@
 import { Tray, Menu, app, nativeImage } from 'electron';
-import iconPath from '../../resources/trayTemplate.png?asset';
+import { join } from 'node:path';
+import devIconPath from '../../resources/trayTemplate.png?asset';
+
+// 패키징된 앱에서는 extraResources 경로, 개발 중에는 ?asset 절대경로 사용.
+function resolveIconPath(): string {
+  return app.isPackaged
+    ? join(process.resourcesPath, 'trayTemplate.png')
+    : devIconPath;
+}
 
 /**
  * 메뉴바 트레이 아이콘 + 컨텍스트 메뉴 lifecycle 관리.
@@ -18,6 +26,7 @@ export type TrayMenuHandlers = {
   onClipboardPin: () => void;
   onSettings: () => void;
   onHistory: () => void;
+  onOpenPermissions: () => void;
 };
 
 export class TrayManager {
@@ -29,9 +38,9 @@ export class TrayManager {
       throw new Error('TrayManager.start() called twice — already running');
     }
 
-    const image = nativeImage.createFromPath(iconPath);
+    const image = nativeImage.createFromPath(resolveIconPath());
     if (image.isEmpty()) {
-      throw new Error(`Tray icon failed to load from: ${iconPath}`);
+      throw new Error(`Tray icon failed to load from: ${resolveIconPath()}`);
     }
     // macOS 메뉴바의 다크/라이트 모드 자동 대응을 위해 template image 로 마킹.
     // resources/trayTemplate.png 는 monochrome + alpha 전용 (qlmanage 로 SVG → 22x22 변환).
@@ -115,6 +124,7 @@ export class TrayManager {
 
       { label: '캡처 히스토리', click: handlers.onHistory },
       { label: '환경설정…', click: handlers.onSettings },
+      { label: '권한 설정…', click: handlers.onOpenPermissions },
 
       { type: 'separator' },
 
