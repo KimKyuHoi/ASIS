@@ -1,7 +1,10 @@
-import { app, clipboard, Notification } from 'electron';
+import { app, clipboard, dialog, ipcMain, nativeImage, Notification } from 'electron';
+import { spawn } from 'node:child_process';
 import { electronApp, optimizer } from '@electron-toolkit/utils';
 import { TrayManager } from './tray';
 import { ShortcutManager } from './shortcuts';
+import { settingsStore } from './settings';
+import type { HotkeyConfig, MiscConfig } from './settings';
 import {
   captureFullscreen,
   captureRegion,
@@ -12,6 +15,9 @@ import { SelectionOverlayManager } from './windows/selectionOverlay';
 import { EditorWindowManager } from './windows/editorWindow';
 import { PinWindowManager } from './windows/pinWindow';
 import { RecorderWindowManager } from './windows/recorderWindow';
+import { SettingsWindowManager } from './windows/settingsWindow';
+import { HistoryWindowManager } from './windows/historyWindow';
+import { getEntries } from './captureHistory';
 
 /**
  * ASIS — macOS 메뉴바 캡처·어노테이션 도구.
@@ -31,6 +37,8 @@ const selectionOverlay = new SelectionOverlayManager();
 const editorWindow = new EditorWindowManager();
 const pinWindow = new PinWindowManager();
 const recorderWindow = new RecorderWindowManager();
+const settingsWindow = new SettingsWindowManager();
+const historyWindow = new HistoryWindowManager();
 editorWindow.setPinHandler((dataUrl, w, h) => pinWindow.pin(dataUrl, w, h));
 
 // 단일 인스턴스 보장.
@@ -65,6 +73,9 @@ const handleCapture = (
         (editorResult) => {
           if (editorResult.kind === 'copied') {
             notifyInfo(`${label} — 클립보드에 복사되었습니다`);
+            if (settingsStore.get('misc').captureSound && process.platform === 'darwin') {
+              spawn('afplay', ['/System/Library/Sounds/Tink.aiff']).on('error', () => {});
+            }
           }
         },
         (err: unknown) => {
@@ -114,26 +125,25 @@ const handleClipboardPin = (): void => {
   pinWindow.pin(dataUrl, width, height);
 };
 
-const handleSequenceGif = (): void => {
+const handleRecorderGif = (mode: 'sequence' | 'video', label: string): void => {
   // 녹화 중이면 정지 (toggle) — 알약 안 띄우니 *유일한 회수 경로*.
   if (recorderWindow.isActive()) {
     notifyInfo('GIF 인코딩 중…');
     recorderWindow.triggerStop();
     return;
   }
-  // 영역 선택 → 시퀀스 캡처 → GIF 저장.
+  // 영역 선택 → 녹화 → GIF 저장.
   selectionOverlay.show().then(
     (selResult) => {
       if (selResult.kind !== 'selected') return;
-      const showPromise = recorderWindow.show(selResult.rect);
-      // recorderWindow.show 안에서 placement 결정. hidden 면 알림으로 안내.
+      const showPromise = recorderWindow.show(selResult.rect, mode);
       if (recorderWindow.isHidden()) {
-        notifyInfo('GIF 녹화 중 — ⌘⇧G 다시 눌러 정지');
+        notifyInfo(`${label} 녹화 중 — 단축키로 정지`);
       }
       showPromise.then(
         (recResult) => {
           if (recResult.kind === 'saved') {
-            notifyInfo(`시퀀스 GIF 저장 — ${recResult.path}`);
+            notifyInfo(`${label} 저장 — ${recResult.path}`);
           } else if (recResult.kind === 'failed') {
             notifyError(`GIF 인코딩 실패: ${recResult.error.message}`);
           }
@@ -148,11 +158,55 @@ const handleSequenceGif = (): void => {
     // selectionOverlay 실패 분기.
     (err: unknown) => {
       const message = err instanceof Error ? err.message : String(err);
-      console.error('[asis] 시퀀스 캡처 영역 선택 실패', err);
-      notifyError(`시퀀스 GIF 시작 실패: ${message}`);
+      console.error(`[asis] ${label} 영역 선택 실패`, err);
+      notifyError(`${label} 시작 실패: ${message}`);
     },
   );
 };
+
+const handleSequenceGif = (): void => handleRecorderGif('sequence', '시퀀스 GIF');
+const handleVideoGif = (): void => handleRecorderGif('video', '영상 GIF');
+
+// 환경설정 IPC — 앱 전체 lifecycle 동안 유효.
+ipcMain.handle('settings:get', () => settingsStore.get('hotkeys'));
+ipcMain.handle('settings:set', (_event, hotkeys: HotkeyConfig) => {
+  settingsStore.set('hotkeys', hotkeys);
+  shortcutManager.reload();
+});
+
+ipcMain.handle('settings:get-folder', () => settingsStore.get('saveFolderPath'));
+ipcMain.handle('settings:set-folder', (_event, path: string) => {
+  settingsStore.set('saveFolderPath', path);
+});
+ipcMain.handle('settings:pick-folder', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openDirectory', 'createDirectory'],
+    title: '저장 폴더 선택',
+    defaultPath: settingsStore.get('saveFolderPath') || app.getPath('pictures'),
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  const picked = result.filePaths[0];
+  settingsStore.set('saveFolderPath', picked);
+  return picked;
+});
+
+ipcMain.handle('settings:get-misc', () => settingsStore.get('misc'));
+ipcMain.handle('settings:set-misc', (_event, misc: MiscConfig) => {
+  settingsStore.set('misc', misc);
+  if (process.platform === 'darwin') {
+    app.setLoginItemSettings({ openAtLogin: misc.openAtLogin });
+  }
+});
+
+// 히스토리 IPC
+ipcMain.handle('history:list', () => getEntries());
+ipcMain.handle('history:copy', (_event, dataUrl: string) => {
+  const img = nativeImage.createFromDataURL(dataUrl);
+  clipboard.writeImage(img);
+});
+ipcMain.handle('history:pin', (_event, dataUrl: string, w: number, h: number) => {
+  pinWindow.pin(dataUrl, w, h);
+});
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.pinkfong.asis');
@@ -192,8 +246,17 @@ app.whenReady().then(() => {
   const onSequenceGif = (): void => {
     handleSequenceGif();
   };
+  const onVideoGif = (): void => {
+    handleVideoGif();
+  };
   const onClipboardPin = (): void => {
     handleClipboardPin();
+  };
+  const onSettings = (): void => {
+    settingsWindow.show();
+  };
+  const onHistory = (): void => {
+    historyWindow.show();
   };
 
   const handlers = {
@@ -203,7 +266,10 @@ app.whenReady().then(() => {
     onDisableClickThrough,
     onCloseAllPins,
     onSequenceGif,
+    onVideoGif,
     onClipboardPin,
+    onSettings,
+    onHistory,
   };
   trayManager.start(handlers);
   shortcutManager.start(handlers);
@@ -222,4 +288,6 @@ app.on('before-quit', () => {
   editorWindow.stop();
   pinWindow.closeAll();
   recorderWindow.stop();
+  settingsWindow.stop();
+  historyWindow.stop();
 });

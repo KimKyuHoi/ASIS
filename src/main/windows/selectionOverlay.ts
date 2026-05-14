@@ -1,8 +1,9 @@
-import { BrowserWindow, globalShortcut, ipcMain, screen } from 'electron';
+import { BrowserWindow, globalShortcut, ipcMain, Notification, screen } from 'electron';
 import { spawn } from 'node:child_process';
 import { readFile, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { ensureAccessibilityPermission, listWindows } from '../windowsInfo';
 
 type Rect = {
   x: number;
@@ -18,6 +19,8 @@ export type SelectionResult =
 const CHANNEL_REGION = 'capture:region';
 const CHANNEL_CANCEL = 'capture:cancel';
 const CHANNEL_BACKGROUND = 'capture:background';
+const CHANNEL_WINDOWS = 'capture:windows';
+const CHANNEL_READY = 'capture:ready';
 
 /**
  * 영역 선택 오버레이 — 풀스크린 transparent BrowserWindow lifecycle 관리.
@@ -41,6 +44,20 @@ export class SelectionOverlayManager {
       this.win.focus();
       return Promise.resolve({ kind: 'canceled' });
     }
+
+    // UI 자동 감지 — BrowserWindow 생성 *이전*에 호출.
+    // 오버레이 자체가 CGWindowList 에 포함되기 전에 스냅샷을 찍어 race 방지.
+    if (!ensureAccessibilityPermission(false)) {
+      ensureAccessibilityPermission(true);
+      new Notification({
+        title: 'ASIS — 손쉬운 사용 권한 필요',
+        body: '시스템 설정에서 ASIS를 허용한 후 앱을 재시작하면 UI 자동감지가 활성화됩니다.',
+      }).show();
+    }
+    const windowsPromise = listWindows().catch((err: unknown) => {
+      console.warn('[asis] listWindows 실패:', err);
+      return [];
+    });
 
     const display = screen.getPrimaryDisplay();
     const win = new BrowserWindow({
@@ -102,6 +119,31 @@ export class SelectionOverlayManager {
       console.warn('[asis] background 캡처 실패 (color picker 비활성):', err);
     });
 
+    // renderer ready 신호와 윈도우 목록을 함께 기다린 후 전송 — 레이스 방지.
+    const readyPromise = new Promise<void>((resolve) => {
+      ipcMain.once(CHANNEL_READY, () => resolve());
+    });
+    Promise.all([windowsPromise, readyPromise]).then(([windows]) => {
+      if (!win.isDestroyed()) {
+        win.webContents.send(CHANNEL_WINDOWS, windows);
+      }
+    }).catch((err: unknown) => {
+      console.warn('[asis] selectionOverlay windows/ready 실패:', err);
+    });
+
+    // 공간 전환 후 재스캔 — 풀스크린 앱에서 단축키를 누른 뒤 다른 Space 로
+    // 슬라이딩하면 600ms 후 시점의 윈도우 목록으로 교체한다.
+    setTimeout(() => {
+      if (win.isDestroyed()) return;
+      listWindows().then((updated) => {
+        if (!win.isDestroyed()) {
+          win.webContents.send(CHANNEL_WINDOWS, updated);
+        }
+      }).catch((err: unknown) => {
+        console.warn('[asis] selectionOverlay 재스캔 실패:', err);
+      });
+    }, 600);
+
     // macOS 26β 에서 transparent+alwaysOnTop 윈도우가 keydown 을 못 받는 회귀 우회.
     // selection 활성 시점에만 ESC 를 globalShortcut 으로 잡고, settle 시 unregister.
     // 부작용: selection 떠있는 동안 다른 앱의 ESC 도 우리한테 옴 — 의도된 trade-off
@@ -115,6 +157,7 @@ export class SelectionOverlayManager {
         // 핸들러·리스너 cleanup — leak 방지.
         ipcMain.removeHandler(CHANNEL_REGION);
         ipcMain.removeAllListeners(CHANNEL_CANCEL);
+        ipcMain.removeAllListeners(CHANNEL_READY);
         globalShortcut.unregister(ESC_ACCEL);
         if (!win.isDestroyed()) {
           win.close();
@@ -191,5 +234,11 @@ async function captureBackgroundForOverlay(
   if (!win.isDestroyed()) {
     win.webContents.send(CHANNEL_BACKGROUND, dataUrl);
   }
-  await unlink(tmpPath).catch(() => {});
+  await unlink(tmpPath).catch((err: unknown) => {
+    if (!isFileNotFound(err)) console.warn('[asis] background tmp cleanup failed', err);
+  });
+}
+
+function isFileNotFound(err: unknown): boolean {
+  return err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT';
 }

@@ -5,10 +5,13 @@ import {
   dialog,
   ipcMain,
   nativeImage,
+  Notification,
   screen,
 } from 'electron';
-import { unlink, writeFile } from 'node:fs/promises';
+import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { addEntry } from '../captureHistory';
+import { settingsStore } from '../settings';
 
 export type EditorResult =
   | { kind: 'copied' } |
@@ -20,6 +23,7 @@ const CHANNEL_COPY = 'editor:copy';
 const CHANNEL_CANCEL = 'editor:cancel';
 const CHANNEL_PIN = 'editor:pin';
 const CHANNEL_SAVE = 'editor:save';
+const CHANNEL_SAVE_FOLDER = 'editor:save-folder';
 
 /**
  * 어노테이션 에디터 윈도우 — Konva 기반 React 페이지를 띄우고 사용자 어노테이션
@@ -152,6 +156,7 @@ export class EditorWindowManager {
         ipcMain.removeHandler(CHANNEL_COPY);
         ipcMain.removeHandler(CHANNEL_PIN);
         ipcMain.removeHandler(CHANNEL_SAVE);
+        ipcMain.removeHandler(CHANNEL_SAVE_FOLDER);
         ipcMain.removeAllListeners(CHANNEL_CANCEL);
         ipcMain.removeAllListeners(CHANNEL_READY);
         if (!win.isDestroyed()) {
@@ -174,6 +179,7 @@ export class EditorWindowManager {
           throw new Error('editor: empty NativeImage from dataURL');
         }
         clipboard.writeImage(composed);
+        addEntry(dataUrl, imgW, imgH);
         settle({ kind: 'copied' });
       });
 
@@ -189,6 +195,7 @@ export class EditorWindowManager {
             throw new Error('editor: pinHandler 미설정 — main 부트스트랩 확인');
           }
           this.pinHandler(dataUrl, w, h);
+          addEntry(dataUrl, w, h);
         },
       );
 
@@ -217,6 +224,35 @@ export class EditorWindowManager {
         },
       );
 
+      // 폴더 자동 저장 — 설정된 폴더(없으면 ~/Pictures/ASIS) 에 타임스탬프 파일명으로 저장.
+      // 다이얼로그 없이 즉시 저장 후 알림 표시 (macOS Screenshot 결).
+      ipcMain.handle(
+        CHANNEL_SAVE_FOLDER,
+        async (_event, dataUrl: string): Promise<{ path: string }> => {
+          const savedPath = settingsStore.get('saveFolderPath');
+          const folder = savedPath || join(app.getPath('pictures'), 'ASIS');
+          await mkdir(folder, { recursive: true });
+          const now = new Date();
+          const stamp = [
+            now.getFullYear(),
+            String(now.getMonth() + 1).padStart(2, '0'),
+            String(now.getDate()).padStart(2, '0'),
+            '_',
+            String(now.getHours()).padStart(2, '0'),
+            String(now.getMinutes()).padStart(2, '0'),
+            String(now.getSeconds()).padStart(2, '0'),
+          ].join('');
+          const filePath = join(folder, `ASIS_${stamp}.png`);
+          const base64 = dataUrl.replace(/^data:image\/[a-z]+;base64,/, '');
+          await writeFile(filePath, Buffer.from(base64, 'base64'));
+          new Notification({
+            title: 'ASIS — 저장 완료',
+            body: filePath,
+          }).show();
+          return { path: filePath };
+        },
+      );
+
       win.on('closed', () => {
         this.win = null;
         settle({ kind: 'canceled' });
@@ -234,10 +270,5 @@ export class EditorWindowManager {
 }
 
 function isFileNotFound(err: unknown): boolean {
-  return (
-    typeof err === 'object' &&
-    err !== null &&
-    'code' in err &&
-    (err as { code: unknown }).code === 'ENOENT'
-  );
+  return err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT';
 }

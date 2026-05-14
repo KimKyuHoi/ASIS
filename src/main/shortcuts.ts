@@ -1,4 +1,5 @@
 import { globalShortcut } from 'electron';
+import { settingsStore } from './settings';
 
 export type ShortcutHandlers = {
   onRegion: () => void;
@@ -9,6 +10,8 @@ export type ShortcutHandlers = {
   onDisableClickThrough: () => void;
   /** 시퀀스 GIF 녹화 시작 — 영역 선택 → 일정 간격 캡처 → GIF. */
   onSequenceGif: () => void;
+  /** 영상 GIF 녹화 — ffmpeg avfoundation 으로 영상 녹화 → GIF. */
+  onVideoGif: () => void;
   /** 클립보드 이미지를 바로 Pin window 로 (Snipaste F3 결). */
   onClipboardPin: () => void;
 };
@@ -19,37 +22,25 @@ export type ShortcutHandlers = {
  * .claude/rules/side-effects.md 의 Rule 3 — globalShortcut 같은 시스템 전역
  * lifecycle 객체는 Class 로 캡슐화. 명시적 start/stop 으로 등록·해제.
  *
- * 단축키 기본값은 macOS 시스템 단축키 (Cmd+Shift+3/4/5) 와 충돌하지 않도록
- * Cmd+Shift+A/F/W 로 잡는다. 향후 사용자 설정 UI 도입 시 변경 가능.
+ * reload() — 환경설정에서 단축키 변경 후 재등록. handlers 를 인스턴스에 보관하고
+ * stop() → _register() 순으로 교체한다.
  */
 export class ShortcutManager {
   private registered: string[] = [];
+  private savedHandlers: ShortcutHandlers | null = null;
 
   start(handlers: ShortcutHandlers): void {
     if (this.registered.length > 0) {
       throw new Error('ShortcutManager.start() called twice — already running');
     }
+    this.savedHandlers = handlers;
+    this._register(handlers);
+  }
 
-    const bindings: Array<[string, () => void]> = [
-      ['CommandOrControl+Shift+A', handlers.onRegion],
-      ['CommandOrControl+Shift+F', handlers.onFullscreen],
-      ['CommandOrControl+Shift+W', handlers.onWindow],
-      ['CommandOrControl+Shift+X', handlers.onDisableClickThrough],
-      ['CommandOrControl+Shift+G', handlers.onSequenceGif],
-      // F3 충돌 (Mission Control) 회피해 ⌘⇧V — Snipaste 의 F3 와 같은 동작.
-      ['CommandOrControl+Shift+V', handlers.onClipboardPin],
-    ];
-
-    for (const [accelerator, callback] of bindings) {
-      const ok = globalShortcut.register(accelerator, callback);
-      if (!ok) {
-        // null-safety.md — 등록 실패를 silent 하게 무시하지 않는다.
-        // 단축키 충돌·권한 미허용 등 원인이 명시적으로 드러나야 디버그 가능.
-        this.stop();
-        throw new Error(`globalShortcut.register failed for ${accelerator}`);
-      }
-      this.registered.push(accelerator);
-    }
+  reload(): void {
+    if (!this.savedHandlers) return;
+    this.stop();
+    this._register(this.savedHandlers);
   }
 
   stop(): void {
@@ -57,5 +48,28 @@ export class ShortcutManager {
       globalShortcut.unregister(accelerator);
     }
     this.registered = [];
+  }
+
+  private _register(handlers: ShortcutHandlers): void {
+    const hotkeys = settingsStore.get('hotkeys');
+    const bindings: Array<[string, () => void]> = [
+      [hotkeys.region, handlers.onRegion],
+      [hotkeys.fullscreen, handlers.onFullscreen],
+      [hotkeys.window, handlers.onWindow],
+      [hotkeys.disableClickThrough, handlers.onDisableClickThrough],
+      [hotkeys.sequenceGif, handlers.onSequenceGif],
+      [hotkeys.videoGif, handlers.onVideoGif],
+      [hotkeys.clipboardPin, handlers.onClipboardPin],
+    ];
+
+    for (const [accelerator, callback] of bindings) {
+      const ok = globalShortcut.register(accelerator, callback);
+      if (!ok) {
+        // null-safety.md — 등록 실패를 silent 하게 무시하지 않는다.
+        this.stop();
+        throw new Error(`globalShortcut.register failed for ${accelerator}`);
+      }
+      this.registered.push(accelerator);
+    }
   }
 }

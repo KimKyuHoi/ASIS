@@ -1,5 +1,6 @@
 import { BrowserWindow, ipcMain, screen } from 'electron';
 import { join } from 'node:path';
+import { settingsStore } from '../settings';
 
 const CHANNEL_LOAD_IMAGE = 'pin:load-image';
 const CHANNEL_READY = 'pin:ready';
@@ -29,13 +30,18 @@ export class PinWindowManager {
 
     // 화면 가운데 부근 + 살짝 오프셋 — 다수 핀 띄울 때 겹침 줄이기.
     const display = screen.getPrimaryDisplay();
+    // screencapture 는 Retina(2x) 해상도로 저장 → imgW/imgH 는 물리 픽셀.
+    // BrowserWindow 크기·위치는 논리 픽셀(CSS px) 단위이므로 scaleFactor 로 나눔.
+    const sf = display.scaleFactor || 1;
+    const logicalW = Math.round(imgW / sf);
+    const logicalH = Math.round(imgH / sf);
     const offset = this.wins.size * 24;
-    const x = Math.round((display.workArea.width - imgW) / 2 + offset);
-    const y = Math.round((display.workArea.height - imgH) / 2 + offset);
+    const x = Math.round((display.workArea.width - logicalW) / 2 + offset);
+    const y = Math.round((display.workArea.height - logicalH) / 2 + offset);
 
     const win = new BrowserWindow({
-      width: imgW,
-      height: imgH,
+      width: logicalW,
+      height: logicalH,
       x,
       y,
       // 핀의 핵심 외양 — 시각적으로 이미지만 떠있는 듯.
@@ -43,7 +49,7 @@ export class PinWindowManager {
       frame: false,
       alwaysOnTop: true,
       hasShadow: false,
-      resizable: false,
+      resizable: true,
       skipTaskbar: true,
       backgroundColor: '#00000000',
       webPreferences: {
@@ -76,7 +82,8 @@ export class PinWindowManager {
       if (event.sender.id !== id) return;
       ipcMain.removeListener(CHANNEL_READY, onReady);
       if (!win.isDestroyed()) {
-        win.webContents.send(CHANNEL_LOAD_IMAGE, dataUrl, imgW, imgH);
+        const initialOpacity = settingsStore.get('misc').pinDefaultOpacity;
+        win.webContents.send(CHANNEL_LOAD_IMAGE, dataUrl, logicalW, logicalH, initialOpacity);
       }
     };
     ipcMain.on(CHANNEL_READY, onReady);

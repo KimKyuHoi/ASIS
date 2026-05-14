@@ -13,3 +13,17 @@
 @.claude/rules/imperative-style.md
 @.claude/rules/communication-tone.md
 @.claude/rules/pessimistic-review.md
+@.claude/rules/folder-structure.md
+
+## React 공식 문서 참조
+
+React API·동작·패턴에 대해 확신이 없을 때는 `docs/react/` 하위의 YAML 문서를 먼저 확인한다.
+
+| 카테고리             | 경로                               | 주요 주제                                                      |
+| -------------------- | ---------------------------------- | -------------------------------------------------------------- |
+| describing-the-ui    | `docs/react/describing-the-ui/`    | 컴포넌트, JSX, props, 조건부 렌더링, 리스트, 순수성, 렌더 트리 |
+| adding-interactivity | `docs/react/adding-interactivity/` | 이벤트, state, 스냅샷, 큐잉, 배열·객체 업데이트                |
+| managing-state       | `docs/react/managing-state/`       | state 구조, reducer, context, 상태 보존·초기화                 |
+| escape-hatches       | `docs/react/escape-hatches/`       | ref, Effect, 커스텀 훅, Effect 의존성·라이프사이클             |
+
+각 파일은 `title / description / learn / sections / recap` 구조의 YAML이다.

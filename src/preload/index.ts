@@ -21,6 +21,18 @@ const selection = {
       callback(dataUrl);
     });
   },
+  /** UI 자동 감지 — visible 윈도우 list. 권한 없으면 빈 배열. */
+  onWindows: (
+    callback: (
+      windows: Array<{ name: string; x: number; y: number; w: number; h: number }>,
+    ) => void,
+  ): void => {
+    ipcRenderer.on('capture:windows', (_event, windows) => {
+      callback(windows);
+    });
+  },
+  /** onWindows listener 를 attach 한 후 호출 — main 에 "이제 보내도 됨" 신호. */
+  ready: (): void => ipcRenderer.send('capture:ready'),
 };
 
 /**
@@ -53,6 +65,8 @@ const editor = {
     ipcRenderer.invoke('editor:pin', dataUrl, w, h),
   save: (dataUrl: string): Promise<{ saved: boolean; path?: string }> =>
     ipcRenderer.invoke('editor:save', dataUrl),
+  saveFolder: (dataUrl: string): Promise<{ path: string }> =>
+    ipcRenderer.invoke('editor:save-folder', dataUrl),
 };
 
 /**
@@ -65,12 +79,12 @@ const editor = {
  */
 const pin = {
   onLoadImage: (
-    callback: (src: string, w: number, h: number) => void,
+    callback: (src: string, w: number, h: number, opacity: number) => void,
   ): void => {
     ipcRenderer.on(
       'pin:load-image',
-      (_event, src: string, w: number, h: number) => {
-        callback(src, w, h);
+      (_event, src: string, w: number, h: number, opacity: number) => {
+        callback(src, w, h, opacity);
       },
     );
   },
@@ -106,6 +120,62 @@ const recorder = {
   },
 };
 
+type HotkeyConfig = {
+  region: string;
+  fullscreen: string;
+  window: string;
+  disableClickThrough: string;
+  sequenceGif: string;
+  videoGif: string;
+  clipboardPin: string;
+};
+
+type MiscConfig = {
+  gifFps: number;
+  openAtLogin: boolean;
+  captureSound: boolean;
+  pinDefaultOpacity: number;
+};
+
+/**
+ * 환경설정 IPC 브릿지.
+ *  - get(): 현재 핫키 설정 반환
+ *  - set(hotkeys): 저장 + ShortcutManager 재등록
+ *  - getFolder(): 저장 폴더 경로 반환 (빈 문자열 = 기본값)
+ *  - setFolder(path): 저장 폴더 경로 갱신
+ *  - pickFolder(): 네이티브 폴더 선택 다이얼로그
+ *  - getMisc(): GIF fps/소리/로그인 등 기타 설정 반환
+ *  - setMisc(misc): 저장 + 즉시 적용 (openAtLogin 등)
+ */
+const settings = {
+  get: (): Promise<HotkeyConfig> => ipcRenderer.invoke('settings:get'),
+  set: (hotkeys: HotkeyConfig): Promise<void> => ipcRenderer.invoke('settings:set', hotkeys),
+  getFolder: (): Promise<string> => ipcRenderer.invoke('settings:get-folder'),
+  setFolder: (path: string): Promise<void> => ipcRenderer.invoke('settings:set-folder', path),
+  pickFolder: (): Promise<string | null> => ipcRenderer.invoke('settings:pick-folder'),
+  getMisc: (): Promise<MiscConfig> => ipcRenderer.invoke('settings:get-misc'),
+  setMisc: (misc: MiscConfig): Promise<void> => ipcRenderer.invoke('settings:set-misc', misc),
+};
+
+type HistoryEntry = {
+  id: string;
+  dataUrl: string;
+  timestamp: number;
+  width: number;
+  height: number;
+};
+
+/**
+ * 캡처 히스토리 IPC 브릿지.
+ * window.history 는 브라우저 내장 API — 충돌 방지를 위해 captureHistory 로 노출.
+ */
+const captureHistory = {
+  list: (): Promise<HistoryEntry[]> => ipcRenderer.invoke('history:list'),
+  copy: (dataUrl: string): Promise<void> => ipcRenderer.invoke('history:copy', dataUrl),
+  pin: (dataUrl: string, w: number, h: number): Promise<void> =>
+    ipcRenderer.invoke('history:pin', dataUrl, w, h),
+};
+
 if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('electron', electronAPI);
@@ -113,6 +183,8 @@ if (process.contextIsolated) {
     contextBridge.exposeInMainWorld('editor', editor);
     contextBridge.exposeInMainWorld('pin', pin);
     contextBridge.exposeInMainWorld('recorder', recorder);
+    contextBridge.exposeInMainWorld('settings', settings);
+    contextBridge.exposeInMainWorld('captureHistory', captureHistory);
   } catch (err) {
     console.error('preload: contextBridge expose failed', err);
   }

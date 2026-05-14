@@ -1,8 +1,8 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import App from './App';
-import { ensureEditorIpcBridge } from './state/ipcInit';
-import './styles.css';
+import Editor from './component/Editor';
+import { ensureEditorIpcBridge } from './lib/ipc-init';
+import './asset/styles.css';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -15,6 +15,6 @@ ensureEditorIpcBridge();
 
 createRoot(rootElement).render(
   <StrictMode>
-    <App />
+    <Editor />
   </StrictMode>,
 );

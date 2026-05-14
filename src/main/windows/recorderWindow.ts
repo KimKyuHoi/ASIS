@@ -10,6 +10,8 @@ import { copyFile, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SequenceCaptureManager } from '../sequenceCapture';
+import { encodeGifFromVideo, VideoCaptureManager } from '../videoCapture';
+import { settingsStore } from '../settings';
 
 const CHANNEL_STOP = 'recorder:stop';
 const CHANNEL_CANCEL = 'recorder:cancel';
@@ -31,9 +33,13 @@ export type RecorderResult =
  *   3) 사용자 "정지" → GIF 인코딩 → 파일 저장 다이얼로그 → 결과 리턴
  *   4) 사용자 "취소" → frames 폐기 → canceled
  */
+export type RecorderMode = 'sequence' | 'video';
+
 export class RecorderWindowManager {
   private win: BrowserWindow | null = null;
   private sequence = new SequenceCaptureManager();
+  private video = new VideoCaptureManager();
+  private mode: RecorderMode = 'sequence';
 
   /**
    * 시작 시 hidden 으로 떠있는지 (rect 가 화면 거의 전체) 외부에서 알 수 있도록.
@@ -45,15 +51,14 @@ export class RecorderWindowManager {
 
   private hidden = false;
 
-  show(rect: {
-    x: number;
-    y: number;
-    w: number;
-    h: number;
-  }): Promise<RecorderResult> {
+  show(
+    rect: { x: number; y: number; w: number; h: number },
+    mode: RecorderMode = 'sequence',
+  ): Promise<RecorderResult> {
     if (this.win) {
       return Promise.resolve({ kind: 'canceled' });
     }
+    this.mode = mode;
 
     // 알약 위치 fitting — rect 와 안 겹치는 가장자리 자동 선택.
     // 후보 모두 실패 (rect 가 화면 거의 전체) 면 알약을 *안 띄우고* 시작 알림으로
@@ -128,29 +133,45 @@ export class RecorderWindowManager {
         this.sequence.cancel().finally(() => settle({ kind: 'canceled' }));
       });
 
-      // 시퀀스 시작 — frame 수집 시작 (default 100ms / 10fps).
-      this.sequence
-        .start({ rect })
-        .catch((err: unknown) => {
+      // 모드별 녹화 시작.
+      const gifFps = settingsStore.get('misc').gifFps;
+      if (this.mode === 'sequence') {
+        this.sequence.start({ rect, fps: gifFps }).catch((err: unknown) => {
           console.error('[asis] sequence start failed', err);
           settle({
             kind: 'failed',
             error: err instanceof Error ? err : new Error(String(err)),
           });
         });
+      } else {
+        this.video.start({ rect }).catch((err: unknown) => {
+          console.error('[asis] video start failed', err);
+          settle({
+            kind: 'failed',
+            error: err instanceof Error ? err : new Error(String(err)),
+          });
+        });
+      }
 
-      ipcMain.handle(CHANNEL_GET_FRAME_COUNT, () => this.sequence.count());
+      // frame count — 시퀀스만 의미. 영상은 0 (recorder UI 가 시간만 표시).
+      ipcMain.handle(CHANNEL_GET_FRAME_COUNT, () =>
+        this.mode === 'sequence' ? this.sequence.count() : 0,
+      );
 
       ipcMain.once(CHANNEL_STOP, () => {
-        // 정지 직후 renderer 에 "인코딩 중" 알림 — UI 가 timer 멈추고 spinner 표시.
         if (!win.isDestroyed()) {
           win.webContents.send('recorder:encoding');
         }
-        // 정지: 인코딩 → 파일 저장 다이얼로그.
         const tmpGif = join(tmpdir(), `asis-gif-${Date.now()}.gif`);
-        this.sequence.stop(tmpGif).then(
+        // 모드별 인코딩.
+        const stopPromise = this.mode === 'sequence'
+          ? this.sequence.stop(tmpGif)
+          : this.video.stop().then(async (videoPath) => {
+            await encodeGifFromVideo(videoPath, tmpGif, { fps: gifFps });
+            return tmpGif;
+          });
+        stopPromise.then(
           async (gifPath) => {
-            // 저장 다이얼로그 — Pictures 기본.
             const defaultPath = join(
               app.getPath('pictures'),
               `ASIS-${Date.now()}.gif`,
@@ -160,18 +181,22 @@ export class RecorderWindowManager {
               filters: [{ name: 'GIF', extensions: ['gif'] }],
             });
             if (result.canceled || !result.filePath) {
-              await unlink(gifPath).catch(() => {});
+              await unlink(gifPath).catch((err: unknown) => {
+                if (!isEnoent(err)) console.warn('[asis] gif tmp cleanup failed', err);
+              });
               settle({ kind: 'canceled' });
               return;
             }
             await copyFile(gifPath, result.filePath).catch((err: unknown) => {
               console.error('[asis] gif copy failed', err);
             });
-            await unlink(gifPath).catch(() => {});
+            await unlink(gifPath).catch((err: unknown) => {
+              if (!isEnoent(err)) console.warn('[asis] gif tmp cleanup failed', err);
+            });
             settle({ kind: 'saved', path: result.filePath });
           },
           (err: unknown) => {
-            console.error('[asis] sequence stop failed', err);
+            console.error('[asis] recorder stop failed', err);
             settle({
               kind: 'failed',
               error: err instanceof Error ? err : new Error(String(err)),
@@ -180,17 +205,18 @@ export class RecorderWindowManager {
         );
       });
 
+      const cancelCurrent = (): Promise<void> => {
+        if (this.mode === 'sequence') return this.sequence.cancel();
+        this.video.cancel();
+        return Promise.resolve();
+      };
+
       ipcMain.once(CHANNEL_CANCEL, () => {
-        this.sequence.cancel().finally(() => {
-          settle({ kind: 'canceled' });
-        });
+        cancelCurrent().finally(() => settle({ kind: 'canceled' }));
       });
 
       win.on('closed', () => {
-        // 사용자가 직접 닫는 케이스 — 취소로 처리.
-        this.sequence.cancel().finally(() => {
-          settle({ kind: 'canceled' });
-        });
+        cancelCurrent().finally(() => settle({ kind: 'canceled' }));
       });
     });
   }
@@ -199,7 +225,9 @@ export class RecorderWindowManager {
     if (!this.win) return;
     if (!this.win.isDestroyed()) this.win.close();
     this.win = null;
-    this.sequence.cancel().catch(() => {});
+    this.sequence.cancel().catch((err: unknown) => {
+      console.warn('[asis] recorder stop: sequence cancel failed', err);
+    });
   }
 
   /** 녹화 중 (recorder window 떠있음) 인지. */
@@ -306,4 +334,9 @@ function rectsIntersect(
     a.y + a.h <= b.y ||
     a.y >= b.y + b.h
   );
+}
+
+
+function isEnoent(err: unknown): boolean {
+  return err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT';
 }
