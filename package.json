@@ -65,6 +65,7 @@
       "category": "public.app-category.utilities",
       "icon": "build/icon.icns",
       "identity": null,
+      "minimumSystemVersion": "13.0",
       "entitlementsInherit": "build/entitlements.mac.plist",
       "extendInfo": {
         "NSScreenCaptureUsageDescription": "캡처 기능에 화면 녹화 권한이 필요합니다.",
