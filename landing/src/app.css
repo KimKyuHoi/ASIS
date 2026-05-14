@@ -1103,6 +1103,18 @@ svg {
   color: rgba(136, 136, 152, 0.7);
   line-height: 1.6;
 }
+.download-code {
+  font-family: 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+  font-size: 12px;
+  background: rgba(94, 162, 255, 0.08);
+  border: 1px solid rgba(94, 162, 255, 0.2);
+  border-radius: 8px;
+  padding: 10px 16px;
+  color: var(--accent);
+  user-select: all;
+  cursor: text;
+  margin: 4px 0;
+}
 
 /* ─── Footer ────────────────────────────────────────────────── */
 .footer {
