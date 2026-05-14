@@ -472,6 +472,15 @@ body {
   letter-spacing: 0.04em;
 }
 
+.magnifier__color--clickable {
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.magnifier__color--clickable:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
 .magnifier__swatch {
   width: 12px;
   height: 12px;
