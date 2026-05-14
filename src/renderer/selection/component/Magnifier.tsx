@@ -75,21 +75,22 @@ export function Magnifier({
   const top = placeBelow ? pointer.y + offset : pointer.y - offset - size - 38;
 
   return (
-    <div className="magnifier" style={{ left, top }}>
+    <div
+      className="magnifier magnifier--clickable"
+      style={{ left, top }}
+      role="button"
+      tabIndex={-1}
+      title="클릭해서 복사 (HEX → RGB → HSL)"
+      onPointerDown={(e) => e.stopPropagation()}
+      onPointerUp={(e) => e.stopPropagation()}
+      onClick={handleCopy}
+    >
       <canvas ref={setSampleCanvas} className="magnifier__canvas" width={96} height={96} />
       <div className="magnifier__crosshair" aria-hidden="true">
         <span className="magnifier__cross magnifier__cross--h" />
         <span className="magnifier__cross magnifier__cross--v" />
       </div>
-      <div
-        className="magnifier__color magnifier__color--clickable"
-        role="button"
-        tabIndex={-1}
-        title="클릭해서 복사 (HEX → RGB → HSL)"
-        onPointerDown={(e) => e.stopPropagation()}
-        onPointerUp={(e) => e.stopPropagation()}
-        onClick={handleCopy}
-      >
+      <div className="magnifier__color">
         <span className="magnifier__swatch" style={{ background: hex }} aria-hidden="true" />
         <span className="magnifier__fmt">{format.toUpperCase()}</span>
         <span className="magnifier__hex">

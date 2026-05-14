@@ -421,6 +421,15 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
+.magnifier--clickable {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.magnifier--clickable:hover {
+  border-color: rgba(94, 162, 255, 0.4);
+}
+
 .magnifier__canvas {
   display: block;
   width: 96px;
@@ -470,15 +479,6 @@ body {
   font-size: 10px;
   color: rgba(255, 255, 255, 0.94);
   letter-spacing: 0.04em;
-}
-
-.magnifier__color--clickable {
-  cursor: pointer;
-  transition: background 0.12s ease;
-}
-
-.magnifier__color--clickable:hover {
-  background: rgba(255, 255, 255, 0.12);
 }
 
 .magnifier__fmt {
