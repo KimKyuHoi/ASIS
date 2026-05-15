@@ -285,6 +285,7 @@ app.whenReady().then(() => {
   };
   trayManager.start(handlers);
   shortcutManager.start(handlers);
+  editorWindow.prewarm();
 
   // 앱 시작 직후 권한 상태 확인 — 거부/미설정 시 안내 다이얼로그 표시.
   checkPermissionsOnLaunch().catch((err: unknown) => {

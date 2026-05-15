@@ -37,9 +37,18 @@ const CHANNEL_SAVE_FOLDER = 'editor:save-folder';
  * 결과 도출 후 자동 닫힘.
  *
  * 캡처 파일은 *EditorWindow 가 닫힐 때 unlink* — capture.ts 가 직접 정리하지 않음.
+ *
+ * prewarm() 을 앱 시작 시 호출해 BrowserWindow + HTML 로드를 미리 수행한다.
+ * show() 호출 시점에는 setSize + show + IPC 전송만 하므로 체감 지연이 크게 줄어든다.
  */
 export class EditorWindowManager {
   private win: BrowserWindow | null = null;
+  private rendererReady = false;
+  private active = false;
+  private stopped = false;
+  private pendingImageSend: (() => void) | null = null;
+  private readyHandler: (() => void) | null = null;
+
   /** PinWindowManager.pin 으로 위임할 콜백 — index.ts 에서 setPinHandler 로 주입. */
   private pinHandler:
     | ((dataUrl: string, w: number, h: number) => void) |
@@ -49,33 +58,13 @@ export class EditorWindowManager {
     this.pinHandler = handler;
   }
 
-  show(imagePath: string): Promise<EditorResult> {
-    if (this.win) {
-      this.win.focus();
-      return Promise.resolve({ kind: 'canceled' });
-    }
+  prewarm(): void {
+    if (this.stopped || this.win) return;
 
-    // dock.show/hide dynamic 전환은 macOS 26β 가 거부. main/index.ts 의 dock.hide
-    // 자체를 제거하는 우회로 전환. 여기서는 추가 작업 없음.
-
-    // 이미지 크기 조회로 윈도우 사이즈 산정.
-    const image = nativeImage.createFromPath(imagePath);
-    if (image.isEmpty()) {
-      return Promise.reject(
-        new Error(`editor: empty image at ${imagePath}`),
-      );
-    }
-    const { width: imgW, height: imgH } = image.getSize();
-
-    const display = screen.getPrimaryDisplay();
-    const padX = 80;
-    const padY = 200; // 툴바·여백
-    const winW = Math.min(imgW + padX, display.workAreaSize.width - 80);
-    const winH = Math.min(imgH + padY, display.workAreaSize.height - 80);
-
+    const editorPath = join(__dirname, '../renderer/editor/index.html');
     const win = new BrowserWindow({
-      width: Math.max(winW, 720),
-      height: Math.max(winH, 480),
+      width: 720,
+      height: 480,
       minWidth: 480,
       minHeight: 360,
       title: 'ASIS — 어노테이션',
@@ -88,33 +77,14 @@ export class EditorWindowManager {
       },
     });
     this.win = win;
+    this.rendererReady = false;
 
-    win.once('ready-to-show', () => {
-      console.info('[asis editor:main] ready-to-show — show + focus 시도');
-      win.show();
-      if (process.platform === 'darwin') {
-        app.focus({ steal: true });
-      }
-      win.focus();
-      win.moveTop();
-      console.info(
-        '[asis editor:main] isFocused=',
-        win.isFocused(),
-        'isVisible=',
-        win.isVisible(),
-      );
-    });
-
-    // DevTools 안 띄워도 renderer console.log 가 터미널에 보이도록 forward.
-    // (DevTools 자동 띄움은 거꾸로 keyboard focus 를 빼앗아 단축키/텍스트 막음.)
     win.webContents.on(
       'console-message',
       (_event, level, message, line, sourceId) => {
-        // ASIS 우리 로그만 흘려서 chromium 노이즈 차단.
         if (message.includes('[asis')) {
           console.info(`[renderer L${level}]`, message);
         } else if (level === 3) {
-          // level 3 = error — 다른 에러도 보고 (Autofill 같은 noise 제외).
           if (!message.includes('Autofill')) {
             console.error(
               `[renderer error] ${message} (${sourceId}:${line})`,
@@ -130,52 +100,110 @@ export class EditorWindowManager {
       );
     });
 
-    // 빌드된 파일 직접 로드 (selection overlay 와 같은 패턴 — dev URL 매핑이
-    // multi-entry 에서 안정적이지 않아 file:// 로 통일).
-    const editorPath = join(__dirname, '../renderer/editor/index.html');
     win.loadFile(editorPath).catch((err: unknown) => {
-      console.error('[asis] editorWindow loadFile failed', err);
+      console.error('[asis] editorWindow prewarm loadFile failed', err);
     });
 
-    // renderer 가 onLoadImage listener 를 *attach 한 후* editor:ready 를 send.
-    // 그 시점에 main 이 image path 를 보내야 메시지 유실이 없다.
-    // (did-finish-load 직후 send 하면 React useEffect 가 listener attach 하기
-    //  전이라 메시지가 사라지는 게 텍스트/이미지 안 뜨던 root cause 였다.)
-    ipcMain.once(CHANNEL_READY, () => {
-      console.info('[asis editor:main] editor:ready 수신, image 전송');
-      if (!win.isDestroyed()) {
-        win.webContents.send(CHANNEL_LOAD_IMAGE, imagePath, imgW, imgH);
+    const onReady = (): void => {
+      console.info('[asis editor:main] prewarm: editor:ready 수신');
+      this.rendererReady = true;
+      this.readyHandler = null;
+      if (this.pendingImageSend) {
+        this.pendingImageSend();
+        this.pendingImageSend = null;
+      }
+    };
+    this.readyHandler = onReady;
+    ipcMain.once(CHANNEL_READY, onReady);
+
+    // prewarm 상태에서 창이 닫히는 경우 (비정상 종료 등) 정리 후 재시도
+    win.once('closed', () => {
+      if (this.win === win) {
+        this.win = null;
+        this.rendererReady = false;
+        this.pendingImageSend = null;
+      }
+      if (!this.stopped && !this.active) {
+        setImmediate(() => this.prewarm());
       }
     });
+  }
+
+  show(imagePath: string): Promise<EditorResult> {
+    if (this.active) {
+      this.win?.focus();
+      return Promise.resolve({ kind: 'canceled' });
+    }
+
+    if (!this.win) {
+      // app 시작 직후 단축키가 눌린 경우 — fallback 생성
+      this.prewarm();
+    }
+
+    if (!this.win) {
+      throw new Error('editor: prewarm 후에도 BrowserWindow 없음');
+    }
+    const win = this.win;
+    this.active = true;
+
+    const image = nativeImage.createFromPath(imagePath);
+    if (image.isEmpty()) {
+      this.active = false;
+      return Promise.reject(
+        new Error(`editor: empty image at ${imagePath}`),
+      );
+    }
+    const { width: imgW, height: imgH } = image.getSize();
+
+    const display = screen.getPrimaryDisplay();
+    const padX = 80;
+    const padY = 200;
+    const winW = Math.min(imgW + padX, display.workAreaSize.width - 80);
+    const winH = Math.min(imgH + padY, display.workAreaSize.height - 80);
+    win.setSize(Math.max(winW, 720), Math.max(winH, 480));
+    win.center();
+
+    const sendImage = (): void => {
+      if (!win.isDestroyed()) {
+        console.info('[asis editor:main] image 전송');
+        win.webContents.send(CHANNEL_LOAD_IMAGE, imagePath, imgW, imgH);
+      }
+    };
 
     return new Promise<EditorResult>((resolve) => {
       let settled = false;
       const settle = (result: EditorResult): void => {
         if (settled) return;
         settled = true;
+        this.active = false;
         ipcMain.removeHandler(CHANNEL_COPY);
         ipcMain.removeHandler(CHANNEL_PIN);
         ipcMain.removeHandler(CHANNEL_SAVE);
         ipcMain.removeHandler(CHANNEL_SAVE_FOLDER);
         ipcMain.removeAllListeners(CHANNEL_CANCEL);
-        ipcMain.removeAllListeners(CHANNEL_READY);
+        // pendingImageSend 가 아직 살아있다면 (renderer 아직 미준비) 정리
+        if (this.readyHandler) {
+          ipcMain.removeListener(CHANNEL_READY, this.readyHandler);
+          this.readyHandler = null;
+        }
+        this.pendingImageSend = null;
         if (!win.isDestroyed()) {
           win.close();
         }
-        // 캡처 임시 파일 정리. 실패해도 결과에 영향 없음.
         unlink(imagePath).catch((err: unknown) => {
           if (!isFileNotFound(err)) {
             console.error('[asis] editorWindow tmp cleanup failed', err);
           }
         });
         resolve(result);
+        if (!this.stopped) {
+          setImmediate(() => this.prewarm());
+        }
       };
 
       ipcMain.handleOnce(CHANNEL_COPY, (_event, dataUrl: string) => {
-        // dataURL → NativeImage → 클립보드.
         const composed = nativeImage.createFromDataURL(dataUrl);
         if (composed.isEmpty()) {
-          // null-safety: silent fallback 금지. 명시 throw 로 호출자 catch.
           throw new Error('editor: empty NativeImage from dataURL');
         }
         clipboard.writeImage(composed);
@@ -187,7 +215,6 @@ export class EditorWindowManager {
         settle({ kind: 'canceled' });
       });
 
-      // 핀 — 어노테이션 결과를 떠있는 핀 윈도우로 띄움. 에디터는 닫지 않음.
       ipcMain.handle(
         CHANNEL_PIN,
         (_event, dataUrl: string, w: number, h: number) => {
@@ -199,7 +226,6 @@ export class EditorWindowManager {
         },
       );
 
-      // 저장 — dataURL 을 PNG 파일로. dialog → fs.writeFile.
       ipcMain.handle(
         CHANNEL_SAVE,
         async (_event, dataUrl: string): Promise<{
@@ -217,15 +243,12 @@ export class EditorWindowManager {
           if (result.canceled || !result.filePath) {
             return { saved: false };
           }
-          // dataURL → Buffer.
           const base64 = dataUrl.replace(/^data:image\/[a-z]+;base64,/, '');
           await writeFile(result.filePath, Buffer.from(base64, 'base64'));
           return { saved: true, path: result.filePath };
         },
       );
 
-      // 폴더 자동 저장 — 설정된 폴더(없으면 ~/Pictures/ASIS) 에 타임스탬프 파일명으로 저장.
-      // 다이얼로그 없이 즉시 저장 후 알림 표시 (macOS Screenshot 결).
       ipcMain.handle(
         CHANNEL_SAVE_FOLDER,
         async (_event, dataUrl: string): Promise<{ path: string }> => {
@@ -253,18 +276,38 @@ export class EditorWindowManager {
         },
       );
 
-      win.on('closed', () => {
+      // prewarm 이 등록한 closed 핸들러를 제거하고 show 용으로 교체
+      win.removeAllListeners('closed');
+      win.once('closed', () => {
         this.win = null;
+        this.rendererReady = false;
         settle({ kind: 'canceled' });
       });
+
+      // renderer 준비 여부에 따라 즉시 전송하거나 대기
+      if (this.rendererReady) {
+        sendImage();
+      } else {
+        this.pendingImageSend = sendImage;
+      }
+
+      win.show();
+      if (process.platform === 'darwin') {
+        app.focus({ steal: true });
+      }
+      win.focus();
+      win.moveTop();
     });
   }
 
   stop(): void {
-    if (!this.win) return;
-    if (!this.win.isDestroyed()) {
-      this.win.close();
+    this.stopped = true;
+    if (this.readyHandler) {
+      ipcMain.removeListener(CHANNEL_READY, this.readyHandler);
+      this.readyHandler = null;
     }
+    if (!this.win || this.win.isDestroyed()) return;
+    this.win.close();
     this.win = null;
   }
 }
