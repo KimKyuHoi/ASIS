@@ -1,0 +1,13 @@
+diff --git a/node_modules/app-builder-lib/out/targets/pkg.js b/node_modules/app-builder-lib/out/targets/pkg.js
+index 2878d7f..9e4dc4b 100644
+--- a/node_modules/app-builder-lib/out/targets/pkg.js
++++ b/node_modules/app-builder-lib/out/targets/pkg.js
+@@ -56,7 +56,7 @@ class PkgTarget extends core_1.Target {
+             arch,
+         });
+         const keychainFile = (await packager.codeSigningInfo.value).keychainFile;
+-        const appOutDir = this.outDir;
++        const appOutDir = path.dirname(appPath);
+         // https://developer.apple.com/library/content/documentation/DeveloperTools/Reference/DistributionDefinitionRef/Chapters/Distribution_XML_Ref.html
+         const distInfoFile = path.join(appOutDir, "distribution.xml");
+         const extraPackages = this.getExtraPackages();
