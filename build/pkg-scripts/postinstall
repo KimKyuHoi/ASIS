@@ -1,0 +1,2 @@
+#!/bin/bash
+xattr -cr /Applications/ASIS.app

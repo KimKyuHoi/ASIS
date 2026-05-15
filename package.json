@@ -87,14 +87,7 @@
       },
       "target": [
         {
-          "target": "dmg",
-          "arch": [
-            "arm64",
-            "x64"
-          ]
-        },
-        {
-          "target": "zip",
+          "target": "pkg",
           "arch": [
             "arm64",
             "x64"
@@ -102,14 +95,9 @@
         }
       ]
     },
-    "dmg": {
-      "title": "ASIS ${version}",
-      "artifactName": "ASIS-${version}-${arch}.dmg",
-      "format": "UDZO",
-      "window": {
-        "width": 512,
-        "height": 320
-      }
+    "pkg": {
+      "artifactName": "ASIS-${version}-${arch}.pkg",
+      "installLocation": "/Applications"
     },
     "linux": {
       "target": [
