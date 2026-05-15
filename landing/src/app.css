@@ -1054,14 +1054,72 @@ svg {
 .download-sub {
   font-size: 16px;
   color: var(--muted);
-  margin-bottom: 40px;
+  margin-bottom: 28px;
 }
-.download-buttons {
+.download-requirements {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   justify-content: center;
   flex-wrap: wrap;
+  margin-bottom: 36px;
+}
+.dl-req-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 13px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.download-arch-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
   margin-bottom: 48px;
+}
+.download-arch-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 18px 20px;
+  border-radius: 14px;
+  text-decoration: none;
+  transition:
+    opacity 0.15s,
+    transform 0.15s;
+  cursor: pointer;
+}
+.download-arch-btn:hover {
+  opacity: 0.88;
+  transform: translateY(-2px);
+}
+.download-arch-btn:active {
+  transform: translateY(0);
+  opacity: 1;
+}
+.download-arch-btn--primary {
+  background: var(--accent);
+  color: #0d0d0f;
+}
+.download-arch-btn--secondary {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+.download-arch-label {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.download-arch-sub {
+  font-size: 12px;
+  opacity: 0.65;
+  font-family: 'SF Mono', 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
 }
 .download-steps {
   display: flex;
@@ -1114,6 +1172,11 @@ svg {
   user-select: all;
   cursor: text;
   margin: 4px 0;
+}
+@media (max-width: 480px) {
+  .download-arch-buttons {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ─── Footer ────────────────────────────────────────────────── */

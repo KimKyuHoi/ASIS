@@ -11,30 +11,33 @@ type Release = { tag_name: string; assets: ReleaseAsset[] };
 const DEFAULT_HREF = 'https://github.com/KimKyuHoi/ASIS/releases/latest';
 
 export default function App(): React.JSX.Element {
-  const [downloadHref, setDownloadHref] = useState(DEFAULT_HREF);
-  const [downloadLabel, setDownloadLabel] = useState('macOS 다운로드');
+  const [version, setVersion] = useState('');
+  const [armHref, setArmHref] = useState(DEFAULT_HREF);
+  const [intelHref, setIntelHref] = useState(DEFAULT_HREF);
 
   useEffect(() => {
     fetch('https://api.github.com/repos/KimKyuHoi/ASIS/releases/latest')
       .then((r) => r.json())
       .then((data: Release) => {
         const assets = data.assets ?? [];
-        const arm = assets.find((a) => a.name.endsWith('-arm64.dmg'));
-        const intel = assets.find((a) => a.name.endsWith('-x64.dmg'));
-        const best = arm ?? intel;
-        if (!best) return;
-        setDownloadHref(best.browser_download_url);
-        setDownloadLabel(`macOS 다운로드 (${data.tag_name})`);
+        const arm = assets.find((a) => a.name.endsWith('-arm64.pkg'));
+        const intel = assets.find((a) => a.name.endsWith('-x64.pkg'));
+        if (data.tag_name) setVersion(data.tag_name);
+        if (arm) setArmHref(arm.browser_download_url);
+        if (intel) setIntelHref(intel.browser_download_url);
       })
       .catch(() => {});
   }, []);
 
+  const heroHref = armHref !== DEFAULT_HREF ? armHref : intelHref;
+  const heroLabel = version ? `macOS 다운로드 (${version})` : 'macOS 다운로드';
+
   return (
     <>
       <Nav />
-      <Hero downloadHref={downloadHref} downloadLabel={downloadLabel} />
+      <Hero downloadHref={heroHref} downloadLabel={heroLabel} />
       <Features />
-      <Download downloadHref={downloadHref} downloadLabel={downloadLabel} />
+      <Download armHref={armHref} intelHref={intelHref} version={version} />
       <Footer />
     </>
   );

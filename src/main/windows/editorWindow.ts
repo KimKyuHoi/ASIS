@@ -56,6 +56,8 @@ export class EditorWindowManager {
   private stopped = false;
   private pendingImageSend: (() => void) | null = null;
   private readyHandler: (() => void) | null = null;
+  /** 현재 활성 세션의 settle 함수 — 교체 시 이전 세션을 취소하는 데 사용. */
+  private currentSettleFn: ((r: EditorResult) => void) | null = null;
 
   /** PinWindowManager.pin 으로 위임할 콜백 — index.ts 에서 setPinHandler 로 주입. */
   private pinHandler:
@@ -139,8 +141,19 @@ export class EditorWindowManager {
 
   show(imagePath: string): Promise<EditorResult> {
     if (this.active) {
-      this.win?.focus();
-      return Promise.resolve({ kind: 'canceled' });
+      if (this.currentSettleFn) {
+        // 이전 세션 취소 → active=false, win=null 로 설정됨.
+        // 이후 코드가 새 이미지로 세션을 재시작한다.
+        this.currentSettleFn({ kind: 'canceled' });
+      } else {
+        // 방어: settle 함수 없으면 새 파일 정리 후 종료.
+        unlink(imagePath).catch((err: unknown) => {
+          if (!isFileNotFound(err)) {
+            console.error('[asis] editorWindow skip-cleanup failed', err);
+          }
+        });
+        return Promise.resolve({ kind: 'canceled' });
+      }
     }
 
     if (!this.win) {
@@ -184,18 +197,24 @@ export class EditorWindowManager {
         if (settled) return;
         settled = true;
         this.active = false;
+        this.currentSettleFn = null;
+        // 즉시 null — win.close() 는 비동기이므로 closed 이벤트 전에
+        // 다음 show() 가 들어오면 닫히는 창을 재사용해 "Object destroyed" 에러 발생.
+        this.win = null;
+        this.rendererReady = false;
         ipcMain.removeHandler(CHANNEL_COPY);
         ipcMain.removeHandler(CHANNEL_PIN);
         ipcMain.removeHandler(CHANNEL_SAVE);
         ipcMain.removeHandler(CHANNEL_SAVE_FOLDER);
         ipcMain.removeAllListeners(CHANNEL_CANCEL);
-        // pendingImageSend 가 아직 살아있다면 (renderer 아직 미준비) 정리
         if (this.readyHandler) {
           ipcMain.removeListener(CHANNEL_READY, this.readyHandler);
           this.readyHandler = null;
         }
         this.pendingImageSend = null;
         if (!win.isDestroyed()) {
+          // closed 리스너 제거 — 창 닫힘 이벤트가 새 win 을 null 로 덮어쓰는 것 방지.
+          win.removeAllListeners('closed');
           win.close();
         }
         unlink(imagePath).catch((err: unknown) => {
@@ -208,6 +227,7 @@ export class EditorWindowManager {
           setImmediate(() => this.prewarm());
         }
       };
+      this.currentSettleFn = settle;
 
       ipcMain.handleOnce(CHANNEL_COPY, (_event, dataUrl: string) => {
         const composed = nativeImage.createFromDataURL(dataUrl);
