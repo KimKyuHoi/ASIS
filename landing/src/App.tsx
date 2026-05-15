@@ -9,12 +9,12 @@ type ReleaseAsset = { name: string; browser_download_url: string };
 type Release = { tag_name: string; assets: ReleaseAsset[] };
 
 const DEFAULT_HREF = 'https://github.com/KimKyuHoi/ASIS/releases/latest';
+const INSTALLER_HREF = '/ASIS/ASIS-installer.command';
 
 export default function App(): React.JSX.Element {
   const [version, setVersion] = useState('');
   const [armHref, setArmHref] = useState(DEFAULT_HREF);
   const [intelHref, setIntelHref] = useState(DEFAULT_HREF);
-  const [installerHref, setInstallerHref] = useState(DEFAULT_HREF);
 
   useEffect(() => {
     fetch('https://api.github.com/repos/KimKyuHoi/ASIS/releases/latest')
@@ -23,11 +23,9 @@ export default function App(): React.JSX.Element {
         const assets = data.assets ?? [];
         const arm = assets.find((a) => a.name.endsWith('-arm64.pkg'));
         const intel = assets.find((a) => a.name.endsWith('-x64.pkg'));
-        const installer = assets.find((a) => a.name === 'ASIS-installer.command');
         if (data.tag_name) setVersion(data.tag_name);
         if (arm) setArmHref(arm.browser_download_url);
         if (intel) setIntelHref(intel.browser_download_url);
-        if (installer) setInstallerHref(installer.browser_download_url);
       })
       .catch(() => {});
   }, []);
@@ -43,7 +41,7 @@ export default function App(): React.JSX.Element {
       <Download
         armHref={armHref}
         intelHref={intelHref}
-        installerHref={installerHref}
+        installerHref={INSTALLER_HREF}
         version={version}
       />
       <Footer />
