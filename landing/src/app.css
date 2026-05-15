@@ -1180,6 +1180,42 @@ svg {
   cursor: text;
   margin: 4px 0;
 }
+.download-curl {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(94, 162, 255, 0.06);
+  border: 1px solid rgba(94, 162, 255, 0.2);
+  border-radius: 10px;
+  padding: 12px 16px;
+  width: 100%;
+  max-width: 600px;
+}
+.download-curl-cmd {
+  font-family: 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+  font-size: 12px;
+  color: var(--accent);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: all;
+}
+.download-curl-copy {
+  flex-shrink: 0;
+  background: rgba(94, 162, 255, 0.15);
+  border: 1px solid rgba(94, 162, 255, 0.3);
+  border-radius: 6px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.download-curl-copy:hover {
+  background: rgba(94, 162, 255, 0.25);
+}
 @media (max-width: 480px) {
   .download-arch-buttons {
     grid-template-columns: 1fr;

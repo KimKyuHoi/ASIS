@@ -9,7 +9,6 @@ type ReleaseAsset = { name: string; browser_download_url: string };
 type Release = { tag_name: string; assets: ReleaseAsset[] };
 
 const DEFAULT_HREF = 'https://github.com/KimKyuHoi/ASIS/releases/latest';
-const INSTALLER_HREF = '/ASIS/ASIS-installer.command';
 
 export default function App(): React.JSX.Element {
   const [version, setVersion] = useState('');
@@ -30,20 +29,14 @@ export default function App(): React.JSX.Element {
       .catch(() => {});
   }, []);
 
-  const heroHref = armHref !== DEFAULT_HREF ? armHref : intelHref;
   const heroLabel = version ? `macOS 다운로드 (${version})` : 'macOS 다운로드';
 
   return (
     <>
       <Nav />
-      <Hero downloadHref={heroHref} downloadLabel={heroLabel} />
+      <Hero downloadHref="#download" downloadLabel={heroLabel} />
       <Features />
-      <Download
-        armHref={armHref}
-        intelHref={intelHref}
-        installerHref={INSTALLER_HREF}
-        version={version}
-      />
+      <Download armHref={armHref} intelHref={intelHref} version={version} />
       <Footer />
     </>
   );
