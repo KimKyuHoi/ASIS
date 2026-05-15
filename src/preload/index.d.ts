@@ -5,9 +5,10 @@ type Rect = {
   y: number;
   w: number;
   h: number;
+  windowId?: number;
 };
 
-type WindowInfo = { name: string; x: number; y: number; w: number; h: number };
+type WindowInfo = { id: number; name: string; x: number; y: number; w: number; h: number };
 
 type SelectionAPI = {
   capture: (rect: Rect) => Promise<void>;

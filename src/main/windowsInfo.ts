@@ -14,6 +14,7 @@ import koffi from 'koffi';
  */
 
 export type WindowInfo = {
+  id: number;
   name: string;
   x: number;
   y: number;
@@ -127,6 +128,7 @@ export function listWindows(): Promise<WindowInfo[]> {
       const kBounds = cfStr('kCGWindowBounds');
       const kOwner = cfStr('kCGWindowOwnerName');
       const kPID = cfStr('kCGWindowOwnerPID');
+      const kWindowNumber = cfStr('kCGWindowNumber');
       const kX = cfStr('X');
       const kY = cfStr('Y');
       const kW = cfStr('Width');
@@ -155,11 +157,12 @@ export function listWindows(): Promise<WindowInfo[]> {
         // owner name 이 빈 윈도우 = macOS 내부 레이어 (Desktop 배경, 알림센터 등).
         if (!name) continue;
 
-        windows.push({ name, x, y, w, h });
+        const id = cfNumToJs(f.dictGet(win, kWindowNumber));
+        windows.push({ id, name, x, y, w, h });
       }
 
       // Retain 된 참조 해제.
-      for (const k of [kBounds, kOwner, kPID, kX, kY, kW, kH]) f.release(k);
+      for (const k of [kBounds, kOwner, kPID, kWindowNumber, kX, kY, kW, kH]) f.release(k);
       f.release(list);
 
       resolve(windows);

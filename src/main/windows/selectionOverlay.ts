@@ -10,6 +10,7 @@ type Rect = {
   y: number;
   w: number;
   h: number;
+  windowId?: number;
 };
 
 export type SelectionResult =

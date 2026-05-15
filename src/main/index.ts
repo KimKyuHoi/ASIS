@@ -12,6 +12,7 @@ import {
   captureFullscreen,
   captureRegion,
   captureWindow,
+  captureWindowById,
   type CaptureResult,
 } from './capture';
 import { SelectionOverlayManager } from './windows/selectionOverlay';
@@ -106,7 +107,10 @@ const handleRegionCapture = (): void => {
     selectionOverlay.show().then(
       (result) => {
         if (result.kind === 'selected') {
-          handleCapture('영역 캡처', () => captureRegion(result.rect));
+          const { windowId, ...rect } = result.rect;
+          handleCapture('영역 캡처', () =>
+            windowId !== undefined ? captureWindowById(windowId) : captureRegion(rect),
+          );
         }
       },
       (err: unknown) => {

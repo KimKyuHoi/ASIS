@@ -26,11 +26,17 @@ export default function SelectionOverlay(): JSX.Element {
   const [bgCanvas, setBgCanvas] = useState<HTMLCanvasElement | null>(null);
   const [bgSize, setBgSize] = useState<{ w: number; h: number } | null>(null);
   const [windows, setWindows] = useState<
-    Array<{ name: string; x: number; y: number; w: number; h: number }>
+    Array<{ id: number; name: string; x: number; y: number; w: number; h: number }>
   >([]);
   // pointerdown 시 hit 된 윈도우 후보 — 이동 없이 pointerup 되면(클릭) 그 윈도우를 캡처.
   // 이동이 있으면(드래그) 무시 → 일반 rect 드래그로 전환.
-  const pendingWindowHitRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
+  const pendingWindowHitRef = useRef<{
+    id: number;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  } | null>(null);
   const dragStartRef = useRef<{ x: number; y: number } | null>(null);
 
   // main → renderer: visible 윈도우 list. 권한 없으면 빈 배열.
@@ -129,7 +135,7 @@ export default function SelectionOverlay(): JSX.Element {
         const dy = e.clientY - start.y;
         if (dx * dx + dy * dy < MIN_RECT_SIZE * MIN_RECT_SIZE) {
           dispatch({ type: 'pointer-up' }); // reducer → idle
-          capture(windowHit);
+          capture({ ...windowHit, windowId: windowHit.id });
           return;
         }
       }

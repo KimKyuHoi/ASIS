@@ -42,6 +42,14 @@ export function captureWindow(): Promise<CaptureResult> {
 }
 
 /**
+ * 윈도우 ID 캡처. CGWindowID 로 특정 윈도우만 잡는다.
+ * `-R` 과 달리 그림자를 제외한 윈도우 콘텐츠만 정확히 캡처한다.
+ */
+export function captureWindowById(windowId: number): Promise<CaptureResult> {
+  return captureToFile(['-x', '-l', String(windowId), '-t', 'png']);
+}
+
+/**
  * 영역 캡처. `-R x,y,w,h` 는 *포인트 단위* (top-left 기준).
  * 좌표 변환은 호출자 책임 — 이 함수는 변환된 값만 받는다.
  */
