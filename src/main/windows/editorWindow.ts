@@ -8,9 +8,17 @@ import {
   Notification,
   screen,
 } from 'electron';
+import { existsSync } from 'node:fs';
 import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { addEntry } from '../captureHistory';
+import devIconPath from '../../../resources/icon.png?asset';
+
+function resolveAppIcon(): Electron.NativeImage {
+  const prodPath = join(process.resourcesPath, 'icon.png');
+  const iconPath = existsSync(prodPath) ? prodPath : devIconPath;
+  return nativeImage.createFromPath(iconPath);
+}
 import { settingsStore } from '../settings';
 
 export type EditorResult =
@@ -271,6 +279,7 @@ export class EditorWindowManager {
           new Notification({
             title: 'ASIS — 저장 완료',
             body: filePath,
+            icon: resolveAppIcon(),
           }).show();
           return { path: filePath };
         },

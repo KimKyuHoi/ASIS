@@ -67,6 +67,10 @@
     ],
     "extraResources": [
       {
+        "from": "resources/icon.png",
+        "to": "icon.png"
+      },
+      {
         "from": "resources/trayTemplate.png",
         "to": "trayTemplate.png"
       },
