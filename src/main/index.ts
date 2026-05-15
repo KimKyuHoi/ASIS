@@ -1,6 +1,9 @@
 import { app, clipboard, dialog, ipcMain, nativeImage, Notification } from 'electron';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { electronApp, optimizer } from '@electron-toolkit/utils';
+import devAppIconPath from '../../resources/icon.png?asset';
 import { TrayManager } from './tray';
 import { ShortcutManager } from './shortcuts';
 import { settingsStore } from './settings';
@@ -218,6 +221,12 @@ ipcMain.handle('history:pin', (_event, dataUrl: string, w: number, h: number) =>
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.pinkfong.asis');
+
+  if (process.platform === 'darwin' && app.dock) {
+    const prodPath = join(process.resourcesPath, 'icon.png');
+    const iconPath = existsSync(prodPath) ? prodPath : devAppIconPath;
+    app.dock.setIcon(nativeImage.createFromPath(iconPath));
+  }
 
   // macOS 26 β 에서 app.dock.hide() 호출 시 *모든 자식 윈도우의 키보드 focus*
   // 가 영구 차단되는 회귀가 발견됨 (dynamic LSUIElement 전환 거부).
