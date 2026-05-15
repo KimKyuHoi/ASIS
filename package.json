@@ -63,7 +63,8 @@
       "!out/**/*.map"
     ],
     "asarUnpack": [
-      "**/resources/trayTemplate*.png"
+      "**/resources/trayTemplate*.png",
+      "**/node_modules/ffmpeg-static/**"
     ],
     "extraResources": [
       {

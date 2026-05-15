@@ -23,6 +23,7 @@ import { SettingsWindowManager } from './windows/settingsWindow';
 import { HistoryWindowManager } from './windows/historyWindow';
 import { getEntries } from './captureHistory';
 import { checkPermissionsOnLaunch, guardCapture, openPermissionSettings } from './permissions';
+import { fetchLatestTag, isNewer } from './updateChecker';
 
 /**
  * ASIS — macOS 메뉴바 캡처·어노테이션 도구.
@@ -304,6 +305,19 @@ app.whenReady().then(() => {
   checkPermissionsOnLaunch().catch((err: unknown) => {
     console.error('[asis] permission check failed', err);
   });
+
+  // 업데이트 체크 — 네트워크 지연이 있으므로 5초 뒤 백그라운드 실행.
+  setTimeout(() => {
+    const current = app.getVersion();
+    fetchLatestTag().then((latest) => {
+      if (latest && isNewer(latest, current)) {
+        notifyInfo(`새 버전 ${latest} 사용 가능 — 메뉴바에서 업데이트`);
+        trayManager.setUpdateAvailable(latest);
+      }
+    }).catch((err: unknown) => {
+      console.warn('[asis] update check failed', err);
+    });
+  }, 5000);
 }).catch((err: unknown) => {
   // app.whenReady() 체인의 미처리 에러가 조용히 삼켜지는 걸 방지.
   console.error('[asis] app initialization failed', err);

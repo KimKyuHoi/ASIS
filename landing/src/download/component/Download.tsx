@@ -120,6 +120,10 @@ export function Download({ armHref, intelHref, version }: DownloadProps): React.
           ))}
         </div>
 
+        <p className="download-update-note">
+          이미 설치하셨나요? 동일한 커맨드를 다시 실행하면 최신 버전으로 업데이트됩니다.
+        </p>
+
         <p className="download-note">
           {version && `${version} · `}직접 PKG 파일을 설치하려면{' '}
           <a href={armHref} className="download-link">

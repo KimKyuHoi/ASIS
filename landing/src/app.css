@@ -1157,6 +1157,13 @@ svg {
   justify-content: center;
   flex-shrink: 0;
 }
+.download-update-note {
+  font-size: 13px;
+  color: var(--green);
+  opacity: 0.8;
+  line-height: 1.6;
+  margin-top: 16px;
+}
 .download-note {
   font-size: 13px;
   color: rgba(136, 136, 152, 0.7);

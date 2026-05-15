@@ -22,7 +22,9 @@ if (!ffmpegPath) {
   );
 }
 
-const FFMPEG_BIN = ffmpegPath;
+// electron-builder 가 app.asar 안의 바이너리를 spawn 할 수 없으므로
+// asarUnpack 으로 추출된 app.asar.unpacked 경로로 교정.
+const FFMPEG_BIN = ffmpegPath.replace('app.asar', 'app.asar.unpacked');
 
 export type EncodeOptions = {
   /** GIF 의 frame rate. 기본 10. */

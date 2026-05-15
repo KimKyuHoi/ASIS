@@ -1,4 +1,4 @@
-import { Tray, Menu, app, nativeImage } from 'electron';
+import { Tray, Menu, app, nativeImage, shell } from 'electron';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import devIconPath from '../../resources/trayTemplate.png?asset';
@@ -29,8 +29,12 @@ export type TrayMenuHandlers = {
   onOpenPermissions: () => void;
 };
 
+const LANDING_URL = 'https://kimkyuhoi.github.io/ASIS';
+
 export class TrayManager {
   private tray: Tray | null = null;
+  private handlers: TrayMenuHandlers | null = null;
+  private updateVersion: string | null = null;
 
   start(handlers: TrayMenuHandlers): void {
     if (this.tray) {
@@ -48,9 +52,17 @@ export class TrayManager {
     // 이중 안전을 위해 명시 호출도 유지한다.
     image.setTemplateImage(true);
 
+    this.handlers = handlers;
     this.tray = new Tray(image);
     this.tray.setToolTip('ASIS — 캡처·어노테이션');
     this.tray.setContextMenu(this.buildContextMenu(handlers));
+  }
+
+  /** 새 버전이 발견됐을 때 호출 — 트레이 메뉴 상단에 업데이트 항목 추가. */
+  setUpdateAvailable(version: string): void {
+    if (!this.tray || !this.handlers) return;
+    this.updateVersion = version;
+    this.tray.setContextMenu(this.buildContextMenu(this.handlers));
   }
 
   stop(): void {
@@ -62,10 +74,21 @@ export class TrayManager {
   }
 
   private buildContextMenu(handlers: TrayMenuHandlers): Menu {
+    const updateItems: Electron.MenuItemConstructorOptions[] = this.updateVersion
+      ? [
+        {
+          label: `새 버전 ${this.updateVersion} 사용 가능 →`,
+          click: () => { shell.openExternal(LANDING_URL).catch(() => {}); },
+        },
+        { type: 'separator' },
+      ]
+      : [];
+
     return Menu.buildFromTemplate([
       // 헤더 — 비활성 라벨로 앱 정체성 표시 (CleanShot/Shottr 결).
       { label: 'ASIS', enabled: false },
       { type: 'separator' },
+      ...updateItems,
 
       // 캡처 항목 — accelerator 옵션으로 macOS 가 자동 ⌘⇧F 우측 정렬·표시.
       // 실제 글로벌 단축키 binding 은 ShortcutManager 가 별도 처리하므로
