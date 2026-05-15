@@ -1,6 +1,6 @@
 {
   "name": "asis",
-  "version": "0.1.1",
+  "version": "0.2.4",
   "description": "macOS screenshot capture and annotation tool",
   "main": "./out/main/index.js",
   "packageManager": "pnpm@10.28.2",
