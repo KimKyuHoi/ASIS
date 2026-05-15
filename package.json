@@ -97,7 +97,8 @@
     },
     "pkg": {
       "artifactName": "ASIS-${version}-${arch}.pkg",
-      "installLocation": "/Applications"
+      "installLocation": "/Applications",
+      "isRelocatable": false
     },
     "linux": {
       "target": [

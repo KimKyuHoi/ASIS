@@ -1,2 +1,4 @@
 #!/bin/bash
-xattr -cr /Applications/ASIS.app
+# $2 = macOS Installer가 전달하는 실제 설치 위치 (보통 /Applications)
+xattr -cr "$2/ASIS.app" || true
+exit 0
