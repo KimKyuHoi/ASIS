@@ -53,6 +53,7 @@ export default function Editor(): JSX.Element {
   // stage-wrap div — TextEditor portal 의 target + keydown focus 회복용.
   // callback ref + useState 로 mount 후 자동 re-render 트리거.
   const [stageWrap, setStageWrap] = useState<HTMLDivElement | null>(null);
+  const [saveToast, setSaveToast] = useState<string | null>(null);
 
   const dragLeaderIdRef = useRef<string | null>(null);
   const dragStartPositionsRef = useRef<Map<string, { x: number; y: number }> | null>(null);
@@ -375,7 +376,11 @@ export default function Editor(): JSX.Element {
     }
     const dataUrl = stage.toDataURL({ pixelRatio: 2 });
     window.editor.saveFolder(dataUrl).then(
-      (result) => console.info(`[asis editor] 폴더 저장 완료: ${result.path}`),
+      (result) => {
+        console.info(`[asis editor] 폴더 저장 완료: ${result.path}`);
+        setSaveToast(result.path);
+        setTimeout(() => setSaveToast(null), 2500);
+      },
       (err: unknown) => console.error('[asis editor] saveFolder 실패', err),
     );
   };
@@ -453,6 +458,11 @@ export default function Editor(): JSX.Element {
 
   return (
     <div className="editor">
+      {saveToast !== null && (
+        <div className="editor__toast">
+          저장됨 — {saveToast}
+        </div>
+      )}
       <div className="editor__canvas" ref={containerRef}>
         {bgImage && imageWidth > 0 && imageHeight > 0 ? (
           <div

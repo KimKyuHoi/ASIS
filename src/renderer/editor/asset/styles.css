@@ -83,6 +83,25 @@ button:disabled {
   font-size: 13px;
 }
 
+.editor__toast {
+  position: fixed;
+  bottom: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(30, 30, 32, 0.92);
+  color: #fff;
+  font-size: 12px;
+  padding: 7px 14px;
+  border-radius: 8px;
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+  z-index: 9999;
+  white-space: nowrap;
+  max-width: calc(100vw - 48px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ── Stage wrapper (TextEditor 오버레이 기준점) ──────── */
 
 .stage-wrap {
