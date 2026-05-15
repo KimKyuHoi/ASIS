@@ -31,6 +31,20 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      - name: Sync package.json version from tag
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
+          if [ -n "$VERSION" ] && [ "$VERSION" != "$TAG" ]; then
+            node -e "
+              const fs = require('fs');
+              const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+              pkg.version = '$VERSION';
+              fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+            "
+            echo "package.json version set to $VERSION"
+          fi
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
