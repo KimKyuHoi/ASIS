@@ -80,6 +80,16 @@ jobs:
           fi
           gh release edit "$TAG" --notes-file CHANGELOG_RELEASE.md
 
+      - name: Upload install.command to release
+        if: >
+          github.event_name == 'push' ||
+          (github.event_name == 'workflow_dispatch' && github.event.inputs.tag != '')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          gh release upload "$TAG" build/ASIS-installer.command --clobber
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
