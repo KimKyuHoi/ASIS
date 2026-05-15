@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 type DownloadProps = {
   armHref: string;
   intelHref: string;
+  installerHref: string;
   version: string;
 };
 
@@ -18,7 +19,12 @@ const DownloadIcon = (): React.JSX.Element => (
   </svg>
 );
 
-export function Download({ armHref, intelHref, version }: DownloadProps): React.JSX.Element {
+export function Download({
+  armHref,
+  intelHref,
+  installerHref,
+  version,
+}: DownloadProps): React.JSX.Element {
   const vSuffix = version ? ` ${version}` : '';
 
   return (
@@ -71,25 +77,20 @@ export function Download({ armHref, intelHref, version }: DownloadProps): React.
         </div>
 
         <div className="download-arch-buttons">
-          <a className="download-arch-btn download-arch-btn--primary" href={armHref}>
+          <a className="download-arch-btn download-arch-btn--primary" href={installerHref}>
             <DownloadIcon />
-            <span className="download-arch-label">Apple Silicon{vSuffix}</span>
-            <span className="download-arch-sub">M1 · M2 · M3 · M4</span>
-          </a>
-          <a className="download-arch-btn download-arch-btn--secondary" href={intelHref}>
-            <DownloadIcon />
-            <span className="download-arch-label">Intel Mac{vSuffix}</span>
-            <span className="download-arch-sub">x86_64</span>
+            <span className="download-arch-label">설치 파일 다운로드{vSuffix}</span>
+            <span className="download-arch-sub">Apple Silicon · Intel 자동 감지</span>
           </a>
         </div>
 
         <div className="download-steps">
           {[
-            'PKG 파일 다운로드',
-            '파일 마우스 우클릭 → "열기" 선택',
+            'ASIS-installer.command 다운로드',
+            '파일 더블클릭 → "열기" 선택',
+            'Terminal이 자동으로 PKG 다운로드 및 설치 시작',
             '설치 마법사에서 "계속" → "설치" → 암호 입력',
-            'Launchpad 또는 /Applications 에서 ASIS 실행',
-            '화면 녹화 권한 허용',
+            'Launchpad 또는 /Applications 에서 ASIS 실행 후 화면 녹화 권한 허용',
           ].map((step, i) => (
             <div key={i} className="dl-step">
               <span className="dl-step-num">{i + 1}</span>
@@ -99,10 +100,11 @@ export function Download({ armHref, intelHref, version }: DownloadProps): React.
         </div>
 
         <p className="download-note">
-          <strong>&ldquo;손상되었기 때문에 열 수 없습니다&rdquo;</strong> 오류가 뜨면
-          터미널에서 아래 명령어를 실행한 뒤 다시 시도하세요.
+          직접 PKG 파일을 설치하려면{' '}
+          <a href={armHref} className="download-link">Apple Silicon</a>
+          {' · '}
+          <a href={intelHref} className="download-link">Intel</a>
         </p>
-        <pre className="download-code">xattr -cr ~/Downloads/ASIS-*.pkg</pre>
       </motion.div>
     </section>
   );

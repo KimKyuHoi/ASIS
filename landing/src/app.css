@@ -1161,6 +1161,13 @@ svg {
   color: rgba(136, 136, 152, 0.7);
   line-height: 1.6;
 }
+.download-link {
+  color: var(--accent);
+  text-decoration: none;
+}
+.download-link:hover {
+  text-decoration: underline;
+}
 .download-code {
   font-family: 'SF Mono', 'JetBrains Mono', Menlo, monospace;
   font-size: 12px;
