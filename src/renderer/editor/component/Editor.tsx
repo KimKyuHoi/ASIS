@@ -460,7 +460,7 @@ export default function Editor(): JSX.Element {
     <div className="editor">
       {saveToast !== null && (
         <div className="editor__toast">
-          저장됨 — {saveToast}
+          ✓ 저장됨 — {saveToast}
         </div>
       )}
       <div className="editor__canvas" ref={containerRef}>

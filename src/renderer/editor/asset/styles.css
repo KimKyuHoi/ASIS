@@ -88,9 +88,10 @@ button:disabled {
   bottom: 72px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(30, 30, 32, 0.92);
+  background: rgba(34, 197, 94, 0.88);
   color: #fff;
   font-size: 12px;
+  font-weight: 500;
   padding: 7px 14px;
   border-radius: 8px;
   backdrop-filter: blur(8px);
