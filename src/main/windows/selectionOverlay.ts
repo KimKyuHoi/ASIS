@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { readFile, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ensureAccessibilityPermission, listWindows } from '../windowsInfo';
+import { ensureAccessibilityPermission, getElementBoundsAtPoint, listWindows } from '../windowsInfo';
 
 type Rect = {
   x: number;
@@ -22,6 +22,7 @@ const CHANNEL_CANCEL = 'capture:cancel';
 const CHANNEL_BACKGROUND = 'capture:background';
 const CHANNEL_WINDOWS = 'capture:windows';
 const CHANNEL_READY = 'capture:ready';
+const CHANNEL_ELEMENT_AT = 'capture:element-at';
 
 /**
  * 영역 선택 오버레이 — 풀스크린 transparent BrowserWindow lifecycle 관리.
@@ -166,6 +167,7 @@ export class SelectionOverlayManager {
         settled = true;
         // 핸들러·리스너 cleanup — leak 방지.
         ipcMain.removeHandler(CHANNEL_REGION);
+        ipcMain.removeHandler(CHANNEL_ELEMENT_AT);
         ipcMain.removeAllListeners(CHANNEL_CANCEL);
         ipcMain.removeAllListeners(CHANNEL_READY);
         globalShortcut.unregister(ESC_ACCEL);
@@ -184,6 +186,14 @@ export class SelectionOverlayManager {
           '[asis] selectionOverlay: ESC globalShortcut 등록 실패 — renderer keydown 만 의지',
         );
       }
+
+      // 렌더러의 pointermove 에서 throttle 된 요청 — overlay-local 좌표 → screen 변환 후 AX 조회.
+      ipcMain.handle(CHANNEL_ELEMENT_AT, (_event, x: number, y: number) => {
+        const result = getElementBoundsAtPoint(x + minX, y + minY);
+        if (!result) return null;
+        // 결과를 overlay-local 좌표로 재변환.
+        return { x: result.x - minX, y: result.y - minY, w: result.w, h: result.h };
+      });
 
       ipcMain.handleOnce(CHANNEL_REGION, (_event, rect: Rect) => {
         // 렌더러 좌표는 overlay 윈도우 origin(minX, minY) 기준 → 절대 스크린 좌표로 변환.

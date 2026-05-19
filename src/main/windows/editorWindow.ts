@@ -177,17 +177,24 @@ export class EditorWindowManager {
     const { width: imgW, height: imgH } = image.getSize();
 
     const display = screen.getPrimaryDisplay();
+    // screencapture 는 Retina(2x) 해상도로 저장 → imgW/imgH 는 물리 픽셀.
+    // BrowserWindow.setSize 와 renderer Stage 는 논리 픽셀(CSS px) 기준이므로
+    // scaleFactor 로 나눠서 논리 픽셀로 변환한다 (pinWindow 와 동일 처리).
+    const sf = display.scaleFactor || 1;
+    const logW = Math.round(imgW / sf);
+    const logH = Math.round(imgH / sf);
+
     const padX = 80;
     const padY = 200;
-    const winW = Math.min(imgW + padX, display.workAreaSize.width - 80);
-    const winH = Math.min(imgH + padY, display.workAreaSize.height - 80);
+    const winW = Math.min(logW + padX, display.workAreaSize.width - 80);
+    const winH = Math.min(logH + padY, display.workAreaSize.height - 80);
     win.setSize(Math.max(winW, 720), Math.max(winH, 480));
     win.center();
 
     const sendImage = (): void => {
       if (!win.isDestroyed()) {
         console.info('[asis editor:main] image 전송');
-        win.webContents.send(CHANNEL_LOAD_IMAGE, imagePath, imgW, imgH);
+        win.webContents.send(CHANNEL_LOAD_IMAGE, imagePath, logW, logH);
       }
     };
 

@@ -43,21 +43,45 @@ export function Shape({
   const updateShape = useEditorStore((s) => s.updateShape);
   const setEditingId = useEditorStore((s) => s.setEditingId);
 
-  // 도형 자체의 색은 *선택 여부와 무관하게* 원본 유지.
-  // 선택 표시는 Transformer 의 box + 앵커가 담당 (App.tsx 에서 처리).
   const draggable = selected;
 
-  // 다중 선택 drag 는 App.tsx 의 Stage 단위 onDragEnd 가 일괄 처리하므로
-  // 개별 도형의 onDragEnd 가 자기 좌표만 patch 하면 다른 도형 갱신과 race.
-  // 다중 시 자기 onDragEnd 를 skip — Stage 가 통합 처리.
   const isMultiDrag = (): boolean =>
     useEditorStore.getState().selectedIds.length > 1;
 
   const handleContextMenu = onContextMenu ?? ((): void => {});
 
+  // 이미지 경계 안으로 좌표를 clamp 하는 헬퍼.
+  // 이벤트 핸들러 안에서 getState() 로 꺼내 최신값을 쓴다.
+  const clampXY = (x: number, y: number, w = 0, h = 0): { x: number; y: number } => {
+    const { imageWidth: iw, imageHeight: ih } = useEditorStore.getState();
+    return {
+      x: Math.max(0, Math.min(x, iw - w)),
+      y: Math.max(0, Math.min(y, ih - h)),
+    };
+  };
+
+  // point 배열([x0,y0,x1,y1,...])의 bounding box를 이미지 안으로 clamp 하는 delta 반환.
+  const clampPointsDelta = (
+    points: number[],
+    dx: number,
+    dy: number,
+  ): { dx: number; dy: number } => {
+    const { imageWidth: iw, imageHeight: ih } = useEditorStore.getState();
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (let i = 0; i < points.length; i += 2) {
+      minX = Math.min(minX, points[i]);
+      maxX = Math.max(maxX, points[i]);
+      minY = Math.min(minY, points[i + 1]);
+      maxY = Math.max(maxY, points[i + 1]);
+    }
+    return {
+      dx: Math.max(-minX, Math.min(dx, iw - maxX)),
+      dy: Math.max(-minY, Math.min(dy, ih - maxY)),
+    };
+  };
 
   // dragBoundFunc 은 폐기 — 도형 종류별 좌표계가 달라(특히 arrow/pen 의 node.position 이 (0,0))
-  // 일률적 clamp 가 음수 방향 이동을 막아 막혔다. Layer clip 이 시각 안전망 역할.
+  // 일률적 clamp 가 음수 방향 이동을 막아 막혔다. onDragEnd 에서 post-clamp 처리.
 
   switch (shape.kind) {
     case 'rect':
@@ -79,7 +103,9 @@ export function Shape({
           onContextMenu={handleContextMenu}
           onDragEnd={(e): void => {
             if (isMultiDrag()) return;
-            updateShape(shape.id, { x: e.target.x(), y: e.target.y() });
+            const { x, y } = clampXY(e.target.x(), e.target.y(), shape.w, shape.h);
+            e.target.position({ x, y });
+            updateShape(shape.id, { x, y });
           }}
           onTransformEnd={(e): void => {
             const node = e.target;
@@ -87,9 +113,10 @@ export function Shape({
             const sy = node.scaleY();
             node.scaleX(1);
             node.scaleY(1);
+            const { x, y } = clampXY(node.x(), node.y(), shape.w * sx, shape.h * sy);
             updateShape(shape.id, {
-              x: node.x(),
-              y: node.y(),
+              x,
+              y,
               w: Math.max(5, shape.w * sx),
               h: Math.max(5, shape.h * sy),
               rotation: node.rotation(),
@@ -116,7 +143,12 @@ export function Shape({
           onContextMenu={handleContextMenu}
           onDragEnd={(e): void => {
             if (isMultiDrag()) return;
-            updateShape(shape.id, { cx: e.target.x(), cy: e.target.y() });
+            const { x: cx, y: cy } = clampXY(
+              e.target.x(), e.target.y(),
+              Math.abs(shape.rx) * 2, Math.abs(shape.ry) * 2,
+            );
+            e.target.position({ x: cx, y: cy });
+            updateShape(shape.id, { cx, cy });
           }}
           onTransformEnd={(e): void => {
             const node = e.target;
@@ -124,9 +156,13 @@ export function Shape({
             const sy = node.scaleY();
             node.scaleX(1);
             node.scaleY(1);
+            const { x: cx, y: cy } = clampXY(
+              node.x(), node.y(),
+              Math.abs(shape.rx) * sx * 2, Math.abs(shape.ry) * sy * 2,
+            );
             updateShape(shape.id, {
-              cx: node.x(),
-              cy: node.y(),
+              cx,
+              cy,
               rx: Math.max(3, Math.abs(shape.rx) * sx),
               ry: Math.max(3, Math.abs(shape.ry) * sy),
               rotation: node.rotation(),
@@ -155,8 +191,9 @@ export function Shape({
           onContextMenu={handleContextMenu}
           onDragEnd={(e): void => {
             if (isMultiDrag()) return;
-            const dx = e.target.x();
-            const dy = e.target.y();
+            const rawDx = e.target.x();
+            const rawDy = e.target.y();
+            const { dx, dy } = clampPointsDelta(shape.points, rawDx, rawDy);
             const shifted = shape.points.map((v, i) =>
               i % 2 === 0 ? v + dx : v + dy,
             );
@@ -164,8 +201,6 @@ export function Shape({
             e.target.position({ x: 0, y: 0 });
           }}
           onTransformEnd={(e): void => {
-            // Arrow 의 rotation 은 Konva 노드 prop 으로 보존, scale 만 points 에 baking.
-            // node.x/y 는 dragend 와 같은 형태 — points 시작점으로 흡수.
             const node = e.target;
             const sx = node.scaleX();
             const sy = node.scaleY();
@@ -202,8 +237,9 @@ export function Shape({
           onContextMenu={handleContextMenu}
           onDragEnd={(e): void => {
             if (isMultiDrag()) return;
-            const dx = e.target.x();
-            const dy = e.target.y();
+            const rawDx = e.target.x();
+            const rawDy = e.target.y();
+            const { dx, dy } = clampPointsDelta(shape.points, rawDx, rawDy);
             const shifted = shape.points.map((v, i) =>
               i % 2 === 0 ? v + dx : v + dy,
             );
@@ -248,8 +284,9 @@ export function Shape({
           onContextMenu={handleContextMenu}
           onDragEnd={(e): void => {
             if (isMultiDrag()) return;
-            const dx = e.target.x();
-            const dy = e.target.y();
+            const rawDx = e.target.x();
+            const rawDy = e.target.y();
+            const { dx, dy } = clampPointsDelta(shape.points, rawDx, rawDy);
             const shifted = shape.points.map((v, i) =>
               i % 2 === 0 ? v + dx : v + dy,
             );
@@ -282,6 +319,8 @@ export function Shape({
           id={shape.id}
           x={shape.x}
           y={shape.y}
+          width={shape.width}
+          wrap="char"
           text={shape.text || '텍스트'}
           fill={shape.fill}
           fontSize={shape.fontSize}
@@ -296,18 +335,23 @@ export function Shape({
           onDblTap={(): void => setEditingId(shape.id)}
           onDragEnd={(e): void => {
             if (isMultiDrag()) return;
-            updateShape(shape.id, { x: e.target.x(), y: e.target.y() });
+            // w 를 넘겨 x + shape.width 가 이미지 오른쪽 경계를 벗어나지 않도록 클램프.
+            const { x, y } = clampXY(e.target.x(), e.target.y(), shape.width, 0);
+            e.target.position({ x, y });
+            updateShape(shape.id, { x, y });
           }}
           onTransformEnd={(e): void => {
-            // 텍스트는 fontSize 로 스케일 반영 (양 axis 평균).
             const node = e.target;
-            const scale = (node.scaleX() + node.scaleY()) / 2;
+            const sx = node.scaleX();
             node.scaleX(1);
             node.scaleY(1);
+            const { x, y } = clampXY(node.x(), node.y());
+            const { imageWidth: iw } = useEditorStore.getState();
             updateShape(shape.id, {
-              x: node.x(),
-              y: node.y(),
-              fontSize: Math.max(8, shape.fontSize * scale),
+              x,
+              y,
+              // width 도 이미지 오른쪽 경계를 넘지 않도록 클램프.
+              width: Math.max(40, Math.min(shape.width * sx, iw - x)),
             });
           }}
         />
@@ -328,7 +372,9 @@ export function Shape({
           onContextMenu={handleContextMenu}
           onDragEnd={(e): void => {
             if (isMultiDrag()) return;
-            updateShape(shape.id, { x: e.target.x(), y: e.target.y() });
+            const { x, y } = clampXY(e.target.x(), e.target.y(), shape.w, shape.h);
+            e.target.position({ x, y });
+            updateShape(shape.id, { x, y });
           }}
           onTransformEnd={(e): void => {
             const node = e.target;
@@ -336,9 +382,10 @@ export function Shape({
             const sy = node.scaleY();
             node.scaleX(1);
             node.scaleY(1);
+            const { x, y } = clampXY(node.x(), node.y(), shape.w * sx, shape.h * sy);
             updateShape(shape.id, {
-              x: node.x(),
-              y: node.y(),
+              x,
+              y,
               w: Math.max(5, shape.w * sx),
               h: Math.max(5, shape.h * sy),
             });
@@ -356,16 +403,19 @@ export function Shape({
           onContextMenu={handleContextMenu}
           onDragEnd={(node): void => {
             if (isMultiDrag()) return;
-            updateShape(shape.id, { x: node.x(), y: node.y() });
+            const { x, y } = clampXY(node.x(), node.y(), shape.w, shape.h);
+            node.position({ x, y });
+            updateShape(shape.id, { x, y });
           }}
           onTransformEnd={(node): void => {
             const sx = node.scaleX();
             const sy = node.scaleY();
             node.scaleX(1);
             node.scaleY(1);
+            const { x, y } = clampXY(node.x(), node.y(), shape.w * sx, shape.h * sy);
             updateShape(shape.id, {
-              x: node.x(),
-              y: node.y(),
+              x,
+              y,
               w: Math.max(10, shape.w * sx),
               h: Math.max(10, shape.h * sy),
             });
@@ -383,16 +433,19 @@ export function Shape({
           onContextMenu={handleContextMenu}
           onDragEnd={(node): void => {
             if (isMultiDrag()) return;
-            updateShape(shape.id, { x: node.x(), y: node.y() });
+            const { x, y } = clampXY(node.x(), node.y(), shape.w, shape.h);
+            node.position({ x, y });
+            updateShape(shape.id, { x, y });
           }}
           onTransformEnd={(node): void => {
             const sx = node.scaleX();
             const sy = node.scaleY();
             node.scaleX(1);
             node.scaleY(1);
+            const { x, y } = clampXY(node.x(), node.y(), shape.w * sx, shape.h * sy);
             updateShape(shape.id, {
-              x: node.x(),
-              y: node.y(),
+              x,
+              y,
               w: Math.max(10, shape.w * sx),
               h: Math.max(10, shape.h * sy),
             });
@@ -409,16 +462,19 @@ export function Shape({
           onContextMenu={handleContextMenu}
           onDragEnd={(node): void => {
             if (isMultiDrag()) return;
-            updateShape(shape.id, { x: node.x(), y: node.y() });
+            const { x, y } = clampXY(node.x(), node.y(), shape.w, shape.h);
+            node.position({ x, y });
+            updateShape(shape.id, { x, y });
           }}
           onTransformEnd={(node): void => {
             const sx = node.scaleX();
             const sy = node.scaleY();
             node.scaleX(1);
             node.scaleY(1);
+            const { x, y } = clampXY(node.x(), node.y(), shape.w * sx, shape.h * sy);
             updateShape(shape.id, {
-              x: node.x(),
-              y: node.y(),
+              x,
+              y,
               w: Math.max(10, shape.w * sx),
               h: Math.max(10, shape.h * sy),
               rotation: node.rotation(),
@@ -436,15 +492,18 @@ export function Shape({
           onContextMenu={handleContextMenu}
           onDragEnd={(node): void => {
             if (isMultiDrag()) return;
-            updateShape(shape.id, { x: node.x(), y: node.y() });
+            const { x, y } = clampXY(node.x(), node.y());
+            node.position({ x, y });
+            updateShape(shape.id, { x, y });
           }}
           onTransformEnd={(node): void => {
             const scale = (node.scaleX() + node.scaleY()) / 2;
             node.scaleX(1);
             node.scaleY(1);
+            const { x, y } = clampXY(node.x(), node.y());
             updateShape(shape.id, {
-              x: node.x(),
-              y: node.y(),
+              x,
+              y,
               fontSize: Math.max(8, shape.fontSize * scale),
             });
           }}

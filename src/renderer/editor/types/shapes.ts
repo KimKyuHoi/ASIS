@@ -76,6 +76,8 @@ export type TextShape = {
   id: string;
   x: number;
   y: number;
+  /** Stage 좌표계 너비 — 이 값으로 줄넘김 경계를 결정. */
+  width: number;
   text: string;
   fill: string;
   fontSize: number;

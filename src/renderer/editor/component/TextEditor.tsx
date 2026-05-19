@@ -7,25 +7,22 @@ import type { TextShape } from '../types/shapes';
 /**
  * 텍스트 도형 인라인 편집 textarea.
  *
- * react-konva-utils 의 Html 은 stage-wrap 안에서 좌표 추적이 의도대로
- * 동작하지 않아 폐기 (좌상단으로 박힘). 대신 createPortal 로 stage-wrap div 의
- * *직접 자식* 으로 textarea 를 마운트하고, position:absolute + (shape.x*scale, shape.y*scale)
- * 로 캔버스 좌표를 viewport pixel 로 직접 계산.
- *
- * 좌표 계산 규칙
- *   - shape.x, shape.y: Stage 좌표 (이미지 픽셀)
- *   - stage-wrap div 가 position:relative + width/height = imageSize * scale
- *   - 그 안 absolute 자식 의 left/top = shape.x * scale, shape.y * scale → 캔버스의 그 자리
- *   - fontSize 도 scale 적용 (시각적 크기 일치)
+ * 줄바꿈 전략
+ *   - textarea 는 fixedWidth(이미지 우측 경계까지) 고정 너비로 시각 줄바꿈.
+ *   - commit 시 canvas measureText 로 동일 폰트·너비 기준 줄바꿈 위치를 계산해
+ *     텍스트에 \n 을 직접 삽입해서 저장.
+ *   - KText 는 저장된 \n 기준으로만 렌더링 — CSS ↔ canvas font metric 차이에 무관.
  */
 export function TextEditor({
   shape,
   stageWrap,
   stageScale,
+  imageWidth,
 }: {
   shape: TextShape;
   stageWrap: HTMLElement;
   stageScale: number;
+  imageWidth: number;
 }): JSX.Element {
   const updateShape = useEditorStore((s) => s.updateShape);
   const deleteShape = useEditorStore((s) => s.deleteShape);
@@ -34,13 +31,11 @@ export function TextEditor({
   const ref = useRef<HTMLTextAreaElement>(null);
   const textRef = useRef<string>(shape.text);
 
-  // mount 시 textarea focus + 입력 race 방지를 위해 외부 click listener 는 setTimeout(0).
   useEffect(() => {
     const el = ref.current;
     if (!el) return undefined;
     el.value = shape.text;
     textRef.current = shape.text;
-    // height 을 content 에 맞춤.
     el.style.height = 'auto';
     el.style.height = `${el.scrollHeight}px`;
     el.focus();
@@ -50,12 +45,15 @@ export function TextEditor({
       const trimmed = textRef.current.trim();
       if (!trimmed) {
         deleteShape(shape.id);
-      } else if (trimmed !== shape.text) {
-        updateShape(shape.id, { text: trimmed });
+      } else {
+        // shape.width(생성 시 정해진 너비)를 기준으로 줄바꿈.
+        // 이미지 경계를 넘지 않도록 min 적용. KText padding 4px×2 = 8 제외.
+        const maxW = Math.max(40, imageWidth - shape.x);
+        const wrapWidth = Math.max(32, Math.min(shape.width, maxW) - 8);
+        const wrapped = applyLineWraps(trimmed, wrapWidth, shape.fontSize, shape.fontFamily);
+        updateShape(shape.id, { text: wrapped });
       }
       setEditingId(null);
-      // 편집 완료 후 select 도구로 복귀 — text 도구가 유지되면 canvas 클릭 시
-      // 새 텍스트가 계속 생성돼 focus 를 해제할 방법이 없어진다.
       setTool('select');
     };
 
@@ -73,15 +71,11 @@ export function TextEditor({
         e.preventDefault();
         cancel();
       }
-      // 글로벌 단축키로 새지 않게.
       e.stopPropagation();
     };
 
     const handleOutsideClick = (e: MouseEvent): void => {
       if (e.target === el) return;
-      // Toolbar 클릭(폰트·색상·크기 변경 등)은 편집 유지 — commit 하지 않음.
-      // toolbar mousedown 이 select 드롭다운을 열기 전 commit 을 호출하면
-      // 리렌더로 native dropdown 이 즉시 닫히는 현상 방지.
       if ((e.target as Element).closest?.('.toolbar')) return;
       commit();
     };
@@ -96,17 +90,21 @@ export function TextEditor({
       el.removeEventListener('keydown', handleKey);
       window.removeEventListener('mousedown', handleOutsideClick);
     };
-  }, [shape.id, shape.text, updateShape, deleteShape, setEditingId, setTool]);
+  }, [
+    shape.id, shape.text, shape.x, shape.width, shape.fontSize, shape.fontFamily,
+    stageScale, imageWidth, updateShape, deleteShape, setEditingId, setTool,
+  ]);
 
-  // viewport pixel 단위 — stage-wrap 안 absolute 좌표.
   const displayFontSize = Math.max(14, shape.fontSize * stageScale);
+  // shape.width 를 기준으로 textarea 너비 결정. 이미지 오른쪽 경계는 상한선.
+  const maxStageW = Math.max(40, imageWidth - shape.x);
+  const fixedWidth = Math.max(80, Math.min(shape.width, maxStageW) * stageScale);
 
   const style: CSSProperties = {
     position: 'absolute',
     left: shape.x * stageScale,
     top: shape.y * stageScale,
-    minWidth: 80,
-    width: 'auto',
+    width: fixedWidth,
     padding: '2px 4px',
     border: '1px dashed rgba(94, 162, 255, 0.8)',
     borderRadius: 2,
@@ -118,8 +116,11 @@ export function TextEditor({
     fontFamily: shape.fontFamily,
     lineHeight: 1.2,
     letterSpacing: '0.01em',
-    overflow: 'hidden',
+    // overflow 미지정(default auto) — hidden 은 Chromium/Electron 에서 textarea
+    // 내부 word-wrap 알고리즘을 비활성화해 한 줄로 이어버린다.
+    // 시각적 클리핑은 상위 stageWrap(overflow:hidden) 이 담당한다.
     overflowWrap: 'break-word',
+    wordBreak: 'break-all',
     whiteSpace: 'pre-wrap',
     caretColor: shape.fill,
     zIndex: 1000,
@@ -132,7 +133,6 @@ export function TextEditor({
       defaultValue={shape.text}
       onChange={(e): void => {
         textRef.current = e.target.value;
-        // content 따라 height 자동 갱신.
         const el = e.currentTarget;
         el.style.height = 'auto';
         el.style.height = `${el.scrollHeight}px`;
@@ -143,4 +143,46 @@ export function TextEditor({
     />,
     stageWrap,
   );
+}
+
+/**
+ * canvas measureText 로 줄바꿈 위치를 계산해 텍스트에 \n 을 삽입한다.
+ * Konva Text 노드가 내부적으로 같은 방식으로 wrap 하므로 결과가 일치한다.
+ *
+ * @param text       원문 (이미 \n 포함 가능)
+ * @param maxWidth   stage 좌표 픽셀 (KText padding 제외한 실제 텍스트 영역)
+ * @param fontSize   stage 좌표 폰트 크기
+ * @param fontFamily CSS font-family 문자열
+ */
+function applyLineWraps(
+  text: string,
+  maxWidth: number,
+  fontSize: number,
+  fontFamily: string,
+): string {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return text;
+  ctx.font = `${fontSize}px ${fontFamily}`;
+
+  const result: string[] = [];
+  for (const para of text.split('\n')) {
+    if (para === '') {
+      result.push('');
+      continue;
+    }
+    let line = '';
+    let paraResult = '';
+    for (const char of para) {
+      const test = line + char;
+      if (ctx.measureText(test).width > maxWidth && line !== '') {
+        paraResult += `${line}\n`;
+        line = char;
+      } else {
+        line = test;
+      }
+    }
+    result.push(paraResult + line);
+  }
+  return result.join('\n');
 }

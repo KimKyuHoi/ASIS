@@ -33,6 +33,12 @@ const selection = {
   },
   /** onWindows listener 를 attach 한 후 호출 — main 에 "이제 보내도 됨" 신호. */
   ready: (): void => ipcRenderer.send('capture:ready'),
+  /** 마우스 위치의 AXUIElement bounds 조회 — 손쉬운 사용 권한 없으면 null. */
+  elementAt: (
+    x: number,
+    y: number,
+  ): Promise<{ x: number; y: number; w: number; h: number } | null> =>
+    ipcRenderer.invoke('capture:element-at', x, y),
 };
 
 /**

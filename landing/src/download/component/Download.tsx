@@ -1,6 +1,15 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 
+// 광고 차단기 등으로 GA 스크립트가 로드 안 될 수 있으므로 존재 여부를 확인한다
+declare global {
+  // eslint: .d.ts 밖 Window augment 는 consistent-type-definitions 예외.
+  // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
+  interface Window {
+    gtag?: (...args: unknown[]) => void;
+  }
+}
+
 const INSTALL_CMD =
   'curl -fsSL https://raw.githubusercontent.com/KimKyuHoi/ASIS/main/landing/public/ASIS-installer.command | bash';
 
@@ -17,6 +26,7 @@ export function Download({ armHref, intelHref, version }: DownloadProps): React.
     navigator.clipboard.writeText(INSTALL_CMD).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+      window.gtag?.('event', 'copy_install_cmd');
     });
   };
 
@@ -126,11 +136,19 @@ export function Download({ armHref, intelHref, version }: DownloadProps): React.
 
         <p className="download-note">
           {version && `${version} · `}직접 PKG 파일을 설치하려면{' '}
-          <a href={armHref} className="download-link">
+          <a
+            href={armHref}
+            className="download-link"
+            onClick={() => window.gtag?.('event', 'download_click', { arch: 'arm64' })}
+          >
             Apple Silicon
           </a>
           {' · '}
-          <a href={intelHref} className="download-link">
+          <a
+            href={intelHref}
+            className="download-link"
+            onClick={() => window.gtag?.('event', 'download_click', { arch: 'x64' })}
+          >
             Intel
           </a>
         </p>

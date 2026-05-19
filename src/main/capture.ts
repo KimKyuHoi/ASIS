@@ -43,10 +43,10 @@ export function captureWindow(): Promise<CaptureResult> {
 
 /**
  * 윈도우 ID 캡처. CGWindowID 로 특정 윈도우만 잡는다.
- * `-R` 과 달리 그림자를 제외한 윈도우 콘텐츠만 정확히 캡처한다.
+ * `-o`: window capture mode 에서 shadow 를 PNG 에 포함하지 않는다.
  */
 export function captureWindowById(windowId: number): Promise<CaptureResult> {
-  return captureToFile(['-x', '-l', String(windowId), '-t', 'png']);
+  return captureToFile(['-x', '-l', String(windowId), '-o', '-t', 'png']);
 }
 
 /**

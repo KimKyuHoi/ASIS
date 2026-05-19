@@ -1,6 +1,8 @@
 import { systemPreferences } from 'electron';
 import koffi from 'koffi';
 
+export type ElementBounds = { x: number; y: number; w: number; h: number };
+
 /**
  * macOS 의 *모든 visible 윈도우* 의 bounds 를 받아오는 모듈.
  *
@@ -171,4 +173,99 @@ export function listWindows(): Promise<WindowInfo[]> {
       resolve([]);
     }
   });
+}
+
+// ---------------------------------------------------------------------------
+// AXUIElement — 마우스 위치의 개별 UI 요소 bounds 조회
+// ---------------------------------------------------------------------------
+
+type AXFns = {
+  createSystemWide: () => unknown;
+  elementAtPos: (sys: unknown, x: number, y: number, out: unknown[]) => number;
+  copyAttrValue: (el: unknown, attr: unknown, out: unknown[]) => number;
+  axValueGetValue: (
+    val: unknown,
+    type: number,
+    out: Array<{ x: number; y: number; width: number; height: number }>,
+  ) => boolean;
+  release: (ref: unknown) => void;
+};
+
+let _axFns: AXFns | null = null;
+
+function getAxFns(): AXFns {
+  if (_axFns) return _axFns;
+
+  const AXRef = koffi.pointer('AXRef', koffi.opaque());
+  const CGRectStruct = koffi.struct('CGRect_t', {
+    x: 'double',
+    y: 'double',
+    width: 'double',
+    height: 'double',
+  });
+
+  const AS = koffi.load(
+    '/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices',
+  );
+
+  _axFns = {
+    createSystemWide: AS.func('AXRef AXUIElementCreateSystemWide()'),
+    // AXError(int32) 반환 — 0 이면 success.
+    elementAtPos: AS.func('int32 AXUIElementCopyElementAtPosition(AXRef, float, float, _Out_ AXRef *)'),
+    copyAttrValue: AS.func('int32 AXUIElementCopyAttributeValue(AXRef, AXRef, _Out_ AXRef *)'),
+    // AXRef 변수를 직접 참조해 TS unused-var 경고 방지 (CfRef 패턴과 동일).
+    axValueGetValue: AS.func(
+      'bool',
+      'AXValueGetValue',
+      [AXRef, 'int32', koffi.out(koffi.pointer(CGRectStruct))],
+    ),
+    release: AS.func('void CFRelease(AXRef)'),
+  };
+  return _axFns;
+}
+
+const kAXErrorSuccess = 0;
+const kAXFrameAttribute = 'AXFrame';
+const kAXValueCGRectType = 3;
+
+/**
+ * 주어진 macOS 스크린 좌표(논리 픽셀)에서 가장 구체적인 AXUIElement 의 frame 반환.
+ * 손쉬운 사용 권한이 없거나 실패하면 null.
+ */
+export function getElementBoundsAtPoint(
+  screenX: number,
+  screenY: number,
+): ElementBounds | null {
+  if (!ensureAccessibilityPermission(false)) return null;
+  try {
+    const f = getAxFns();
+    const sys = f.createSystemWide();
+    const elOut: unknown[] = [null];
+    const axErr = f.elementAtPos(sys, screenX, screenY, elOut);
+    f.release(sys);
+    if (axErr !== kAXErrorSuccess || !elOut[0]) return null;
+
+    const el = elOut[0];
+    // kAXFrameAttribute 문자열을 CFString 으로 변환.
+    const { strCreate, release } = getFns();
+    const attrKey = strCreate(null, kAXFrameAttribute, kCFStringEncodingUTF8);
+    const valOut: unknown[] = [null];
+    const attrErr = f.copyAttrValue(el, attrKey, valOut);
+    release(attrKey);
+    f.release(el);
+    if (attrErr !== kAXErrorSuccess || !valOut[0]) return null;
+
+    const axVal = valOut[0];
+    const rectOut = [{ x: 0, y: 0, width: 0, height: 0 }];
+    const ok = f.axValueGetValue(axVal, kAXValueCGRectType, rectOut);
+    f.release(axVal);
+    if (!ok) return null;
+
+    const { x, y, width: w, height: h } = rectOut[0];
+    if (w < 2 || h < 2) return null;
+    return { x, y, w, h };
+  } catch (err: unknown) {
+    console.warn('[asis] getElementBoundsAtPoint 실패:', err);
+    return null;
+  }
 }

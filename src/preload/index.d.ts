@@ -16,6 +16,10 @@ type SelectionAPI = {
   onBackground: (callback: (dataUrl: string) => void) => void;
   onWindows: (callback: (windows: WindowInfo[]) => void) => void;
   ready: () => void;
+  elementAt: (
+    x: number,
+    y: number,
+  ) => Promise<{ x: number; y: number; w: number; h: number } | null>;
 };
 
 type EditorAPI = {

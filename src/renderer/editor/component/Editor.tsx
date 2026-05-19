@@ -229,6 +229,8 @@ export default function Editor(): JSX.Element {
         id,
         x,
         y,
+        // 기본 200px. 이미지 오른쪽 경계를 넘지 않도록 min, 너무 좁으면 40px 최소.
+        width: Math.min(200, Math.max(40, imageWidth - x)),
         text: '',
         fill: color,
         fontSize,
@@ -509,8 +511,10 @@ export default function Editor(): JSX.Element {
             ref={setStageWrap}
             tabIndex={-1}
             style={{
+              position: 'relative',
               width: imageWidth * stageScale,
               height: imageHeight * stageScale,
+              overflow: 'hidden',
               outline: 'none',
             }}
             onMouseDown={(): void => {
@@ -677,8 +681,9 @@ export default function Editor(): JSX.Element {
                     bgImage={bgImage}
                     isEditing={s.id === editingId}
                     onSelect={(evt): void => {
-                      // 도형 클릭 시 어느 도구든 선택 가능 (Figma 결).
-                      // shift 누르면 토글 추가 선택.
+                      // 그리기 도구가 활성화된 상태에서는 기존 도형을 선택하지 않는다.
+                      // 클릭이 Stage onPointerDown 으로 전파되어 새 도형 그리기를 시작하도록 둔다.
+                      if (tool !== 'select') return;
                       selectShape(s.id, evt.evt.shiftKey);
                     }}
                     onContextMenu={(e: Konva.KonvaEventObject<MouseEvent>): void => {
@@ -731,6 +736,7 @@ export default function Editor(): JSX.Element {
                 shape={editingText}
                 stageWrap={stageWrap}
                 stageScale={stageScale}
+                imageWidth={imageWidth}
               />
             ) : null}
           </div>

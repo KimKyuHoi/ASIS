@@ -9,6 +9,16 @@
       name="description"
       content="스크린샷을 찍고, 그 위에 바로 그리고, 클립보드로 복사하거나 핀으로 화면에 고정하세요."
     />
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+    <script>
+      window.dataLayer = window.dataLayer || []
+      function gtag() {
+        dataLayer.push(arguments)
+      }
+      gtag('js', new Date())
+      gtag('config', 'G-XXXXXXXXXX')
+    </script>
   </head>
   <body>
     <div id="root"></div>

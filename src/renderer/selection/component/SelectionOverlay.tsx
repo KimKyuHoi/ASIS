@@ -28,6 +28,8 @@ export default function SelectionOverlay(): JSX.Element {
   const [windows, setWindows] = useState<
     Array<{ id: number; name: string; x: number; y: number; w: number; h: number }>
   >([]);
+  type HoverElement = { x: number; y: number; w: number; h: number };
+  const [hoverElement, setHoverElement] = useState<HoverElement | null>(null);
   // pointerdown 시 hit 된 윈도우 후보 — 이동 없이 pointerup 되면(클릭) 그 윈도우를 캡처.
   // 이동이 있으면(드래그) 무시 → 일반 rect 드래그로 전환.
   const pendingWindowHitRef = useRef<{
@@ -37,7 +39,21 @@ export default function SelectionOverlay(): JSX.Element {
     w: number;
     h: number;
   } | null>(null);
+  const pendingElementHitRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
   const dragStartRef = useRef<{ x: number; y: number } | null>(null);
+  // AX 쿼리 throttle — 50ms 마다 한 번만 IPC 전송.
+  const lastElementQueryRef = useRef<number>(0);
+  // 이벤트 핸들러 안에서 최신 hoverElement / state.kind 를 읽기 위한 refs.
+  // useEffect deps 를 [windows] 로 고정해 리스너 teardown 레이스를 방지한다.
+  const hoverElementRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
+  const stateKindRef = useRef<string>('idle');
+
+  // 최신 값을 이벤트 핸들러가 읽을 수 있도록 렌더 직후 ref 갱신.
+  // 렌더 중 ref.current 를 직접 쓰면 react-hooks/refs 룰 위반이므로 useEffect 로 처리.
+  useEffect(() => {
+    hoverElementRef.current = hoverElement;
+    stateKindRef.current = state.kind;
+  });
 
   // main → renderer: visible 윈도우 list. 권한 없으면 빈 배열.
   // onWindows listener 를 attach 한 직후 ready() 호출 — main 이 그 신호를 받은 후
@@ -84,7 +100,6 @@ export default function SelectionOverlay(): JSX.Element {
   // 돌아와도 박스 상태가 유지되어야 한다.
   useEffect(() => {
     const onPointerDown = (e: PointerEvent): void => {
-      // 우클릭 = 취소 (macOS 캡처 도구 컨벤션).
       if (e.button === 2) {
         cancel();
         return;
@@ -93,10 +108,9 @@ export default function SelectionOverlay(): JSX.Element {
 
       dragStartRef.current = { x: e.clientX, y: e.clientY };
 
-      // UI 자동 감지: hit 윈도우를 *즉시 캡처하지 않고* ref 에 저장.
-      // pointerup 에서 이동 거리가 작으면(클릭) hit 윈도우를 캡처하고,
-      // 이동이 있으면(드래그) 무시 → 일반 rect 드래그로 자연스럽게 전환.
       if (!e.shiftKey) {
+        // AX element 가 있으면 우선, 없으면 window hit 으로 fallback.
+        pendingElementHitRef.current = hoverElementRef.current;
         const hits = windows.filter(
           (w) =>
             e.clientX >= w.x &&
@@ -111,6 +125,7 @@ export default function SelectionOverlay(): JSX.Element {
           pendingWindowHitRef.current = null;
         }
       } else {
+        pendingElementHitRef.current = null;
         pendingWindowHitRef.current = null;
       }
 
@@ -120,22 +135,40 @@ export default function SelectionOverlay(): JSX.Element {
     const onPointerMove = (e: PointerEvent): void => {
       dispatch({ type: 'pointer-move', point: { x: e.clientX, y: e.clientY } });
       setPointer({ x: e.clientX, y: e.clientY });
+
+      // idle 상태에서만 AX 쿼리 — 드래그 중에는 불필요.
+      if (stateKindRef.current !== 'idle') return;
+      const now = Date.now();
+      if (now - lastElementQueryRef.current < 50) return;
+      lastElementQueryRef.current = now;
+      window.selection.elementAt(e.clientX, e.clientY).then((el) => {
+        setHoverElement(el);
+      }).catch(() => {
+        setHoverElement(null);
+      });
     };
 
     const onPointerUp = (e: PointerEvent): void => {
       const start = dragStartRef.current;
+      const elementHit = pendingElementHitRef.current;
       const windowHit = pendingWindowHitRef.current;
       dragStartRef.current = null;
+      pendingElementHitRef.current = null;
       pendingWindowHitRef.current = null;
 
-      // 이동 거리가 MIN_RECT_SIZE 미만 = 클릭. hit 윈도우가 있으면 그 영역을 캡처.
-      // 이동이 충분하면 일반 드래그 rect — reducer 의 committed 전이가 capture 처리.
-      if (start && windowHit) {
+      if (start) {
         const dx = e.clientX - start.x;
         const dy = e.clientY - start.y;
-        if (dx * dx + dy * dy < MIN_RECT_SIZE * MIN_RECT_SIZE) {
-          dispatch({ type: 'pointer-up' }); // reducer → idle
-          capture({ ...windowHit, windowId: windowHit.id });
+        const isClick = dx * dx + dy * dy < MIN_RECT_SIZE * MIN_RECT_SIZE;
+        if (isClick) {
+          dispatch({ type: 'pointer-up' });
+          // AX element 우선, 없으면 window hit.
+          const windowTarget = windowHit ? { ...windowHit, windowId: windowHit.id } : null;
+          const target = elementHit ?? windowTarget;
+          if (target) {
+            capture(target);
+            return;
+          }
           return;
         }
       }
@@ -165,6 +198,9 @@ export default function SelectionOverlay(): JSX.Element {
       window.removeEventListener('contextmenu', onContextMenu);
       window.removeEventListener('keydown', onKeyDown);
     };
+  // deps 를 [windows] 로만 제한 — state.kind / hoverElement 변경 때마다
+  // 리스너를 해제·재등록하면 pointerdown → pointerup 사이에 teardown 레이스가
+  // 발생해 pointerup 이 누락된다. 최신값은 ref 로 읽는다.
   }, [windows]);
 
   // committed 로 전이되면 commit 펄스 애니메이션이 끝나고 IPC 전송한다.
@@ -217,7 +253,12 @@ export default function SelectionOverlay(): JSX.Element {
         </>
       ) : null}
 
-      {hoverWindow ? <WindowSnap rect={hoverWindow} /> : null}
+      {/* AX element 감지 우선, 없으면 window 단위 fallback. idle 상태에서만 표시 */}
+      {state.kind === 'idle' && (hoverElement
+        ? <WindowSnap rect={hoverElement} priority />
+        : hoverWindow
+          ? <WindowSnap rect={hoverWindow} />
+          : null)}
 
       <Hint visible={state.kind === 'idle'} />
 
@@ -242,16 +283,19 @@ export default function SelectionOverlay(): JSX.Element {
  */
 function WindowSnap({
   rect,
+  priority = false,
 }: {
   rect: { x: number; y: number; w: number; h: number };
+  priority?: boolean;
 }): JSX.Element {
+  const color = priority ? 'rgba(255, 180, 50, 0.9)' : 'rgba(94, 162, 255, 0.85)';
   const style: CSSProperties = {
     position: 'fixed',
     left: rect.x,
     top: rect.y,
     width: rect.w,
     height: rect.h,
-    border: '2px dashed rgba(94, 162, 255, 0.85)',
+    border: `2px solid ${color}`,
     borderRadius: 4,
     pointerEvents: 'none',
     boxShadow:
