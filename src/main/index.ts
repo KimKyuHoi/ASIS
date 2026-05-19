@@ -22,7 +22,7 @@ import { SettingsWindowManager } from './windows/settingsWindow';
 import { HistoryWindowManager } from './windows/historyWindow';
 import { getEntries } from './captureHistory';
 import { checkPermissionsOnLaunch, guardCapture, openPermissionSettings } from './permissions';
-import { fetchLatestTag, isNewer } from './updateChecker';
+import { fetchLatestTag, isNewer, downloadUpdatePkg } from './updateChecker';
 
 /**
  * ASIS — macOS 메뉴바 캡처·어노테이션 도구.
@@ -368,10 +368,16 @@ app.whenReady().then(() => {
   setTimeout(() => {
     const current = app.getVersion();
     fetchLatestTag().then((latest) => {
-      if (latest && isNewer(latest, current)) {
+      if (!latest || !isNewer(latest, current)) return;
+      trayManager.setUpdateDownloading(latest);
+      notifyInfo(`새 버전 ${latest} 발견 — 백그라운드 다운로드 중`);
+      downloadUpdatePkg(latest).then((pkgPath) => {
+        trayManager.setUpdateReady(latest, pkgPath);
+        notifyInfo(`업데이트 ${latest} 준비 완료 — 트레이 메뉴에서 설치`);
+      }).catch((err: unknown) => {
+        console.warn('[asis] update download failed', err);
         notifyInfo(`새 버전 ${latest} 사용 가능 — 메뉴바에서 업데이트`);
-        trayManager.setUpdateAvailable(latest);
-      }
+      });
     }).catch((err: unknown) => {
       console.warn('[asis] update check failed', err);
     });

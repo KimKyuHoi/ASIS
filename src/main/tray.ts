@@ -31,12 +31,16 @@ export type TrayMenuHandlers = {
   onOpenPermissions: () => void;
 };
 
-const LANDING_URL = 'https://kimkyuhoi.github.io/ASIS';
+
+type UpdateState =
+  | { kind: 'none' } |
+  { kind: 'downloading'; version: string } |
+  { kind: 'ready'; version: string; pkgPath: string };
 
 export class TrayManager {
   private tray: Tray | null = null;
   private handlers: TrayMenuHandlers | null = null;
-  private updateVersion: string | null = null;
+  private updateState: UpdateState = { kind: 'none' };
 
   start(handlers: TrayMenuHandlers): void {
     if (this.tray) {
@@ -60,10 +64,17 @@ export class TrayManager {
     this.tray.setContextMenu(this.buildContextMenu(handlers));
   }
 
-  /** 새 버전이 발견됐을 때 호출 — 트레이 메뉴 상단에 업데이트 항목 추가. */
-  setUpdateAvailable(version: string): void {
+  /** 새 버전 발견 직후 — 다운로드 중 상태로 메뉴 갱신. */
+  setUpdateDownloading(version: string): void {
     if (!this.tray || !this.handlers) return;
-    this.updateVersion = version;
+    this.updateState = { kind: 'downloading', version };
+    this.tray.setContextMenu(this.buildContextMenu(this.handlers));
+  }
+
+  /** 다운로드 완료 — 설치 준비 상태로 메뉴 갱신. */
+  setUpdateReady(version: string, pkgPath: string): void {
+    if (!this.tray || !this.handlers) return;
+    this.updateState = { kind: 'ready', version, pkgPath };
     this.tray.setContextMenu(this.buildContextMenu(this.handlers));
   }
 
@@ -76,15 +87,25 @@ export class TrayManager {
   }
 
   private buildContextMenu(handlers: TrayMenuHandlers): Menu {
-    const updateItems: Electron.MenuItemConstructorOptions[] = this.updateVersion
-      ? [
+    const state = this.updateState;
+    let updateItems: Electron.MenuItemConstructorOptions[];
+    if (state.kind === 'downloading') {
+      updateItems = [
+        { label: `새 버전 ${state.version} 다운로드 중…`, enabled: false },
+        { type: 'separator' },
+      ];
+    } else if (state.kind === 'ready') {
+      const { pkgPath, version } = state;
+      updateItems = [
         {
-          label: `새 버전 ${this.updateVersion} 사용 가능 →`,
-          click: () => { shell.openExternal(LANDING_URL).catch(() => {}); },
+          label: `업데이트 ${version} 설치하기`,
+          click: () => { shell.openPath(pkgPath).catch(() => {}); },
         },
         { type: 'separator' },
-      ]
-      : [];
+      ];
+    } else {
+      updateItems = [];
+    }
 
     return Menu.buildFromTemplate([
       // 헤더 — 비활성 라벨로 앱 정체성 표시 (CleanShot/Shottr 결).
