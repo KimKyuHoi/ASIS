@@ -1,4 +1,5 @@
 import https from 'node:https';
+import { spawn } from 'node:child_process';
 import { createWriteStream } from 'node:fs';
 import { unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -96,6 +97,35 @@ function downloadFile(url: string, dest: string): Promise<void> {
     };
 
     request(url, 0);
+  });
+}
+
+/**
+ * osascript 로 관리자 권한을 요청한 뒤 installer -pkg 를 실행한다.
+ * macOS Installer GUI 없이 설치되고, 사용자는 비밀번호 한 번만 입력한다.
+ * 비밀번호 대화상자를 취소하면 Error('canceled') 로 reject 된다.
+ */
+export function installPkg(pkgPath: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const escaped = pkgPath.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const script = `do shell script "installer -pkg \\"${escaped}\\" -target /" with administrator privileges`;
+    const child = spawn('osascript', ['-e', script]);
+    const stderrChunks: Buffer[] = [];
+    child.stderr.on('data', (chunk: Buffer) => stderrChunks.push(chunk));
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      const stderr = Buffer.concat(stderrChunks).toString().trim();
+      // AppleScript error -128 = 사용자가 비밀번호 대화상자를 취소
+      if (stderr.includes('-128') || stderr.toLowerCase().includes('user canceled')) {
+        reject(new Error('canceled'));
+        return;
+      }
+      reject(new Error(`installer 실패 (exit ${code}): ${stderr}`));
+    });
   });
 }
 

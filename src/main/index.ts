@@ -22,7 +22,7 @@ import { SettingsWindowManager } from './windows/settingsWindow';
 import { HistoryWindowManager } from './windows/historyWindow';
 import { getEntries } from './captureHistory';
 import { checkPermissionsOnLaunch, guardCapture, openPermissionSettings } from './permissions';
-import { fetchLatestTag, isNewer, downloadUpdatePkg } from './updateChecker';
+import { fetchLatestTag, isNewer, downloadUpdatePkg, installPkg } from './updateChecker';
 
 /**
  * ASIS — macOS 메뉴바 캡처·어노테이션 도구.
@@ -364,24 +364,58 @@ app.whenReady().then(() => {
     console.error('[asis] permission check failed', err);
   });
 
-  // 업데이트 체크 — 네트워크 지연이 있으므로 5초 뒤 백그라운드 실행.
-  setTimeout(() => {
+  // 업데이트 체크 — 앱 시작 5초 후 첫 체크, 이후 3일마다 반복.
+  // 새 버전이 있으면 백그라운드 다운로드 → 알림 → 클릭 시 자동 설치.
+  const CHECK_INTERVAL_MS = 3 * 24 * 60 * 60 * 1000; // 3일
+  let pendingUpdateVersion: string | null = null;
+
+  const checkAndNotifyUpdate = (): void => {
     const current = app.getVersion();
     fetchLatestTag().then((latest) => {
       if (!latest || !isNewer(latest, current)) return;
-      trayManager.setUpdateDownloading(latest);
-      notifyInfo(`새 버전 ${latest} 발견 — 백그라운드 다운로드 중`);
+      // 이미 같은 버전 다운로드/알림이 진행 중이면 중복 실행 방지
+      if (pendingUpdateVersion === latest) return;
+      pendingUpdateVersion = latest;
+
       downloadUpdatePkg(latest).then((pkgPath) => {
-        trayManager.setUpdateReady(latest, pkgPath);
-        notifyInfo(`업데이트 ${latest} 준비 완료 — 트레이 메뉴에서 설치`);
+        const notification = new Notification({
+          title: `ASIS ${latest} 업데이트 준비 완료`,
+          body: '클릭하면 비밀번호 한 번으로 자동 설치됩니다',
+        });
+        notification.on('click', () => {
+          dialog.showMessageBox({
+            type: 'info',
+            title: `ASIS ${latest} 업데이트`,
+            message: '지금 설치하고 재시작하시겠어요?',
+            detail: '비밀번호를 한 번 입력하면 설치 후 자동으로 재시작합니다.',
+            buttons: ['지금 설치', '나중에'],
+            defaultId: 0,
+            cancelId: 1,
+          }).then((result) => {
+            if (result.response !== 0) return;
+            installPkg(pkgPath).then(() => {
+              app.relaunch();
+              app.quit();
+            }).catch((err: unknown) => {
+              const msg = err instanceof Error ? err.message : String(err);
+              if (msg !== 'canceled') {
+                notifyError(`업데이트 설치 실패: ${msg}`);
+              }
+            });
+          }).catch(() => {});
+        });
+        notification.show();
       }).catch((err: unknown) => {
+        pendingUpdateVersion = null;
         console.warn('[asis] update download failed', err);
-        notifyInfo(`새 버전 ${latest} 사용 가능 — 메뉴바에서 업데이트`);
       });
     }).catch((err: unknown) => {
       console.warn('[asis] update check failed', err);
     });
-  }, 5000);
+  };
+
+  setTimeout(checkAndNotifyUpdate, 5000);
+  setInterval(checkAndNotifyUpdate, CHECK_INTERVAL_MS);
 }).catch((err: unknown) => {
   // app.whenReady() 체인의 미처리 에러가 조용히 삼켜지는 걸 방지.
   console.error('[asis] app initialization failed', err);
