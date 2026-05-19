@@ -403,7 +403,9 @@ app.whenReady().then(() => {
             if (result.response !== 0) return;
             installPkg(pkgPath).then(() => {
               app.relaunch();
-              app.quit();
+              // exit(0) — before-quit 이벤트 체인을 건너뛰고 즉시 종료.
+              // quit() 은 윈도우 close 핸들러를 거치므로 블록될 수 있다.
+              setTimeout(() => app.exit(0), 300);
             }).catch((err: unknown) => {
               const msg = err instanceof Error ? err.message : String(err);
               if (msg !== 'canceled') {
