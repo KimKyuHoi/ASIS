@@ -30,6 +30,7 @@ export function TextEditor({
   const updateShape = useEditorStore((s) => s.updateShape);
   const deleteShape = useEditorStore((s) => s.deleteShape);
   const setEditingId = useEditorStore((s) => s.setEditingId);
+  const setTool = useEditorStore((s) => s.setTool);
   const ref = useRef<HTMLTextAreaElement>(null);
   const textRef = useRef<string>(shape.text);
 
@@ -53,11 +54,15 @@ export function TextEditor({
         updateShape(shape.id, { text: trimmed });
       }
       setEditingId(null);
+      // 편집 완료 후 select 도구로 복귀 — text 도구가 유지되면 canvas 클릭 시
+      // 새 텍스트가 계속 생성돼 focus 를 해제할 방법이 없어진다.
+      setTool('select');
     };
 
     const cancel = (): void => {
       if (!shape.text) deleteShape(shape.id);
       setEditingId(null);
+      setTool('select');
     };
 
     const handleKey = (e: KeyboardEvent): void => {
@@ -91,7 +96,7 @@ export function TextEditor({
       el.removeEventListener('keydown', handleKey);
       window.removeEventListener('mousedown', handleOutsideClick);
     };
-  }, [shape.id, shape.text, updateShape, deleteShape, setEditingId]);
+  }, [shape.id, shape.text, updateShape, deleteShape, setEditingId, setTool]);
 
   // viewport pixel 단위 — stage-wrap 안 absolute 좌표.
   const displayFontSize = Math.max(14, shape.fontSize * stageScale);
