@@ -234,6 +234,14 @@ ipcMain.handle('history:pin', (_event, dataUrl: string, w: number, h: number) =>
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.pinkfong.asis');
 
+  // 업데이트 완료 감지 — lastLaunchedVersion 이 현재보다 낮으면 방금 업데이트된 것.
+  const current = app.getVersion();
+  const lastVersion = settingsStore.get('lastLaunchedVersion');
+  if (lastVersion && isNewer(current, lastVersion)) {
+    notifyInfo(`ASIS ${current} 업데이트 완료!`);
+  }
+  settingsStore.set('lastLaunchedVersion', current);
+
   if (process.platform === 'darwin' && app.dock) {
     const prodPath = join(process.resourcesPath, 'icon.png');
     const iconPath = existsSync(prodPath) ? prodPath : devAppIconPath;

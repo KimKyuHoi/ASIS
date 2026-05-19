@@ -26,6 +26,8 @@ export type Settings = {
   /** 폴더 자동 저장 경로. 빈 문자열 = 기본값(~/Pictures/ASIS). */
   saveFolderPath: string;
   misc: MiscConfig;
+  /** 직전 실행 시 버전 — 업데이트 완료 알림 감지에 사용. */
+  lastLaunchedVersion: string;
 };
 
 export const DEFAULT_HOTKEYS: HotkeyConfig = {
@@ -50,5 +52,6 @@ export const settingsStore = new ElectronStore<Settings>({
     hotkeys: DEFAULT_HOTKEYS,
     saveFolderPath: '',
     misc: DEFAULT_MISC,
+    lastLaunchedVersion: '',
   },
 });
