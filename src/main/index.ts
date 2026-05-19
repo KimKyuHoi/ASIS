@@ -1,4 +1,4 @@
-import { app, clipboard, dialog, ipcMain, nativeImage, Notification } from 'electron';
+import { app, clipboard, dialog, ipcMain, nativeImage, Notification, screen } from 'electron';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -9,7 +9,6 @@ import { ShortcutManager } from './shortcuts';
 import { settingsStore } from './settings';
 import type { HotkeyConfig, MiscConfig } from './settings';
 import {
-  captureFullscreen,
   captureRegion,
   captureWindow,
   captureWindowById,
@@ -61,12 +60,44 @@ const notifyError = (body: string): void => {
   new Notification({ title: 'ASIS — 오류', body }).show();
 };
 
+const HOVER_DELAY_MS = 3000;
+
 /**
- * 캡처 → 에디터 → 클립보드 흐름.
- *  1) capture() 로 PNG path 받음 (canceled 면 silent 종료)
- *  2) editorWindow.show(path) 로 어노테이션 에디터 띄움
- *  3) 사용자 "복사" → kind: 'copied' → 알림
- *     사용자 "취소"/ESC → kind: 'canceled' → silent
+ * 캡처 → 에디터 → 클립보드 흐름 (권한 체크 없음 — 호출 전 체크 완료 가정).
+ */
+const runCapture = (
+  label: string,
+  capture: () => Promise<CaptureResult>,
+): void => {
+  capture().then(
+    (result) => {
+      if (result.kind !== 'success') return;
+      editorWindow.show(result.path).then(
+        (editorResult) => {
+          if (editorResult.kind === 'copied') {
+            notifyInfo(`${label} — 클립보드에 복사되었습니다`);
+            if (settingsStore.get('misc').captureSound && process.platform === 'darwin') {
+              spawn('afplay', ['/System/Library/Sounds/Tink.aiff']).on('error', () => {});
+            }
+          }
+        },
+        (err: unknown) => {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error(`[asis] ${label} 에디터 실패`, err);
+          notifyError(`${label} 에디터 실패: ${message}`);
+        },
+      );
+    },
+    (err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[asis] ${label} 실패`, err);
+      notifyError(`${label} 실패: ${message}`);
+    },
+  );
+};
+
+/**
+ * 캡처 → 에디터 → 클립보드 흐름 (권한 체크 포함).
  */
 const handleCapture = (
   label: string,
@@ -74,31 +105,7 @@ const handleCapture = (
 ): void => {
   guardCapture().then((ok) => {
     if (!ok) return;
-    capture().then(
-      (result) => {
-        if (result.kind !== 'success') return;
-        editorWindow.show(result.path).then(
-          (editorResult) => {
-            if (editorResult.kind === 'copied') {
-              notifyInfo(`${label} — 클립보드에 복사되었습니다`);
-              if (settingsStore.get('misc').captureSound && process.platform === 'darwin') {
-                spawn('afplay', ['/System/Library/Sounds/Tink.aiff']).on('error', () => {});
-              }
-            }
-          },
-          (err: unknown) => {
-            const message = err instanceof Error ? err.message : String(err);
-            console.error(`[asis] ${label} 에디터 실패`, err);
-            notifyError(`${label} 에디터 실패: ${message}`);
-          },
-        );
-      },
-      (err: unknown) => {
-        const message = err instanceof Error ? err.message : String(err);
-        console.error(`[asis] ${label} 실패`, err);
-        notifyError(`${label} 실패: ${message}`);
-      },
-    );
+    runCapture(label, capture);
   });
 };
 
@@ -246,13 +253,62 @@ app.whenReady().then(() => {
   });
 
   const onFullscreen = (): void => {
-    handleCapture('전체화면 캡처', captureFullscreen);
+    // 커서가 있는 디스플레이를 캡처 — 다중 모니터 지원.
+    const cursor = screen.getCursorScreenPoint();
+    const d = screen.getDisplayNearestPoint(cursor);
+    handleCapture('전체화면 캡처', () =>
+      captureRegion({ x: d.bounds.x, y: d.bounds.y, w: d.bounds.width, h: d.bounds.height }),
+    );
   };
   const onWindow = (): void => {
     handleCapture('윈도우 캡처', captureWindow);
   };
   const onRegion = (): void => {
     handleRegionCapture();
+  };
+
+  // 지연 캡처 — 호버 상태 캡처용. 영역은 먼저 선택, 그 후 3초 대기 후 캡처.
+  const onDelayedFullscreen = (): void => {
+    guardCapture().then((ok) => {
+      if (!ok) return;
+      new Notification({
+        title: 'ASIS',
+        body: `마우스를 원하는 위치에 두세요 — ${HOVER_DELAY_MS / 1000}초 후 전체화면을 캡처합니다.`,
+      }).show();
+      setTimeout(() => {
+        const cursor = screen.getCursorScreenPoint();
+        const d = screen.getDisplayNearestPoint(cursor);
+        runCapture('전체화면 캡처', () =>
+          captureRegion({ x: d.bounds.x, y: d.bounds.y, w: d.bounds.width, h: d.bounds.height }),
+        );
+      }, HOVER_DELAY_MS);
+    });
+  };
+
+  const onDelayedRegion = (): void => {
+    guardCapture().then((ok) => {
+      if (!ok) return;
+      selectionOverlay.show().then(
+        (result) => {
+          if (result.kind !== 'selected') return;
+          new Notification({
+            title: 'ASIS',
+            body: `마우스를 원하는 위치에 두세요 — ${HOVER_DELAY_MS / 1000}초 후 캡처합니다.`,
+          }).show();
+          setTimeout(() => {
+            const { windowId, ...rect } = result.rect;
+            runCapture('영역 캡처', () =>
+              windowId !== undefined ? captureWindowById(windowId) : captureRegion(rect),
+            );
+          }, HOVER_DELAY_MS);
+        },
+        (err: unknown) => {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error('[asis] 지연 영역 선택 실패', err);
+          notifyError(`영역 선택 실패: ${message}`);
+        },
+      );
+    });
   };
   const onDisableClickThrough = (): void => {
     pinWindow.disableAllClickThrough();
@@ -288,6 +344,8 @@ app.whenReady().then(() => {
     onFullscreen,
     onWindow,
     onRegion,
+    onDelayedFullscreen,
+    onDelayedRegion,
     onDisableClickThrough,
     onCloseAllPins,
     onSequenceGif,

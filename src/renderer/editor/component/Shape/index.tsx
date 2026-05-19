@@ -30,6 +30,7 @@ export function Shape({
   bgImage,
   isEditing = false,
   onSelect,
+  onContextMenu,
 }: {
   shape: ShapeData;
   selected: boolean;
@@ -37,6 +38,7 @@ export function Shape({
   /** 텍스트 인라인 편집 중일 때 KText 를 숨김. */
   isEditing?: boolean;
   onSelect: (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => void;
+  onContextMenu?: (e: Konva.KonvaEventObject<MouseEvent>) => void;
 }): JSX.Element | null {
   const updateShape = useEditorStore((s) => s.updateShape);
   const setEditingId = useEditorStore((s) => s.setEditingId);
@@ -50,6 +52,9 @@ export function Shape({
   // 다중 시 자기 onDragEnd 를 skip — Stage 가 통합 처리.
   const isMultiDrag = (): boolean =>
     useEditorStore.getState().selectedIds.length > 1;
+
+  const handleContextMenu = onContextMenu ?? ((): void => {});
+
 
   // dragBoundFunc 은 폐기 — 도형 종류별 좌표계가 달라(특히 arrow/pen 의 node.position 이 (0,0))
   // 일률적 clamp 가 음수 방향 이동을 막아 막혔다. Layer clip 이 시각 안전망 역할.
@@ -71,6 +76,7 @@ export function Shape({
           draggable={draggable}
           onClick={onSelect}
           onTap={onSelect}
+          onContextMenu={handleContextMenu}
           onDragEnd={(e): void => {
             if (isMultiDrag()) return;
             updateShape(shape.id, { x: e.target.x(), y: e.target.y() });
@@ -107,6 +113,7 @@ export function Shape({
           draggable={draggable}
           onClick={onSelect}
           onTap={onSelect}
+          onContextMenu={handleContextMenu}
           onDragEnd={(e): void => {
             if (isMultiDrag()) return;
             updateShape(shape.id, { cx: e.target.x(), cy: e.target.y() });
@@ -145,6 +152,7 @@ export function Shape({
           draggable={draggable}
           onClick={onSelect}
           onTap={onSelect}
+          onContextMenu={handleContextMenu}
           onDragEnd={(e): void => {
             if (isMultiDrag()) return;
             const dx = e.target.x();
@@ -191,6 +199,7 @@ export function Shape({
           draggable={draggable}
           onClick={onSelect}
           onTap={onSelect}
+          onContextMenu={handleContextMenu}
           onDragEnd={(e): void => {
             if (isMultiDrag()) return;
             const dx = e.target.x();
@@ -236,6 +245,7 @@ export function Shape({
           draggable={draggable}
           onClick={onSelect}
           onTap={onSelect}
+          onContextMenu={handleContextMenu}
           onDragEnd={(e): void => {
             if (isMultiDrag()) return;
             const dx = e.target.x();
@@ -275,12 +285,13 @@ export function Shape({
           text={shape.text || '텍스트'}
           fill={shape.fill}
           fontSize={shape.fontSize}
-          fontFamily="-apple-system, BlinkMacSystemFont, sans-serif"
+          fontFamily={shape.fontFamily}
           padding={4}
           visible={!isEditing}
           draggable={draggable}
           onClick={onSelect}
           onTap={onSelect}
+          onContextMenu={handleContextMenu}
           onDblClick={(): void => setEditingId(shape.id)}
           onDblTap={(): void => setEditingId(shape.id)}
           onDragEnd={(e): void => {
@@ -314,6 +325,7 @@ export function Shape({
           draggable={draggable}
           onClick={onSelect}
           onTap={onSelect}
+          onContextMenu={handleContextMenu}
           onDragEnd={(e): void => {
             if (isMultiDrag()) return;
             updateShape(shape.id, { x: e.target.x(), y: e.target.y() });
@@ -341,6 +353,7 @@ export function Shape({
           bgImage={bgImage}
           draggable={draggable}
           onSelect={onSelect}
+          onContextMenu={handleContextMenu}
           onDragEnd={(node): void => {
             if (isMultiDrag()) return;
             updateShape(shape.id, { x: node.x(), y: node.y() });
@@ -367,6 +380,7 @@ export function Shape({
           bgImage={bgImage}
           draggable={draggable}
           onSelect={onSelect}
+          onContextMenu={handleContextMenu}
           onDragEnd={(node): void => {
             if (isMultiDrag()) return;
             updateShape(shape.id, { x: node.x(), y: node.y() });
@@ -392,6 +406,7 @@ export function Shape({
           shape={shape}
           draggable={draggable}
           onSelect={onSelect}
+          onContextMenu={handleContextMenu}
           onDragEnd={(node): void => {
             if (isMultiDrag()) return;
             updateShape(shape.id, { x: node.x(), y: node.y() });
@@ -418,6 +433,7 @@ export function Shape({
           shape={shape}
           draggable={draggable}
           onSelect={onSelect}
+          onContextMenu={handleContextMenu}
           onDragEnd={(node): void => {
             if (isMultiDrag()) return;
             updateShape(shape.id, { x: node.x(), y: node.y() });

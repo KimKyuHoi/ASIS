@@ -60,12 +60,21 @@ export class SelectionOverlayManager {
       return [];
     });
 
-    const display = screen.getPrimaryDisplay();
+    // 커서가 있는 디스플레이만 덮는다.
+    // macOS BrowserWindow 는 실제로 단일 디스플레이를 넘어 span 할 수 없어
+    // union-bounds 접근은 동작하지 않는다 — cursor 위치 기준 display 단일 선택.
+    const cursor = screen.getCursorScreenPoint();
+    const display = screen.getDisplayNearestPoint(cursor);
+    const minX = display.bounds.x;
+    const minY = display.bounds.y;
+    const totalWidth = display.bounds.width;
+    const totalHeight = display.bounds.height;
+
     const win = new BrowserWindow({
-      x: display.bounds.x,
-      y: display.bounds.y,
-      width: display.bounds.width,
-      height: display.bounds.height,
+      x: minX,
+      y: minY,
+      width: totalWidth,
+      height: totalHeight,
       frame: false,
       transparent: true,
       alwaysOnTop: true,
@@ -177,7 +186,8 @@ export class SelectionOverlayManager {
       }
 
       ipcMain.handleOnce(CHANNEL_REGION, (_event, rect: Rect) => {
-        settle({ kind: 'selected', rect });
+        // 렌더러 좌표는 overlay 윈도우 origin(minX, minY) 기준 → 절대 스크린 좌표로 변환.
+        settle({ kind: 'selected', rect: { ...rect, x: rect.x + minX, y: rect.y + minY } });
       });
 
       ipcMain.once(CHANNEL_CANCEL, () => {

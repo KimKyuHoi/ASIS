@@ -2,6 +2,7 @@ import type { JSX } from 'react';
 import type { Tool } from '../types/shapes';
 import {
   BLUR_RADII,
+  FONT_FAMILIES,
   FONT_SIZES,
   MOSAIC_BLOCK_SIZES,
   PALETTE,
@@ -50,6 +51,8 @@ export function Toolbar({
   const setMosaicBlockSize = useEditorStore((s) => s.setMosaicBlockSize);
   const fontSize = useEditorStore((s) => s.fontSize);
   const setFontSize = useEditorStore((s) => s.setFontSize);
+  const fontFamily = useEditorStore((s) => s.fontFamily);
+  const setFontFamily = useEditorStore((s) => s.setFontFamily);
   const updateShape = useEditorStore((s) => s.updateShape);
   const undo = useEditorStore((s) => s.undo);
   const redo = useEditorStore((s) => s.redo);
@@ -104,6 +107,14 @@ export function Toolbar({
       .forEach((sh) => updateShape(sh.id, { fontSize: s }));
   };
 
+  // 폰트 패밀리 변경: 선택된 text 도형 *전부* 에 적용.
+  const handleFontFamily = (f: string): void => {
+    setFontFamily(f);
+    selectedShapes
+      .filter((sh) => sh.kind === 'text')
+      .forEach((sh) => updateShape(sh.id, { fontFamily: f } as Partial<typeof sh>));
+  };
+
   // 색상 변경: 선택된 도형 *모두* 에 종류별 적합한 필드로 patch.
   const handleColor = (c: string): void => {
     setColor(c);
@@ -131,6 +142,9 @@ export function Toolbar({
   const displayFontSize = (firstSelected?.kind === 'text' || firstSelected?.kind === 'step') && selectedShapes.length === 1
     ? firstSelected.fontSize
     : fontSize;
+  const displayFontFamily = firstSelected?.kind === 'text' && selectedShapes.length === 1
+    ? firstSelected.fontFamily
+    : fontFamily;
   const displayBlurRadius = firstSelected?.kind === 'blur' && selectedShapes.length === 1
     ? firstSelected.blurRadius
     : blurRadius;
@@ -220,20 +234,35 @@ export function Toolbar({
           ))}
         </div>
       ) : isText ? (
-        <div className="toolbar__group toolbar__group--slider">
-          <span className="slider-label">크기</span>
-          {FONT_SIZES.map((s) => (
-            <button
-              key={s}
-              type="button"
-              className={`radius ${displayFontSize === s ? 'radius--active' : ''}`}
-              onClick={(): void => handleFontSize(s)}
-              title={`${s}px`}
+        <>
+          <div className="toolbar__group">
+            <span className="slider-label">폰트</span>
+            <select
+              className="font-select"
+              value={displayFontFamily}
+              onChange={(e): void => handleFontFamily(e.target.value)}
+              title="폰트 변경"
             >
-              {s}
-            </button>
-          ))}
-        </div>
+              {FONT_FAMILIES.map((f) => (
+                <option key={f.value} value={f.value}>{f.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="toolbar__group toolbar__group--slider">
+            <span className="slider-label">크기</span>
+            {FONT_SIZES.map((s) => (
+              <button
+                key={s}
+                type="button"
+                className={`radius ${displayFontSize === s ? 'radius--active' : ''}`}
+                onClick={(): void => handleFontSize(s)}
+                title={`${s}px`}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        </>
       ) : (
         <div className="toolbar__group toolbar__group--strokes">
           {STROKE_WIDTHS.map((w) => (

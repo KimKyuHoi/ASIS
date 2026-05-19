@@ -79,6 +79,7 @@ export type TextShape = {
   text: string;
   fill: string;
   fontSize: number;
+  fontFamily: string;
 };
 
 export type HighlightShape = {

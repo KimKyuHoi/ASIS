@@ -74,6 +74,10 @@ export function TextEditor({
 
     const handleOutsideClick = (e: MouseEvent): void => {
       if (e.target === el) return;
+      // Toolbar 클릭(폰트·색상·크기 변경 등)은 편집 유지 — commit 하지 않음.
+      // toolbar mousedown 이 select 드롭다운을 열기 전 commit 을 호출하면
+      // 리렌더로 native dropdown 이 즉시 닫히는 현상 방지.
+      if ((e.target as Element).closest?.('.toolbar')) return;
       commit();
     };
 
@@ -106,8 +110,7 @@ export function TextEditor({
     resize: 'none',
     color: shape.fill,
     fontSize: displayFontSize,
-    fontFamily:
-      '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif',
+    fontFamily: shape.fontFamily,
     lineHeight: 1.2,
     letterSpacing: '0.01em',
     overflow: 'hidden',

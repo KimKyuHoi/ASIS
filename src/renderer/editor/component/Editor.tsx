@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { JSX } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Image as KImage,
   Layer,
@@ -21,6 +22,7 @@ import { Toolbar } from './Toolbar';
 import { TextEditor } from './TextEditor';
 
 type Marquee = { x: number; y: number; w: number; h: number };
+type ContextMenu = { x: number; y: number; shapeId: string };
 
 // 지우개 커서 — Lucide eraser 형태를 SVG data URL 로 인코딩.
 // 그림자 패스(검정)를 먼저 그려 밝은/어두운 배경 모두에서 선명히 보임.
@@ -54,6 +56,7 @@ export default function Editor(): JSX.Element {
   // callback ref + useState 로 mount 후 자동 re-render 트리거.
   const [stageWrap, setStageWrap] = useState<HTMLDivElement | null>(null);
   const [saveToast, setSaveToast] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
 
   const dragLeaderIdRef = useRef<string | null>(null);
   const dragStartPositionsRef = useRef<Map<string, { x: number; y: number }> | null>(null);
@@ -66,6 +69,7 @@ export default function Editor(): JSX.Element {
   const color = useEditorStore((s) => s.color);
   const strokeWidth = useEditorStore((s) => s.strokeWidth);
   const fontSize = useEditorStore((s) => s.fontSize);
+  const fontFamily = useEditorStore((s) => s.fontFamily);
   const nextStepNum = useEditorStore((s) => s.nextStepNum);
   const incrementStepNum = useEditorStore((s) => s.incrementStepNum);
   const imageWidth = useEditorStore((s) => s.imageWidth);
@@ -83,6 +87,7 @@ export default function Editor(): JSX.Element {
   const setMarquee = useEditorStore((s) => s.setMarquee);
   const updateShape = useEditorStore((s) => s.updateShape);
   const deleteShape = useEditorStore((s) => s.deleteShape);
+  const reorderShape = useEditorStore((s) => s.reorderShape);
   const editingId = useEditorStore((s) => s.editingId);
   const setEditingId = useEditorStore((s) => s.setEditingId);
 
@@ -96,6 +101,14 @@ export default function Editor(): JSX.Element {
       stageWrap.focus();
     }
   }, [bgImage, stageWrap]);
+
+  // 컨텍스트 메뉴 — 외부 클릭 시 닫기.
+  useEffect(() => {
+    if (!contextMenu) return undefined;
+    const close = (): void => setContextMenu(null);
+    window.addEventListener('mousedown', close);
+    return () => window.removeEventListener('mousedown', close);
+  }, [contextMenu]);
 
   // 어떤 mouseup 이든 끝난 직후 stage-wrap 에 focus 회복.
   // (단 textarea 편집 중에는 그쪽 focus 유지 — editingId 체크.)
@@ -219,6 +232,7 @@ export default function Editor(): JSX.Element {
         text: '',
         fill: color,
         fontSize,
+        fontFamily,
       };
       startDrawing(newShape);
       finishDrawing();
@@ -463,6 +477,31 @@ export default function Editor(): JSX.Element {
           ✓ 저장됨 — {saveToast}
         </div>
       )}
+      {contextMenu !== null && createPortal(
+        <div
+          className="context-menu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onMouseDown={(e): void => e.stopPropagation()}
+        >
+          <button type="button" className="context-menu__item" onClick={(): void => {
+            reorderShape(contextMenu.shapeId, 'front');
+            setContextMenu(null);
+          }}>맨 앞으로</button>
+          <button type="button" className="context-menu__item" onClick={(): void => {
+            reorderShape(contextMenu.shapeId, 'forward');
+            setContextMenu(null);
+          }}>앞으로</button>
+          <button type="button" className="context-menu__item" onClick={(): void => {
+            reorderShape(contextMenu.shapeId, 'backward');
+            setContextMenu(null);
+          }}>뒤로</button>
+          <button type="button" className="context-menu__item" onClick={(): void => {
+            reorderShape(contextMenu.shapeId, 'back');
+            setContextMenu(null);
+          }}>맨 뒤로</button>
+        </div>,
+        document.body,
+      )}
       <div className="editor__canvas" ref={containerRef}>
         {bgImage && imageWidth > 0 && imageHeight > 0 ? (
           <div
@@ -511,6 +550,7 @@ export default function Editor(): JSX.Element {
               onPointerDown={onStagePointerDown}
               onPointerMove={onStagePointerMove}
               onPointerUp={onStagePointerUp}
+              onContextMenu={(e): void => { e.evt.preventDefault(); }}
               style={{ cursor: tool === 'select' ? 'default' : tool === 'eraser' ? CURSOR_ERASER : 'crosshair' }}
             >
               <Layer listening={false}>
@@ -640,6 +680,11 @@ export default function Editor(): JSX.Element {
                       // 도형 클릭 시 어느 도구든 선택 가능 (Figma 결).
                       // shift 누르면 토글 추가 선택.
                       selectShape(s.id, evt.evt.shiftKey);
+                    }}
+                    onContextMenu={(e: Konva.KonvaEventObject<MouseEvent>): void => {
+                      e.evt.preventDefault();
+                      selectShape(s.id);
+                      setContextMenu({ x: e.evt.clientX, y: e.evt.clientY, shapeId: s.id });
                     }}
                   />
                 ))}

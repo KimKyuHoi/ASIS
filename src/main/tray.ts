@@ -19,6 +19,8 @@ export type TrayMenuHandlers = {
   onFullscreen: () => void;
   onWindow: () => void;
   onRegion: () => void;
+  onDelayedFullscreen: () => void;
+  onDelayedRegion: () => void;
   onDisableClickThrough: () => void;
   onCloseAllPins: () => void;
   onSequenceGif: () => void;
@@ -107,6 +109,14 @@ export class TrayManager {
         label: '영역 캡처',
         accelerator: 'CommandOrControl+Shift+A',
         click: handlers.onRegion,
+      },
+      {
+        label: '지연 전체화면 캡처 (3초)',
+        click: handlers.onDelayedFullscreen,
+      },
+      {
+        label: '지연 영역 캡처 (3초)',
+        click: handlers.onDelayedRegion,
       },
 
       { type: 'separator' },

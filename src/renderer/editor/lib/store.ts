@@ -41,6 +41,25 @@ export const MOSAIC_BLOCK_SIZES: readonly number[] = [5, 10, 15, 20, 30];
 
 export const FONT_SIZES: readonly number[] = [12, 16, 20, 24, 32, 48, 64];
 
+export const FONT_FAMILIES: readonly { label: string; value: string }[] = [
+  { label: 'Pretendard', value: 'Pretendard, -apple-system, BlinkMacSystemFont, sans-serif' },
+  { label: 'Apple SD Gothic', value: '"Apple SD Gothic Neo", sans-serif' },
+  { label: 'Helvetica', value: '"Helvetica Neue", Helvetica, Arial, sans-serif' },
+  { label: 'Arial', value: 'Arial, sans-serif' },
+  { label: 'Verdana', value: 'Verdana, Geneva, sans-serif' },
+  { label: 'Trebuchet', value: '"Trebuchet MS", Helvetica, sans-serif' },
+  { label: 'Georgia', value: 'Georgia, serif' },
+  { label: 'Times', value: '"Times New Roman", Times, serif' },
+  { label: 'Palatino', value: 'Palatino, "Book Antiqua", serif' },
+  { label: 'Mono', value: '"Courier New", Courier, monospace' },
+  { label: 'Impact', value: 'Impact, "Arial Black", sans-serif' },
+  { label: 'Futura', value: 'Futura, "Century Gothic", sans-serif' },
+  { label: 'Optima', value: 'Optima, Candara, sans-serif' },
+  { label: 'Gill Sans', value: '"Gill Sans", "Gill Sans MT", Calibri, sans-serif' },
+];
+
+export const DEFAULT_FONT_FAMILY = FONT_FAMILIES[0].value;
+
 type EditorStore = {
   // 도구·스타일
   tool: Tool;
@@ -49,6 +68,7 @@ type EditorStore = {
   blurRadius: number;
   mosaicBlockSize: number;
   fontSize: number;
+  fontFamily: string;
   nextStepNum: number;
 
   // 캔버스
@@ -77,7 +97,10 @@ type EditorStore = {
   setBlurRadius: (r: number) => void;
   setMosaicBlockSize: (s: number) => void;
   setFontSize: (s: number) => void;
+  setFontFamily: (f: string) => void;
   incrementStepNum: () => void;
+
+  reorderShape: (id: string, dir: 'front' | 'forward' | 'backward' | 'back') => void;
 
   loadImage: (src: string, width: number, height: number) => void;
 
@@ -114,6 +137,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   blurRadius: 16,
   mosaicBlockSize: 10,
   fontSize: 24,
+  fontFamily: DEFAULT_FONT_FAMILY,
   nextStepNum: 1,
 
   imageSrc: null,
@@ -135,7 +159,23 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   setBlurRadius: (r) => set({ blurRadius: r }),
   setMosaicBlockSize: (s) => set({ mosaicBlockSize: s }),
   setFontSize: (s) => set({ fontSize: s }),
+  setFontFamily: (f) => set({ fontFamily: f }),
   incrementStepNum: () => set((s) => ({ nextStepNum: s.nextStepNum + 1 })),
+
+  reorderShape: (id, dir) => set((s) => {
+    const idx = s.shapes.findIndex((sh) => sh.id === id);
+    if (idx < 0) return {};
+    const arr = [...s.shapes];
+    const [item] = arr.splice(idx, 1);
+    let newIdx: number;
+    if (dir === 'front') newIdx = arr.length;
+    else if (dir === 'back') newIdx = 0;
+    else if (dir === 'forward') newIdx = Math.min(idx + 1, arr.length);
+    else newIdx = Math.max(idx - 1, 0);
+    if (newIdx === idx && dir !== 'front' && dir !== 'back') return {};
+    arr.splice(newIdx, 0, item);
+    return { shapes: arr, past: [...s.past, s.shapes], future: [] };
+  }),
 
   loadImage: (src, width, height) => set({
     imageSrc: src,

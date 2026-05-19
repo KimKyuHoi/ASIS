@@ -12,12 +12,14 @@ export function ImageShapeNode({
   shape,
   draggable,
   onSelect,
+  onContextMenu,
   onDragEnd,
   onTransformEnd,
 }: {
   shape: ImageShape;
   draggable: boolean;
   onSelect: (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => void;
+  onContextMenu: (e: Konva.KonvaEventObject<MouseEvent>) => void;
   onDragEnd: (node: Konva.Image) => void;
   onTransformEnd: (node: Konva.Image) => void;
 }): JSX.Element | null {
@@ -52,6 +54,7 @@ export function ImageShapeNode({
       draggable={draggable}
       onClick={onSelect}
       onTap={onSelect}
+      onContextMenu={onContextMenu}
       onDragEnd={(e): void => onDragEnd(e.target as Konva.Image)}
       onTransformEnd={(e): void => onTransformEnd(e.target as Konva.Image)}
     />

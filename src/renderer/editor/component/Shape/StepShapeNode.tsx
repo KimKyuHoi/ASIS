@@ -2,6 +2,7 @@ import type { JSX } from 'react';
 import { Circle as KCircle, Group, Text as KText } from 'react-konva';
 import type Konva from 'konva';
 import type { StepShape } from '../../types/shapes';
+import { getContrastColor } from '../../lib/color-utils';
 
 /**
  * 번호 마커 — Group(Circle + Text) 으로 원 안에 숫자.
@@ -12,16 +13,24 @@ export function StepShapeNode({
   shape,
   draggable,
   onSelect,
+  onContextMenu,
   onDragEnd,
   onTransformEnd,
 }: {
   shape: StepShape;
   draggable: boolean;
   onSelect: (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => void;
+  onContextMenu: (e: Konva.KonvaEventObject<MouseEvent>) => void;
   onDragEnd: (node: Konva.Group) => void;
   onTransformEnd: (node: Konva.Group) => void;
 }): JSX.Element {
   const r = shape.fontSize * 0.8;
+  // 자릿수에 따라 원 안에 맞도록 폰트 축소
+  const digits = String(shape.num).length;
+  const numFontSize = digits >= 3
+    ? shape.fontSize * 0.58
+    : digits === 2 ? shape.fontSize * 0.78 : shape.fontSize;
+  const textFill = getContrastColor(shape.fill);
   return (
     <Group
       id={shape.id}
@@ -30,6 +39,7 @@ export function StepShapeNode({
       draggable={draggable}
       onClick={onSelect}
       onTap={onSelect}
+      onContextMenu={onContextMenu}
       onDragEnd={(e): void => onDragEnd(e.target as Konva.Group)}
       onTransformEnd={(e): void => onTransformEnd(e.target as Konva.Group)}
     >
@@ -45,8 +55,8 @@ export function StepShapeNode({
         width={r * 2}
         height={r * 2}
         text={String(shape.num)}
-        fill="white"
-        fontSize={shape.fontSize}
+        fill={textFill}
+        fontSize={numFontSize}
         fontFamily="-apple-system, BlinkMacSystemFont, sans-serif"
         fontStyle="bold"
         align="center"
