@@ -237,7 +237,8 @@ app.whenReady().then(() => {
   // 업데이트 완료 감지 — lastLaunchedVersion 이 현재보다 낮으면 방금 업데이트된 것.
   const current = app.getVersion();
   const lastVersion = settingsStore.get('lastLaunchedVersion');
-  if (lastVersion && isNewer(current, lastVersion)) {
+  // lastVersion 이 '' (기본값, falsy) 인 경우도 포함 — isNewer 는 '' 을 '0.0.0' 으로 처리한다.
+  if (isNewer(current, lastVersion)) {
     notifyInfo(`ASIS ${current} 업데이트 완료!`);
   }
   settingsStore.set('lastLaunchedVersion', current);
@@ -374,7 +375,7 @@ app.whenReady().then(() => {
   });
 
   // 업데이트 체크 — 앱 시작 5초 후 첫 체크, 이후 3일마다 반복.
-  // 새 버전이 있으면 백그라운드 다운로드 → 알림 → 클릭 시 자동 설치.
+  // 새 버전이 있으면 백그라운드에서 조용히 다운로드 → 완료 후 설치 확인 다이얼로그 한 번.
   const CHECK_INTERVAL_MS = 3 * 24 * 60 * 60 * 1000; // 3일
   let pendingUpdateVersion: string | null = null;
 
@@ -382,48 +383,44 @@ app.whenReady().then(() => {
     const current = app.getVersion();
     fetchLatestTag().then((latest) => {
       if (!latest || !isNewer(latest, current)) return;
-      // 이미 같은 버전 알림이 진행 중이면 중복 실행 방지
+      // 같은 버전 다운로드가 이미 진행 중이면 중복 방지
       if (pendingUpdateVersion === latest) return;
       pendingUpdateVersion = latest;
 
-      // 다운로드 완료를 기다리지 않고 즉시 알림 표시
-      const notification = new Notification({
-        title: `ASIS ${latest} 업데이트 가능`,
-        body: '클릭하면 다운로드 후 자동 설치됩니다 (약 140 MB)',
-      });
-      notification.on('click', () => {
+      // 백그라운드에서 조용히 다운로드 → 완료 후 설치 확인 한 번만 표시
+      downloadUpdatePkg(latest).then((pkgPath) => {
         dialog.showMessageBox({
           type: 'info',
           title: `ASIS ${latest} 업데이트`,
-          message: '지금 다운로드 후 설치하시겠어요?',
-          detail: '다운로드가 완료되면 비밀번호를 한 번 입력해 설치합니다.\n완료 후 자동으로 재시작됩니다.',
-          buttons: ['다운로드 & 설치', '나중에'],
+          message: `ASIS ${latest} 업데이트가 준비되었습니다.`,
+          detail: '지금 설치하시겠어요?\n비밀번호를 한 번 입력하면 설치 후 자동으로 재시작됩니다.',
+          buttons: ['지금 설치', '나중에'],
           defaultId: 0,
           cancelId: 1,
         }).then((result) => {
-          if (result.response !== 0) return;
-          notifyInfo(`ASIS ${latest} 다운로드 중… 완료 후 설치 창이 열립니다`);
-          downloadUpdatePkg(latest).then((pkgPath) => {
-            installPkg(pkgPath).then(() => {
-              app.relaunch();
-              // exit(0) — before-quit 이벤트 체인을 건너뛰고 즉시 종료.
-              // quit() 은 윈도우 close 핸들러를 거치므로 블록될 수 있다.
-              setTimeout(() => app.exit(0), 300);
-            }).catch((err: unknown) => {
-              const msg = err instanceof Error ? err.message : String(err);
-              if (msg !== 'canceled') {
-                notifyError(`업데이트 설치 실패: ${msg}`);
-              }
-            });
+          if (result.response !== 0) {
+            // 나중에 — 다음 앱 시작 시 다시 감지하도록 초기화
+            pendingUpdateVersion = null;
+            return;
+          }
+          installPkg(pkgPath).then(() => {
+            app.relaunch();
+            // exit(0) — before-quit 이벤트 체인을 건너뛰고 즉시 종료.
+            setTimeout(() => app.exit(0), 300);
           }).catch((err: unknown) => {
             pendingUpdateVersion = null;
             const msg = err instanceof Error ? err.message : String(err);
-            console.warn('[asis] update download failed', err);
-            notifyError(`업데이트 다운로드 실패: ${msg}`);
+            if (msg !== 'canceled') {
+              notifyError(`업데이트 설치 실패: ${msg}`);
+            }
           });
         }).catch(() => {});
+      }).catch((err: unknown) => {
+        pendingUpdateVersion = null;
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn('[asis] update download failed', err);
+        notifyError(`업데이트 다운로드 실패: ${msg}`);
       });
-      notification.show();
     }).catch((err: unknown) => {
       console.warn('[asis] update check failed', err);
     });
