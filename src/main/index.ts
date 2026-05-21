@@ -382,26 +382,28 @@ app.whenReady().then(() => {
     const current = app.getVersion();
     fetchLatestTag().then((latest) => {
       if (!latest || !isNewer(latest, current)) return;
-      // 이미 같은 버전 다운로드/알림이 진행 중이면 중복 실행 방지
+      // 이미 같은 버전 알림이 진행 중이면 중복 실행 방지
       if (pendingUpdateVersion === latest) return;
       pendingUpdateVersion = latest;
 
-      downloadUpdatePkg(latest).then((pkgPath) => {
-        const notification = new Notification({
-          title: `ASIS ${latest} 업데이트 준비 완료`,
-          body: '클릭하면 비밀번호 한 번으로 자동 설치됩니다',
-        });
-        notification.on('click', () => {
-          dialog.showMessageBox({
-            type: 'info',
-            title: `ASIS ${latest} 업데이트`,
-            message: '지금 설치하고 재시작하시겠어요?',
-            detail: '비밀번호를 한 번 입력하면 설치 후 자동으로 재시작합니다.',
-            buttons: ['지금 설치', '나중에'],
-            defaultId: 0,
-            cancelId: 1,
-          }).then((result) => {
-            if (result.response !== 0) return;
+      // 다운로드 완료를 기다리지 않고 즉시 알림 표시
+      const notification = new Notification({
+        title: `ASIS ${latest} 업데이트 가능`,
+        body: '클릭하면 다운로드 후 자동 설치됩니다 (약 140 MB)',
+      });
+      notification.on('click', () => {
+        dialog.showMessageBox({
+          type: 'info',
+          title: `ASIS ${latest} 업데이트`,
+          message: '지금 다운로드 후 설치하시겠어요?',
+          detail: '다운로드가 완료되면 비밀번호를 한 번 입력해 설치합니다.\n완료 후 자동으로 재시작됩니다.',
+          buttons: ['다운로드 & 설치', '나중에'],
+          defaultId: 0,
+          cancelId: 1,
+        }).then((result) => {
+          if (result.response !== 0) return;
+          notifyInfo(`ASIS ${latest} 다운로드 중… 완료 후 설치 창이 열립니다`);
+          downloadUpdatePkg(latest).then((pkgPath) => {
             installPkg(pkgPath).then(() => {
               app.relaunch();
               // exit(0) — before-quit 이벤트 체인을 건너뛰고 즉시 종료.
@@ -413,13 +415,15 @@ app.whenReady().then(() => {
                 notifyError(`업데이트 설치 실패: ${msg}`);
               }
             });
-          }).catch(() => {});
-        });
-        notification.show();
-      }).catch((err: unknown) => {
-        pendingUpdateVersion = null;
-        console.warn('[asis] update download failed', err);
+          }).catch((err: unknown) => {
+            pendingUpdateVersion = null;
+            const msg = err instanceof Error ? err.message : String(err);
+            console.warn('[asis] update download failed', err);
+            notifyError(`업데이트 다운로드 실패: ${msg}`);
+          });
+        }).catch(() => {});
       });
+      notification.show();
     }).catch((err: unknown) => {
       console.warn('[asis] update check failed', err);
     });
