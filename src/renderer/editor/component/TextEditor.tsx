@@ -8,10 +8,18 @@ import type { TextShape } from '../types/shapes';
  * 텍스트 도형 인라인 편집 textarea.
  *
  * 줄바꿈 전략
- *   - textarea 는 fixedWidth(이미지 우측 경계까지) 고정 너비로 시각 줄바꿈.
- *   - commit 시 canvas measureText 로 동일 폰트·너비 기준 줄바꿈 위치를 계산해
- *     텍스트에 \n 을 직접 삽입해서 저장.
- *   - KText 는 저장된 \n 기준으로만 렌더링 — CSS ↔ canvas font metric 차이에 무관.
+ *   - textarea 는 shape.width 고정 너비로 시각 줄바꿈 (CSS word-wrap).
+ *   - commit 시 텍스트를 원문 그대로 저장 — 소프트 \n 삽입하지 않음.
+ *   - KText 의 wrap="word" 가 shape.width 기준으로 자동 줄바꿈.
+ *     박스를 넓히면 자동으로 한 줄, 좁히면 자동으로 여러 줄 — PPT 동작.
+ *   - 사용자가 Enter 를 직접 눌러 삽입한 \n 만 shape.text 에 보존된다.
+ *
+ * 외부 클릭 감지 전략
+ *   - window.mousedown 대신 textarea.blur 를 사용한다.
+ *   - mousedown 기반은 Chromium select popup 이 shadow DOM / native OS popup
+ *     에 렌더링되어 e.target 이 .toolbar 체크를 우회하는 경우가 있다.
+ *   - blur.relatedTarget 은 항상 실제 포커스를 받은 DOM 요소 자체를 가리키므로
+ *     .closest('.toolbar') 가 정확하게 동작한다.
  */
 export function TextEditor({
   shape,
@@ -41,23 +49,25 @@ export function TextEditor({
     el.focus();
     el.select();
 
+    // settled 플래그: 언마운트 시 DOM blur 로 인한 이중 commit 방지.
+    let settled = false;
+
     const commit = (): void => {
+      if (settled) return;
+      settled = true;
       const trimmed = textRef.current.trim();
       if (!trimmed) {
         deleteShape(shape.id);
       } else {
-        // shape.width(생성 시 정해진 너비)를 기준으로 줄바꿈.
-        // 이미지 경계를 넘지 않도록 min 적용. KText padding 4px×2 = 8 제외.
-        const maxW = Math.max(40, imageWidth - shape.x);
-        const wrapWidth = Math.max(32, Math.min(shape.width, maxW) - 8);
-        const wrapped = applyLineWraps(trimmed, wrapWidth, shape.fontSize, shape.fontFamily);
-        updateShape(shape.id, { text: wrapped });
+        updateShape(shape.id, { text: trimmed });
       }
       setEditingId(null);
       setTool('select');
     };
 
     const cancel = (): void => {
+      if (settled) return;
+      settled = true;
       if (!shape.text) deleteShape(shape.id);
       setEditingId(null);
       setTool('select');
@@ -74,26 +84,24 @@ export function TextEditor({
       e.stopPropagation();
     };
 
-    const handleOutsideClick = (e: MouseEvent): void => {
-      if (e.target === el) return;
-      if ((e.target as Element).closest?.('.toolbar')) return;
+    // textarea 가 포커스를 잃을 때 commit — toolbar 로 이동한 경우는 제외.
+    // relatedTarget 은 브라우저가 직접 설정하는 실제 포커스 대상 요소이므로
+    // Chromium select popup 의 shadow DOM / native OS popup 여부와 무관하게
+    // .closest('.toolbar') 가 정확히 동작한다.
+    const handleBlur = (e: FocusEvent): void => {
+      const to = e.relatedTarget as Element | null;
+      if (to?.closest?.('.toolbar')) return;
       commit();
     };
 
     el.addEventListener('keydown', handleKey);
-    const t = window.setTimeout(() => {
-      window.addEventListener('mousedown', handleOutsideClick);
-    }, 0);
+    el.addEventListener('blur', handleBlur);
 
     return () => {
-      window.clearTimeout(t);
       el.removeEventListener('keydown', handleKey);
-      window.removeEventListener('mousedown', handleOutsideClick);
+      el.removeEventListener('blur', handleBlur);
     };
-  }, [
-    shape.id, shape.text, shape.x, shape.width, shape.fontSize, shape.fontFamily,
-    stageScale, imageWidth, updateShape, deleteShape, setEditingId, setTool,
-  ]);
+  }, [shape.id, shape.text, updateShape, deleteShape, setEditingId, setTool]);
 
   const displayFontSize = Math.max(14, shape.fontSize * stageScale);
   // shape.width 를 기준으로 textarea 너비 결정. 이미지 오른쪽 경계는 상한선.
@@ -143,46 +151,4 @@ export function TextEditor({
     />,
     stageWrap,
   );
-}
-
-/**
- * canvas measureText 로 줄바꿈 위치를 계산해 텍스트에 \n 을 삽입한다.
- * Konva Text 노드가 내부적으로 같은 방식으로 wrap 하므로 결과가 일치한다.
- *
- * @param text       원문 (이미 \n 포함 가능)
- * @param maxWidth   stage 좌표 픽셀 (KText padding 제외한 실제 텍스트 영역)
- * @param fontSize   stage 좌표 폰트 크기
- * @param fontFamily CSS font-family 문자열
- */
-function applyLineWraps(
-  text: string,
-  maxWidth: number,
-  fontSize: number,
-  fontFamily: string,
-): string {
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return text;
-  ctx.font = `${fontSize}px ${fontFamily}`;
-
-  const result: string[] = [];
-  for (const para of text.split('\n')) {
-    if (para === '') {
-      result.push('');
-      continue;
-    }
-    let line = '';
-    let paraResult = '';
-    for (const char of para) {
-      const test = line + char;
-      if (ctx.measureText(test).width > maxWidth && line !== '') {
-        paraResult += `${line}\n`;
-        line = char;
-      } else {
-        line = test;
-      }
-    }
-    result.push(paraResult + line);
-  }
-  return result.join('\n');
 }

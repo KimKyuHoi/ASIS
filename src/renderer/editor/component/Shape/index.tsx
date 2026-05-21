@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import type { JSX } from 'react';
 import {
   Arrow as KArrow,
@@ -42,6 +43,9 @@ export function Shape({
 }): JSX.Element | null {
   const updateShape = useEditorStore((s) => s.updateShape);
   const setEditingId = useEditorStore((s) => s.setEditingId);
+
+  // 텍스트 박스 세로 리사이즈 여부 추적 — TransformEnd 에서 height 커밋 여부 결정.
+  const textVertResizeRef = useRef(false);
 
   const draggable = selected;
 
@@ -320,7 +324,8 @@ export function Shape({
           x={shape.x}
           y={shape.y}
           width={shape.width}
-          wrap="char"
+          height={shape.height}
+          wrap="word"
           text={shape.text || '텍스트'}
           fill={shape.fill}
           fontSize={shape.fontSize}
@@ -335,23 +340,46 @@ export function Shape({
           onDblTap={(): void => setEditingId(shape.id)}
           onDragEnd={(e): void => {
             if (isMultiDrag()) return;
-            // w 를 넘겨 x + shape.width 가 이미지 오른쪽 경계를 벗어나지 않도록 클램프.
             const { x, y } = clampXY(e.target.x(), e.target.y(), shape.width, 0);
             e.target.position({ x, y });
             updateShape(shape.id, { x, y });
           }}
-          onTransformEnd={(e): void => {
+          onTransformStart={(): void => {
+            textVertResizeRef.current = false;
+          }}
+          onTransform={(e): void => {
             const node = e.target;
             const sx = node.scaleX();
+            const sy = node.scaleY();
+            // 스케일 리셋 전에 현재 너비·높이를 읽는다.
+            // node.width() * sx = desiredWidth: attrs_change 로 Transformer 가
+            // _startAbsoluteWidth 를 매 이벤트마다 재초기화하므로 sx 는 항상
+            // 직전 프레임 기준 증분값 — 누적 compounding 없음.
+            const { imageWidth: iw } = useEditorStore.getState();
+            const newWidth = Math.max(40, Math.min(node.width() * sx, iw - node.x()));
+            const newHeight = sy !== 1 ? Math.max(20, node.height() * sy) : null;
+            node.scaleX(1);
+            node.scaleY(1);
+            node.width(newWidth);
+            if (newHeight !== null) {
+              textVertResizeRef.current = true;
+              node.height(newHeight);
+            }
+          }}
+          onTransformEnd={(e): void => {
+            const node = e.target;
             node.scaleX(1);
             node.scaleY(1);
             const { x, y } = clampXY(node.x(), node.y());
             const { imageWidth: iw } = useEditorStore.getState();
+            const newWidth = Math.max(40, Math.min(node.width(), iw - x));
+            // 세로 리사이즈가 한 번이라도 있었거나 이미 고정 height 였으면 height 커밋.
+            const commitHeight = textVertResizeRef.current || shape.height !== undefined;
             updateShape(shape.id, {
               x,
               y,
-              // width 도 이미지 오른쪽 경계를 넘지 않도록 클램프.
-              width: Math.max(40, Math.min(shape.width * sx, iw - x)),
+              width: newWidth,
+              ...(commitHeight ? { height: Math.max(20, node.height()) } : {}),
             });
           }}
         />

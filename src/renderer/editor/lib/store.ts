@@ -283,3 +283,4 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   canUndo: () => get().past.length > 0,
   canRedo: () => get().future.length > 0,
 }));
+

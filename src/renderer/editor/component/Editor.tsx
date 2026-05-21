@@ -111,13 +111,18 @@ export default function Editor(): JSX.Element {
   }, [contextMenu]);
 
   // 어떤 mouseup 이든 끝난 직후 stage-wrap 에 focus 회복.
-  // (단 textarea 편집 중에는 그쪽 focus 유지 — editingId 체크.)
+  // (단 textarea 편집 중, 혹은 toolbar 내 포커서블 요소(<select>/<input> 등) 에
+  //  포커스가 있을 때는 건너뜀 — macOS Electron native <select> 팝업이 focus 탈취로
+  //  닫히는 버그 방지.)
   useEffect(() => {
     if (!stageWrap) return undefined;
     const onUp = (): void => {
       if (useEditorStore.getState().editingId !== null) return;
-      // 이미 stage-wrap 에 focus 면 skip — 깜빡임 방지.
       if (document.activeElement === stageWrap) return;
+      // toolbar 안의 포커서블 요소(<select>, <input type="color"> 등) 에 포커스가
+      // 있으면 가져오지 않는다 — native select 팝업이 살아있는 동안 focus 를 빼앗으면
+      // 팝업이 강제로 닫힌다.
+      if ((document.activeElement as Element | null)?.closest?.('.toolbar')) return;
       stageWrap.focus();
     };
     document.addEventListener('mouseup', onUp);
@@ -455,6 +460,9 @@ export default function Editor(): JSX.Element {
     singleSelected.kind === 'image'
   );
   const canResize = true;
+  // 텍스트 박스도 8방향 모두 허용. onTransform 에서 scaleY=1 고정이므로
+  // 상하/코너 드래그는 너비(scaleX)만 반영, 폰트 크기는 불변.
+  const enabledAnchors = undefined;
 
   // 다중 선택 시 그룹 bbox — 박스 안 빈 공간 클릭으로도 group drag 가능하도록
   // invisible draggable rect 영역 결정.
@@ -518,12 +526,10 @@ export default function Editor(): JSX.Element {
               outline: 'none',
             }}
             onMouseDown={(): void => {
-              // canvas 클릭 후에도 keydown 이 잡히도록 focus 회복.
-              // textarea 가 active 면 그쪽 focus 유지.
-              // stageWrap: onMouseDown 발화 시점엔 항상 마운트됨 — useState 초기값 null 이라 ?. 유지.
-              if (useEditorStore.getState().editingId === null) {
-                stageWrap?.focus();
-              }
+              // 항상 focus 를 stageWrap 으로 가져온다.
+              // 텍스트 편집 중이면 textarea.blur 가 발생 → TextEditor.handleBlur → commit.
+              // 편집 중이 아니면 keydown 단축키가 stageWrap 에서 잡히도록 focus 유지.
+              stageWrap?.focus();
             }}
             onDragOver={(e): void => {
               // OS 가 파일을 새 탭에서 열어버리지 않도록 default 막기.
@@ -555,7 +561,12 @@ export default function Editor(): JSX.Element {
               onPointerMove={onStagePointerMove}
               onPointerUp={onStagePointerUp}
               onContextMenu={(e): void => { e.evt.preventDefault(); }}
-              style={{ cursor: tool === 'select' ? 'default' : tool === 'eraser' ? CURSOR_ERASER : 'crosshair' }}
+              style={{
+                cursor: tool === 'select' ? 'default' : tool === 'eraser' ? CURSOR_ERASER : 'crosshair',
+                // 텍스트 편집 중 canvas 가 pointer 이벤트를 먹으면 textarea 내부
+                // 마우스 드래그 텍스트 선택이 중단된다. 편집 중엔 canvas 를 투과.
+                pointerEvents: editingText ? 'none' : undefined,
+              }}
             >
               <Layer listening={false}>
                 <KImage image={bgImage} width={imageWidth} height={imageHeight} />
@@ -719,6 +730,7 @@ export default function Editor(): JSX.Element {
                     ref={transformerRef}
                     rotateEnabled={canRotate}
                     resizeEnabled={canResize}
+                    enabledAnchors={enabledAnchors}
                     rotationSnaps={[0, 45, 90, 135, 180, 225, 270, 315]}
                     rotationSnapTolerance={6}
                     borderStroke="#5ea2ff"

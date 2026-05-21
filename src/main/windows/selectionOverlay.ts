@@ -4,6 +4,7 @@ import { readFile, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ensureAccessibilityPermission, getElementBoundsAtPoint, listWindows } from '../windowsInfo';
+import type { WindowInfo } from '../windowsInfo';
 
 type Rect = {
   x: number;
@@ -27,17 +28,64 @@ const CHANNEL_ELEMENT_AT = 'capture:element-at';
 /**
  * 영역 선택 오버레이 — 풀스크린 transparent BrowserWindow lifecycle 관리.
  *
- * .claude/rules/side-effects.md 의 Class 판별 질문에 부합:
- *   "이 객체를 React 없이 단위 테스트로 의미 있게 검증할 수 있는가?" → Yes.
- *   BrowserWindow 라는 외부 리소스 + IPC 채널은 React 데이터 흐름 무관.
+ * 빠른 실행을 위한 두 가지 최적화:
  *
- * lifecycle 패턴은 Tray·GlobalShortcut 의 영속 start/stop 과 다르다 —
- * ephemeral 이라 show() 가 promise 를 반환하고 결과 도출 후 자동 닫힌다.
+ * 1. prewarm() — 앱 시작 시 BrowserWindow + HTML 로드를 미리 수행.
+ *    show() 에서는 setBounds + win.show() 만 하면 된다.
  *
- * v1 한계 — primary display 만 다룬다 (다중 모니터는 v2).
+ * 2. windows 목록 캐시 — listWindows() 는 koffi FFI 동기 블로킹 호출.
+ *    prewarm() 과 사용 후 백그라운드에서 미리 갱신해 두고,
+ *    show() 에서는 캐시를 즉시 전송한다.
+ *
+ * show() 의 임계 경로:
+ *   setBounds → captureBackgroundForOverlay 시작 → win.show() → 캐시된 windows 전송
+ *   → listWindows 백그라운드 갱신 (비차단)
  */
 export class SelectionOverlayManager {
   private win: BrowserWindow | null = null;
+  private prewarmed: BrowserWindow | null = null;
+  /** prewarm 된 renderer 가 capture:ready 를 이미 보냈는지 추적. */
+  private prewarmedReady = false;
+  /** listWindows() 결과 캐시 — show() 에서 즉시 전송용. */
+  private cachedWindows: WindowInfo[] | null = null;
+  private stopped = false;
+
+  /**
+   * 앱 시작 시 호출 — BrowserWindow 생성 + HTML 로드 + windows 목록 캐시를
+   * 백그라운드에서 미리 수행한다. show() 호출 시 즉시 띄울 수 있도록 warm-up.
+   */
+  prewarm(): void {
+    if (this.stopped || this.prewarmed) return;
+
+    const win = createOverlayWindow();
+    this.prewarmed = win;
+    this.prewarmedReady = false;
+
+    const overlayPath = join(__dirname, '../renderer/selection/index.html');
+    win.loadFile(overlayPath).catch((err: unknown) => {
+      console.error('[asis] selectionOverlay prewarm loadFile failed', err);
+    });
+
+    ipcMain.once(CHANNEL_READY, () => {
+      if (this.prewarmed === win) {
+        this.prewarmedReady = true;
+        console.info('[asis] selectionOverlay: prewarm ready');
+      }
+    });
+
+    win.once('closed', () => {
+      if (this.prewarmed === win) {
+        this.prewarmed = null;
+        this.prewarmedReady = false;
+        if (!this.stopped) {
+          setImmediate(() => this.prewarm());
+        }
+      }
+    });
+
+    // windows 목록을 백그라운드에서 미리 캐싱 — show() 에서 즉시 사용.
+    this._refreshWindowsCache();
+  }
 
   show(): Promise<SelectionResult> {
     if (this.win) {
@@ -47,8 +95,7 @@ export class SelectionOverlayManager {
       return Promise.resolve({ kind: 'canceled' });
     }
 
-    // UI 자동 감지 — BrowserWindow 생성 *이전*에 호출.
-    // 오버레이 자체가 CGWindowList 에 포함되기 전에 스냅샷을 찍어 race 방지.
+    // UI 자동 감지 — 오버레이 자체가 CGWindowList 에 포함되기 전에 권한 확인.
     if (!ensureAccessibilityPermission(false)) {
       ensureAccessibilityPermission(true);
       new Notification({
@@ -56,14 +103,8 @@ export class SelectionOverlayManager {
         body: '시스템 설정에서 ASIS를 허용한 후 앱을 재시작하면 UI 자동감지가 활성화됩니다.',
       }).show();
     }
-    const windowsPromise = listWindows().catch((err: unknown) => {
-      console.warn('[asis] listWindows 실패:', err);
-      return [];
-    });
 
     // 커서가 있는 디스플레이만 덮는다.
-    // macOS BrowserWindow 는 실제로 단일 디스플레이를 넘어 span 할 수 없어
-    // union-bounds 접근은 동작하지 않는다 — cursor 위치 기준 display 단일 선택.
     const cursor = screen.getCursorScreenPoint();
     const display = screen.getDisplayNearestPoint(cursor);
     const minX = display.bounds.x;
@@ -71,39 +112,31 @@ export class SelectionOverlayManager {
     const totalWidth = display.bounds.width;
     const totalHeight = display.bounds.height;
 
-    const win = new BrowserWindow({
-      x: minX,
-      y: minY,
-      width: totalWidth,
-      height: totalHeight,
-      frame: false,
-      transparent: true,
-      alwaysOnTop: true,
-      fullscreenable: false,
-      resizable: false,
-      movable: false,
-      hasShadow: false,
-      roundedCorners: false,
-      skipTaskbar: true,
-      enableLargerThanScreen: true,
-      webPreferences: {
-        preload: join(__dirname, '../preload/index.js'),
-        sandbox: false,
-      },
-    });
+    let win: BrowserWindow;
+    let skipReadyWait: boolean;
+
+    if (this.prewarmed) {
+      win = this.prewarmed;
+      skipReadyWait = this.prewarmedReady;
+      this.prewarmed = null;
+      this.prewarmedReady = false;
+      // pre-warm 시점과 다른 디스플레이일 수 있으므로 bounds 갱신.
+      win.setBounds({ x: minX, y: minY, width: totalWidth, height: totalHeight });
+    } else {
+      // pre-warm 이 완료되기 전에 단축키를 눌렀을 때 폴백 경로.
+      win = createOverlayWindow();
+      skipReadyWait = false;
+      const overlayPath = join(__dirname, '../renderer/selection/index.html');
+      console.info(`[asis] selectionOverlay loadFile (cold): ${overlayPath}`);
+      win.loadFile(overlayPath).catch((err: unknown) => {
+        console.error('[asis] selectionOverlay loadFile failed', err);
+      });
+    }
+
     this.win = win;
 
-    // 메뉴바 위까지 떠야 하므로 가장 높은 layer.
-    win.setAlwaysOnTop(true, 'screen-saver');
-    // 다른 앱이 fullscreen 이어도 그 위에 표시.
-    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-
-    // macOS 26β 에서 transparent+alwaysOnTop 윈도우가 자동 focus 못 받는 회귀.
-    // ready-to-show 시점에 명시 focus 호출 — ESC 단축키가 keydown 으로 들어옴.
-    win.once('ready-to-show', () => {
-      win.focus();
-      win.webContents.focus();
-    });
+    // 사용 시작과 동시에 다음 회차 pre-warm 시작.
+    this.prewarm();
 
     win.webContents.on('did-fail-load', (_e, code, desc, url) => {
       console.error(
@@ -111,35 +144,59 @@ export class SelectionOverlayManager {
       );
     });
 
-    // dev / prod 모두 빌드된 selection 페이지를 file:// 로 로드.
-    //
-    // electron-vite multi-entry 의 dev URL 매핑이 vite docs 에서 명확하지 않아
-    // (시도한 두 형식 모두 root 환영 페이지로 fallback) loadFile 로 통일.
-    // 비용: selection 페이지 수정 시 별도 빌드 필요 (HMR 잃음). 영역 선택
-    // 컴포넌트가 자주 변하지 않을 거라 감수 가능 — Phase 3 에디터에서 HMR 가
-    // 진짜 필요해지면 그때 dev URL 매핑 정답을 다시 찾는다.
-    const overlayPath = join(__dirname, '../renderer/selection/index.html');
-    console.info(`[asis] selectionOverlay loadFile: ${overlayPath}`);
-    win.loadFile(overlayPath).catch((err: unknown) => {
-      console.error('[asis] selectionOverlay loadFile failed', err);
-    });
-
-    // Color picker / Magnifier 용 background 캡처 — overlay 띄우기 전 시점의 화면.
-    // overlay 가 mount 되면 IPC 로 dataURL 전송 → renderer 가 픽셀 read.
+    // background 캡처를 win.show() 보다 먼저 시작 — screencapture 프로세스가 시작된 후
+    // 윈도우가 뜨므로 캡처 시점에 오버레이 overlay dim 이 찍히지 않는다.
     captureBackgroundForOverlay(win).catch((err: unknown) => {
       console.warn('[asis] background 캡처 실패 (color picker 비활성):', err);
     });
 
-    // renderer ready 신호와 윈도우 목록을 함께 기다린 후 전송 — 레이스 방지.
-    const readyPromise = new Promise<void>((resolve) => {
-      ipcMain.once(CHANNEL_READY, () => resolve());
+    // 오버레이를 즉시 표시 — windows 목록 조회는 show() 이후 비차단으로 처리.
+    win.show();
+    win.focus();
+    win.webContents.focus();
+
+    // macOS 26β 에서 transparent+alwaysOnTop 윈도우가 자동 focus 못 받는 회귀.
+    win.once('ready-to-show', () => {
+      win.focus();
+      win.webContents.focus();
     });
-    Promise.all([windowsPromise, readyPromise]).then(([windows]) => {
+
+    // windows 목록 전송 전략:
+    //   - 캐시 있음 + renderer ready → 즉시 전송 (0ms 지연)
+    //   - 캐시 없음 or renderer not ready → ready 대기 후 전송
+    // 전송 이후 백그라운드에서 fresh 조회 → 갱신 전송 (windoslist 변동 반영).
+    const sendWindows = (windows: WindowInfo[]): void => {
       if (!win.isDestroyed()) {
         win.webContents.send(CHANNEL_WINDOWS, windows);
       }
-    }).catch((err: unknown) => {
-      console.warn('[asis] selectionOverlay windows/ready 실패:', err);
+    };
+
+    if (skipReadyWait && this.cachedWindows) {
+      // 가장 빠른 경로: 캐시된 목록을 즉시 전송.
+      sendWindows(this.cachedWindows);
+    } else {
+      // renderer ready 를 기다린 뒤 전송.
+      const readyPromise: Promise<void> = skipReadyWait
+        ? Promise.resolve()
+        : new Promise<void>((resolve) => {
+          ipcMain.once(CHANNEL_READY, () => resolve());
+        });
+      readyPromise.then(() => {
+        if (this.cachedWindows) sendWindows(this.cachedWindows);
+      }).catch((err: unknown) => {
+        console.warn('[asis] selectionOverlay ready wait 실패:', err);
+      });
+    }
+
+    // 백그라운드에서 fresh windows 조회 → 갱신 전송.
+    // listWindows() 의 동기 FFI 블로킹이 win.show() 를 막지 않도록 setImmediate 로 지연.
+    setImmediate(() => {
+      listWindows().then((windows) => {
+        this.cachedWindows = windows;
+        sendWindows(windows);
+      }).catch((err: unknown) => {
+        console.warn('[asis] selectionOverlay listWindows 실패:', err);
+      });
     });
 
     // 공간 전환 후 재스캔 — 풀스크린 앱에서 단축키를 누른 뒤 다른 Space 로
@@ -147,6 +204,7 @@ export class SelectionOverlayManager {
     setTimeout(() => {
       if (win.isDestroyed()) return;
       listWindows().then((updated) => {
+        this.cachedWindows = updated;
         if (!win.isDestroyed()) {
           win.webContents.send(CHANNEL_WINDOWS, updated);
         }
@@ -156,16 +214,12 @@ export class SelectionOverlayManager {
     }, 600);
 
     // macOS 26β 에서 transparent+alwaysOnTop 윈도우가 keydown 을 못 받는 회귀 우회.
-    // selection 활성 시점에만 ESC 를 globalShortcut 으로 잡고, settle 시 unregister.
-    // 부작용: selection 떠있는 동안 다른 앱의 ESC 도 우리한테 옴 — 의도된 trade-off
-    // (사용자가 캡처하려 한 컨텍스트라 OK).
     const ESC_ACCEL = 'Escape';
     return new Promise<SelectionResult>((resolve) => {
       let settled = false;
       const settle = (result: SelectionResult): void => {
         if (settled) return;
         settled = true;
-        // 핸들러·리스너 cleanup — leak 방지.
         ipcMain.removeHandler(CHANNEL_REGION);
         ipcMain.removeHandler(CHANNEL_ELEMENT_AT);
         ipcMain.removeAllListeners(CHANNEL_CANCEL);
@@ -174,10 +228,10 @@ export class SelectionOverlayManager {
         if (!win.isDestroyed()) {
           win.close();
         }
+        this.win = null;
         resolve(result);
       };
 
-      // ESC 글로벌 fallback — renderer keydown 이 안 잡힐 때를 대비.
       const escOk = globalShortcut.register(ESC_ACCEL, () => {
         settle({ kind: 'canceled' });
       });
@@ -187,16 +241,13 @@ export class SelectionOverlayManager {
         );
       }
 
-      // 렌더러의 pointermove 에서 throttle 된 요청 — overlay-local 좌표 → screen 변환 후 AX 조회.
       ipcMain.handle(CHANNEL_ELEMENT_AT, (_event, x: number, y: number) => {
         const result = getElementBoundsAtPoint(x + minX, y + minY);
         if (!result) return null;
-        // 결과를 overlay-local 좌표로 재변환.
         return { x: result.x - minX, y: result.y - minY, w: result.w, h: result.h };
       });
 
       ipcMain.handleOnce(CHANNEL_REGION, (_event, rect: Rect) => {
-        // 렌더러 좌표는 overlay 윈도우 origin(minX, minY) 기준 → 절대 스크린 좌표로 변환.
         settle({ kind: 'selected', rect: { ...rect, x: rect.x + minX, y: rect.y + minY } });
       });
 
@@ -204,7 +255,6 @@ export class SelectionOverlayManager {
         settle({ kind: 'canceled' });
       });
 
-      // 윈도우가 외부 요인 (Cmd+W, dock kill 등) 으로 닫히면 fallback canceled.
       win.on('closed', () => {
         this.win = null;
         settle({ kind: 'canceled' });
@@ -213,12 +263,64 @@ export class SelectionOverlayManager {
   }
 
   stop(): void {
+    this.stopped = true;
+    if (this.prewarmed && !this.prewarmed.isDestroyed()) {
+      this.prewarmed.close();
+    }
+    this.prewarmed = null;
     if (!this.win) return;
     if (!this.win.isDestroyed()) {
       this.win.close();
     }
     this.win = null;
   }
+
+  /** windows 목록 캐시를 백그라운드에서 갱신. */
+  private _refreshWindowsCache(): void {
+    listWindows().then((windows) => {
+      this.cachedWindows = windows;
+    }).catch((err: unknown) => {
+      console.warn('[asis] selectionOverlay _refreshWindowsCache 실패:', err);
+    });
+  }
+}
+
+/**
+ * 오버레이용 BrowserWindow 생성 헬퍼.
+ * prewarm / cold-start 양쪽에서 동일한 옵션으로 생성한다.
+ * show: false — 명시적 win.show() 전까지 숨김 (prewarm 상태 유지).
+ */
+function createOverlayWindow(): BrowserWindow {
+  const cursor = screen.getCursorScreenPoint();
+  const display = screen.getDisplayNearestPoint(cursor);
+  const { x, y, width, height } = display.bounds;
+
+  const win = new BrowserWindow({
+    x,
+    y,
+    width,
+    height,
+    show: false,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    fullscreenable: false,
+    resizable: false,
+    movable: false,
+    hasShadow: false,
+    roundedCorners: false,
+    skipTaskbar: true,
+    enableLargerThanScreen: true,
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: false,
+    },
+  });
+
+  win.setAlwaysOnTop(true, 'screen-saver');
+  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+
+  return win;
 }
 
 /**
@@ -226,9 +328,6 @@ export class SelectionOverlayManager {
  *
  * overlay 가 *띄워지기 전* 시점의 화면을 screencapture 로 잡고, dataURL 로
  * renderer 에 전송. overlay 가 mount 후 그걸 받아 픽셀 read 에 사용.
- *
- * 한계: overlay 가 떠있는 동안 화면 변화는 반영 안 됨 (정적 background).
- * 일반 캡처 도구의 동작과 일치 — color picker 는 *영역 선택 시점의 화면* 의미.
  */
 async function captureBackgroundForOverlay(
   win: BrowserWindow,

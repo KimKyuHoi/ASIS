@@ -166,7 +166,16 @@ export function Toolbar({
   })();
 
   return (
-    <div className="toolbar">
+    <div
+      className="toolbar"
+      onMouseDown={(e): void => {
+        // TextEditor의 window mousedown 리스너가 toolbar 클릭을 외부 클릭으로 오인해
+        // 편집 모드를 종료하지 않도록 native 이벤트 전파를 차단한다.
+        // Chromium custom select popup이 DOM 트리 밖에 렌더링되어 .toolbar 체크를
+        // 우회하는 경우도 함께 방어한다.
+        e.nativeEvent.stopImmediatePropagation();
+      }}
+    >
       <div className="toolbar__group">
         {TOOL_ITEMS.map((item) => (
           <ToolButton

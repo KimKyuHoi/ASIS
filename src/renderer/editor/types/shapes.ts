@@ -78,6 +78,8 @@ export type TextShape = {
   y: number;
   /** Stage 좌표계 너비 — 이 값으로 줄넘김 경계를 결정. */
   width: number;
+  /** Stage 좌표계 높이 — undefined 면 콘텐츠에 맞게 자동. 사용자가 세로 리사이즈하면 고정됨. */
+  height?: number;
   text: string;
   fill: string;
   fontSize: number;
