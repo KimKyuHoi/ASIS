@@ -3,6 +3,7 @@ import { Image as KImage, Rect as KRect } from 'react-konva';
 import type Konva from 'konva';
 import type { MosaicShape } from '../../types/shapes';
 import { buildMosaicCanvas } from '../../lib/mosaic';
+import { useEditorStore } from '../../lib/store';
 
 /**
  * 모자이크 도형 — offscreen canvas 로 저해상 픽셀 블록 처리 후 KImage 렌더.
@@ -25,9 +26,12 @@ export function MosaicShapeNode({
   onDragEnd: (node: Konva.Image) => void;
   onTransformEnd: (node: Konva.Image) => void;
 }): JSX.Element {
-  // React Compiler 가 입력값 변화 시에만 재계산 — useMemo 불필요.
+  const imageWidth = useEditorStore((s) => s.imageWidth);
+  // bgImage.naturalWidth 는 물리 픽셀, imageWidth 는 논리 픽셀(÷scaleFactor).
+  // Retina(2x)에서 pixelRatio=2 이므로 drawImage 소스 좌표를 물리 픽셀로 보정한다.
+  const pixelRatio = bgImage && imageWidth > 0 ? bgImage.naturalWidth / imageWidth : 1;
   const canvas = bgImage
-    ? buildMosaicCanvas(bgImage, shape.x, shape.y, shape.w, shape.h, shape.blockSize)
+    ? buildMosaicCanvas(bgImage, shape.x, shape.y, shape.w, shape.h, shape.blockSize, pixelRatio)
     : null;
 
   const absW = Math.max(1, Math.abs(shape.w));

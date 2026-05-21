@@ -3,6 +3,7 @@ import type { JSX } from 'react';
 import { Image as KImage, Rect as KRect } from 'react-konva';
 import Konva from 'konva';
 import type { BlurShape } from '../../types/shapes';
+import { useEditorStore } from '../../lib/store';
 
 /**
  * 블러 도형 — 배경 이미지에서 *crop 영역만* Konva.Filters.Blur 로 가우시안 블러.
@@ -28,6 +29,9 @@ export function BlurShapeNode({
   onTransformEnd: (node: Konva.Image) => void;
 }): JSX.Element {
   const [node, setNode] = useState<Konva.Image | null>(null);
+  const imageWidth = useEditorStore((s) => s.imageWidth);
+  // bgImage.naturalWidth 는 물리 픽셀, imageWidth 는 논리 픽셀(÷scaleFactor).
+  const pixelRatio = bgImage && imageWidth > 0 ? bgImage.naturalWidth / imageWidth : 1;
 
   // 블러 props 변화 시 cache 다시 — Konva 표준 패턴.
   // type narrowed 라 deps 에 conditional 없이 깔끔.
@@ -62,7 +66,12 @@ export function BlurShapeNode({
       y={shape.y}
       width={shape.w}
       height={shape.h}
-      crop={{ x: shape.x, y: shape.y, width: shape.w, height: shape.h }}
+      crop={{
+        x: shape.x * pixelRatio,
+        y: shape.y * pixelRatio,
+        width: shape.w * pixelRatio,
+        height: shape.h * pixelRatio,
+      }}
       filters={[Konva.Filters.Blur]}
       blurRadius={shape.blurRadius}
       draggable={draggable}

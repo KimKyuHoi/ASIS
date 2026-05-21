@@ -5,6 +5,8 @@ export function buildMosaicCanvas(
   w: number,
   h: number,
   blockSize: number,
+  // Retina(2x) 등 물리 픽셀 vs 논리 픽셀 비율. img.naturalWidth / imageWidth.
+  pixelRatio = 1,
 ): HTMLCanvasElement {
   const W = Math.max(1, Math.round(Math.abs(w)));
   const H = Math.max(1, Math.round(Math.abs(h)));
@@ -19,7 +21,18 @@ export function buildMosaicCanvas(
   tiny.height = rows;
   const tinyCtx = tiny.getContext('2d');
   if (tinyCtx) {
-    tinyCtx.drawImage(img, srcX, srcY, W, H, 0, 0, cols, rows);
+    // 논리 픽셀 좌표를 물리 픽셀로 변환해 img의 올바른 영역을 샘플링한다.
+    tinyCtx.drawImage(
+      img,
+      srcX * pixelRatio,
+      srcY * pixelRatio,
+      W * pixelRatio,
+      H * pixelRatio,
+      0,
+      0,
+      cols,
+      rows,
+    );
   }
 
   const out = document.createElement('canvas');
