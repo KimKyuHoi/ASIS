@@ -162,9 +162,9 @@ export default function SelectionOverlay(): JSX.Element {
         const isClick = dx * dx + dy * dy < MIN_RECT_SIZE * MIN_RECT_SIZE;
         if (isClick) {
           dispatch({ type: 'pointer-up' });
-          // AX element 우선, 없으면 window hit.
+          // window hit 우선, 없으면 AX element (element 좌표 부정확 시 전체화면 방지).
           const windowTarget = windowHit ? { ...windowHit, windowId: windowHit.id } : null;
-          const target = elementHit ?? windowTarget;
+          const target = windowTarget ?? elementHit;
           if (target) {
             capture(target);
             return;
@@ -235,6 +235,11 @@ export default function SelectionOverlay(): JSX.Element {
       ? state.rect
       : null;
 
+  // dim/캡처는 hoverWindow 우선 — AX element 좌표가 부정확할 때 전체화면 캡처되는 버그 방지.
+  // hoverElement 는 WindowSnap 시각 표시에만 사용하고 dim/rect 판단은 window 단위로.
+  const snapTarget = state.kind === 'idle' ? (hoverWindow ?? hoverElement) : null;
+  const dimRect = rect ?? snapTarget;
+
   const overlayClass = [
     'overlay',
     state.kind === 'dragging' ? 'overlay--dragging' : '',
@@ -243,7 +248,19 @@ export default function SelectionOverlay(): JSX.Element {
 
   return (
     <div className={overlayClass}>
-      {rect ? <DimStrips rect={rect} /> : <div className="dim dim--full" />}
+      {/* 디버그 패널 — 원인 파악 후 제거 */}
+      <div style={{
+        position: 'fixed', top: 8, right: 8, zIndex: 9999,
+        background: 'rgba(0,0,0,0.75)', color: '#0f0', fontFamily: 'monospace',
+        fontSize: 11, padding: '4px 8px', borderRadius: 4, pointerEvents: 'none',
+        lineHeight: 1.6,
+      }}>
+        windows: {windows.length}<br />
+        ptr: {pointer ? `${Math.round(pointer.x)},${Math.round(pointer.y)}` : 'null'}<br />
+        hover: {hoverWindow ? `${Math.round(hoverWindow.x)},${Math.round(hoverWindow.y)} ${Math.round(hoverWindow.w)}×${Math.round(hoverWindow.h)}` : 'null'}<br />
+        dim: {dimRect ? `${Math.round(dimRect.x)},${Math.round(dimRect.y)}` : 'null'}
+      </div>
+      {dimRect ? <DimStrips rect={dimRect} /> : <div className="dim dim--full" />}
 
       {rect ? (
         <>

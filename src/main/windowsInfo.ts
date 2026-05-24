@@ -51,14 +51,60 @@ type Fns = {
   release: (ref: unknown) => void;
 };
 
+// ---------------------------------------------------------------------------
+// koffi 타입 객체 — process(globalThis) 레벨 캐시
+//
+// koffi 타입 레지스트리는 프로세스 전체에서 공유되며 hot-reload 후에도 유지된다.
+// 반면 모듈 변수는 hot-reload 시 재초기화된다. 타입 객체를 globalThis 에 저장하면
+// 동일한 명명 타입을 항상 재사용할 수 있어 "Duplicate type name" 오류를 방지한다.
+// ---------------------------------------------------------------------------
+const _g = globalThis as typeof globalThis & {
+  __asisKoffiCfRef: ReturnType<typeof koffi.pointer> | undefined;
+  __asisKoffiAXRef: ReturnType<typeof koffi.pointer> | undefined;
+  __asisKoffiCGRect: ReturnType<typeof koffi.struct> | undefined;
+};
+
+function getCfRef(): ReturnType<typeof koffi.pointer> {
+  if (_g.__asisKoffiCfRef) return _g.__asisKoffiCfRef;
+  try {
+    _g.__asisKoffiCfRef = koffi.pointer('CfRef', koffi.opaque());
+  } catch {
+    // hot-reload: 이미 등록된 이름 — 이름 문자열로 참조하므로 anonymous fallback 불필요.
+    // globalThis 에 null-ish 이므로 다음 getFns() 호출에서 다시 시도되지 않도록 dummy 값 저장.
+    _g.__asisKoffiCfRef = koffi.pointer(koffi.opaque());
+  }
+  return _g.__asisKoffiCfRef;
+}
+
+function getAXRef(): ReturnType<typeof koffi.pointer> {
+  if (_g.__asisKoffiAXRef) return _g.__asisKoffiAXRef;
+  try {
+    _g.__asisKoffiAXRef = koffi.pointer('AXRef', koffi.opaque());
+  } catch {
+    _g.__asisKoffiAXRef = koffi.pointer(koffi.opaque());
+  }
+  return _g.__asisKoffiAXRef;
+}
+
+function getCGRectStruct(): ReturnType<typeof koffi.struct> {
+  if (_g.__asisKoffiCGRect) return _g.__asisKoffiCGRect;
+  try {
+    _g.__asisKoffiCGRect = koffi.struct('CGRect_t', {
+      x: 'double', y: 'double', width: 'double', height: 'double',
+    });
+  } catch {
+    _g.__asisKoffiCGRect = koffi.struct({ x: 'double', y: 'double', width: 'double', height: 'double' });
+  }
+  return _g.__asisKoffiCGRect;
+}
+
 let _fns: Fns | null = null;
 
 function getFns(): Fns {
   if (_fns) return _fns;
 
-  // CF 타입은 모두 opaque pointer — 단일 CfRef 타입으로 통일.
-  // getFns 첫 호출 시 한 번만 등록. array-based 선언(numVal) 에서 직접 참조.
-  const CfRef = koffi.pointer('CfRef', koffi.opaque());
+  // getCfRef/getAXRef 를 먼저 호출해 타입이 레지스트리에 등록되도록 한다.
+  getCfRef();
 
   const CF = koffi.load('/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation');
   const CG = koffi.load('/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics');
@@ -70,8 +116,8 @@ function getFns(): Fns {
     strCreate: CF.func('CfRef CFStringCreateWithCString(CfRef, str, uint32)'),
     strPtr: CF.func('str CFStringGetCStringPtr(CfRef, uint32)'),
     strGetCString: CF.func('bool CFStringGetCString(CfRef, char *, long, uint32)'),
-    // array-based: CfRef 변수를 직접 참조해 TS unused-var 경고 방지.
-    numVal: CF.func('CFNumberGetValue', 'bool', [CfRef, 'int', koffi.out(koffi.pointer('double'))]),
+    // 문자열 타입명으로 선언 — hot-reload 후 anonymous fallback 타입과의 불일치 방지.
+    numVal: CF.func('CFNumberGetValue', 'bool', ['CfRef', 'int', koffi.out(koffi.pointer('double'))]),
     release: CF.func('void CFRelease(CfRef)'),
   };
   return _fns;
@@ -167,6 +213,7 @@ export function listWindows(): Promise<WindowInfo[]> {
       for (const k of [kBounds, kOwner, kPID, kWindowNumber, kX, kY, kW, kH]) f.release(k);
       f.release(list);
 
+      console.info(`[asis] listWindows: CGWindowList total=${count}, filtered=${windows.length}`, windows.slice(0, 3).map((w) => `${w.name}(${w.x},${w.y},${w.w}x${w.h})`));
       resolve(windows);
     } catch (err: unknown) {
       console.warn('[asis] listWindows koffi 실패:', err);
@@ -196,13 +243,9 @@ let _axFns: AXFns | null = null;
 function getAxFns(): AXFns {
   if (_axFns) return _axFns;
 
-  const AXRef = koffi.pointer('AXRef', koffi.opaque());
-  const CGRectStruct = koffi.struct('CGRect_t', {
-    x: 'double',
-    y: 'double',
-    width: 'double',
-    height: 'double',
-  });
+  getCfRef(); // 'CfRef' 이름이 레지스트리에 있어야 copyAttrValue 시그니처 파싱 가능.
+  getAXRef(); // 'AXRef' 이름 등록.
+  const CGRectStruct = getCGRectStruct();
 
   const AS = koffi.load(
     '/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices',
@@ -212,12 +255,14 @@ function getAxFns(): AXFns {
     createSystemWide: AS.func('AXRef AXUIElementCreateSystemWide()'),
     // AXError(int32) 반환 — 0 이면 success.
     elementAtPos: AS.func('int32 AXUIElementCopyElementAtPosition(AXRef, float, float, _Out_ AXRef *)'),
-    copyAttrValue: AS.func('int32 AXUIElementCopyAttributeValue(AXRef, AXRef, _Out_ AXRef *)'),
-    // AXRef 변수를 직접 참조해 TS unused-var 경고 방지 (CfRef 패턴과 동일).
+    // C 원형: AXUIElementCopyAttributeValue(AXUIElementRef, CFStringRef, CFTypeRef*)
+    // 2번째 파라미터가 CFStringRef = CfRef 이므로 AXRef 가 아님.
+    copyAttrValue: AS.func('int32 AXUIElementCopyAttributeValue(AXRef, CfRef, _Out_ AXRef *)'),
+    // koffi 3-arg: func(name, returnType, params) — AXRef 문자열명 사용으로 hot-reload 불일치 방지.
     axValueGetValue: AS.func(
-      'bool',
       'AXValueGetValue',
-      [AXRef, 'int32', koffi.out(koffi.pointer(CGRectStruct))],
+      'bool',
+      ['AXRef', 'int32', koffi.out(koffi.pointer(CGRectStruct))],
     ),
     release: AS.func('void CFRelease(AXRef)'),
   };

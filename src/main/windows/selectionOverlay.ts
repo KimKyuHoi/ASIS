@@ -165,9 +165,19 @@ export class SelectionOverlayManager {
     //   - 캐시 있음 + renderer ready → 즉시 전송 (0ms 지연)
     //   - 캐시 없음 or renderer not ready → ready 대기 후 전송
     // 전송 이후 백그라운드에서 fresh 조회 → 갱신 전송 (windoslist 변동 반영).
+    // 전역 스크린 좌표 → 오버레이 로컬 좌표 변환.
+    // CHANNEL_ELEMENT_AT 가 이미 minX/minY 를 빼듯, windows 도 동일하게 보정한다.
+    // 다중 디스플레이에서 왼쪽/위 디스플레이의 창이 음수 좌표로 오면
+    // 렌더러 pointer(로컬)와 비교할 때 완전히 불일치하는 버그를 방지.
+    const toLocal = (w: WindowInfo): WindowInfo => ({
+      ...w,
+      x: w.x - minX,
+      y: w.y - minY,
+    });
+
     const sendWindows = (windows: WindowInfo[]): void => {
       if (!win.isDestroyed()) {
-        win.webContents.send(CHANNEL_WINDOWS, windows);
+        win.webContents.send(CHANNEL_WINDOWS, windows.map(toLocal));
       }
     };
 
@@ -206,7 +216,7 @@ export class SelectionOverlayManager {
       listWindows().then((updated) => {
         this.cachedWindows = updated;
         if (!win.isDestroyed()) {
-          win.webContents.send(CHANNEL_WINDOWS, updated);
+          win.webContents.send(CHANNEL_WINDOWS, updated.map(toLocal));
         }
       }).catch((err: unknown) => {
         console.warn('[asis] selectionOverlay 재스캔 실패:', err);
