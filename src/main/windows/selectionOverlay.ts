@@ -3,7 +3,12 @@ import { spawn } from 'node:child_process';
 import { readFile, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ensureAccessibilityPermission, getElementBoundsAtPoint, listWindows } from '../windowsInfo';
+import {
+  ensureAccessibilityPermission,
+  getElementBoundsAtPoint,
+  listWindows,
+  onSpaceChange,
+} from '../windowsInfo';
 import type { WindowInfo } from '../windowsInfo';
 
 type Rect = {
@@ -231,6 +236,30 @@ export class SelectionOverlayManager {
       }).catch(() => { /* 다음 tick 에서 재시도 */ });
     }, WINDOWS_POLL_MS);
 
+    // Space 전환 이벤트 구독 — polling 보다 빠르게 새 Space UI 감지.
+    // 폴링은 fallback 으로 그대로 유지 (이 이벤트가 fire 안 하는 환경 대응).
+    // Space 전환 애니메이션(~300ms) 직후에 listWindows 가 새 Space 의 창을
+    // 반환하므로 350ms delay 추가 호출도 한다.
+    const unsubSpaceChange = onSpaceChange(() => {
+      if (win.isDestroyed()) return;
+      const refresh = (): void => {
+        if (win.isDestroyed()) return;
+        listWindows().then((updated) => {
+          this.cachedWindows = updated;
+          if (!win.isDestroyed()) {
+            win.webContents.send(CHANNEL_WINDOWS, updated.map(toLocal));
+          }
+        }).catch(() => { /* polling 이 다음 tick 에서 복구 */ });
+      };
+      refresh();
+      setTimeout(refresh, 350);
+      // background 도 같이 — Space 전환 직후 magnifier 픽셀 stale 방지.
+      setTimeout(() => {
+        if (win.isDestroyed()) return;
+        captureBackgroundForOverlay(win).catch(() => { /* bgPoll 이 복구 */ });
+      }, 350);
+    });
+
     // in-flight flag — 이전 screencapture spawn 미완료 시 다음 tick skip.
     // 캡처가 BG_POLL_MS 보다 오래 걸리는 케이스(시스템 부하 등) 에서 중복 spawn
     // 으로 IO·CPU 가 누적되는 것을 방지.
@@ -268,6 +297,7 @@ export class SelectionOverlayManager {
         globalShortcut.unregister(ESC_ACCEL);
         clearInterval(windowsPoll);
         clearInterval(bgPoll);
+        unsubSpaceChange();
         if (!win.isDestroyed()) {
           win.close();
         }
