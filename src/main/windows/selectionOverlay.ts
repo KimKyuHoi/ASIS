@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   ensureAccessibilityPermission,
+  getDockItems,
   getElementBoundsAtPoint,
   listWindows,
   onSpaceChange,
@@ -182,7 +183,11 @@ export class SelectionOverlayManager {
 
     const sendWindows = (windows: WindowInfo[]): void => {
       if (!win.isDestroyed()) {
-        win.webContents.send(CHANNEL_WINDOWS, windows.map(toLocal));
+        // Dock 아이콘들도 함께 — listWindows 에서 Dock 차단했지만 AX 로 개별
+        // 아이콘만 추출. listWindows 가 부수적으로 캐시한 _lastDockPid 가 있을
+        // 때만 동작 (없으면 빈 배열).
+        const dock = getDockItems() ?? [];
+        win.webContents.send(CHANNEL_WINDOWS, [...windows, ...dock].map(toLocal));
       }
     };
 
@@ -230,9 +235,7 @@ export class SelectionOverlayManager {
       }
       listWindows().then((updated) => {
         this.cachedWindows = updated;
-        if (!win.isDestroyed()) {
-          win.webContents.send(CHANNEL_WINDOWS, updated.map(toLocal));
-        }
+        sendWindows(updated);
       }).catch(() => { /* 다음 tick 에서 재시도 */ });
     }, WINDOWS_POLL_MS);
 
@@ -246,9 +249,7 @@ export class SelectionOverlayManager {
         if (win.isDestroyed()) return;
         listWindows().then((updated) => {
           this.cachedWindows = updated;
-          if (!win.isDestroyed()) {
-            win.webContents.send(CHANNEL_WINDOWS, updated.map(toLocal));
-          }
+          sendWindows(updated);
         }).catch(() => { /* polling 이 다음 tick 에서 복구 */ });
       };
       refresh();

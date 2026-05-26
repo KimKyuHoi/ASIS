@@ -24,6 +24,9 @@ export type WindowInfo = {
   h: number;
 };
 
+/** listWindows 가 부수적으로 캐시하는 Dock process PID — getDockItems 에서 사용. */
+let _lastDockPid: number | null = null;
+
 export function ensureAccessibilityPermission(prompt: boolean): boolean {
   return systemPreferences.isTrustedAccessibilityClient(prompt);
 }
@@ -206,7 +209,7 @@ export function listWindows(): Promise<WindowInfo[]> {
         return;
       }
 
-      const count = f.arrCount(list);
+      const count = getFns().arrCount(list);
 
       // 루프 안 반복 생성 방지 — CFString 키를 미리 만들어 둠.
       const kBounds = cfStr('kCGWindowBounds');
@@ -242,11 +245,14 @@ export function listWindows(): Promise<WindowInfo[]> {
         if (!name) continue;
         // 차단 대상 owner — kCGWindowBounds 가 정상적이지 않거나 자식 process.
         // - screencapture: ASIS 자신이 color picker 용 background 캡처로 spawn.
-        //   PID 가 다르므로 selfPid 체크로 안 걸러짐.
         // - Dock: kCGWindowBounds 가 화면 전체(1920×1080) 로 보고되어 cursor 어디
-        //   에든 hit. Opera 등 정상 윈도우가 작아도 빈 영역 클릭 시 Dock 으로 잡혀
-        //   전체 화면 캡처되는 문제 발생. macOS API 한계로 우회 불가.
-        if (name === 'screencapture' || name === 'Dock') continue;
+        //   에든 hit → 전체 화면 캡처 문제. listWindows 에서는 제외하지만 PID 는
+        //   별도로 캐싱해서 getDockItems() 가 AX 로 개별 아이콘을 따로 가져온다.
+        if (name === 'screencapture') continue;
+        if (name === 'Dock') {
+          _lastDockPid = Math.round(pid);
+          continue;
+        }
 
         const id = cfNumToJs(f.dictGet(win, kWindowNumber));
         windows.push({ id, name, x, y, w, h });
@@ -270,6 +276,9 @@ export function listWindows(): Promise<WindowInfo[]> {
 
 type AXFns = {
   createSystemWide: () => unknown;
+  // PID 기준 AX root 생성 — Dock children enumerate 등 특정 process 의 UI 트리
+  // 접근에 사용.
+  createApp: (pid: number) => unknown;
   elementAtPos: (sys: unknown, x: number, y: number, out: unknown[]) => number;
   copyAttrValue: (el: unknown, attr: unknown, out: unknown[]) => number;
   // batch — 여러 attribute 를 1번의 AX IPC 로 읽음. cost 절감.
@@ -308,6 +317,7 @@ function getAxFns(): AXFns {
   const CF = koffi.load('/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation');
   _axFns = {
     createSystemWide: AS.func('CfRef AXUIElementCreateSystemWide()'),
+    createApp: AS.func('CfRef AXUIElementCreateApplication(int)'),
     elementAtPos: AS.func(
       'int32 AXUIElementCopyElementAtPosition(CfRef, float, float, _Out_ CfRef *)',
     ),
@@ -407,6 +417,96 @@ export function getElementBoundsAtPoint(
     return { x, y, w, h, name: name || undefined };
   } catch (err: unknown) {
     console.warn('[asis] getElementBoundsAtPoint 실패:', err);
+    return null;
+  }
+}
+
+/**
+ * Dock 아이콘 enumerate — listWindows 에서 Dock 차단을 우회하기 위해 AX 로
+ * Dock 의 children 을 직접 가져온다.
+ *
+ * Dock 의 AX 구조:
+ *   Dock(app) → AXChildren → [AXList(items)] → AXChildren → [AXDockItem, ...]
+ *   각 AXDockItem 은 AXTitle("Safari" 등) + AXFrame (개별 아이콘 좌표).
+ *
+ * listWindows 가 부수적으로 _lastDockPid 를 캐시했을 때만 동작.
+ * AX 권한 없거나 enumerate 실패 시 null — 호출자는 자연스럽게 빈 목록으로 처리.
+ */
+export function getDockItems(): WindowInfo[] | null {
+  if (_lastDockPid === null) return null;
+  if (!checkAxPermFast()) return null;
+  try {
+    const f = getAxFns();
+    const { strCreate, release } = getFns();
+    const dockApp = f.createApp(_lastDockPid);
+
+    // Step 1: Dock app 의 AXChildren → AXList 찾기.
+    const childrenKey = strCreate(null, 'AXChildren', kCFStringEncodingUTF8);
+    const listOut: unknown[] = [null];
+    let err = f.copyAttrValue(dockApp, childrenKey, listOut);
+    f.release(dockApp);
+    if (err !== kAXErrorSuccess || !listOut[0]) {
+      release(childrenKey);
+      return null;
+    }
+    const topChildren = listOut[0];
+    if (getFns().arrCount(topChildren) === 0) {
+      release(childrenKey);
+      release(topChildren);
+      return null;
+    }
+    // Dock 의 top child[0] = AXList(아이콘 컨테이너).
+    const axList = f.arrayGet(topChildren, 0);
+
+    // Step 2: AXList 의 AXChildren → 개별 AXDockItem 들.
+    const itemsOut: unknown[] = [null];
+    err = f.copyAttrValue(axList, childrenKey, itemsOut);
+    release(childrenKey);
+    release(topChildren);
+    if (err !== kAXErrorSuccess || !itemsOut[0]) return null;
+    const dockItemArr = itemsOut[0];
+    const itemCount = getFns().arrCount(dockItemArr);
+
+    // Step 3: 각 아이템의 AXTitle + AXFrame batch.
+    const titleKey = strCreate(null, 'AXTitle', kCFStringEncodingUTF8);
+    const frameKey = strCreate(null, kAXFrameAttribute, kCFStringEncodingUTF8);
+
+    const items: WindowInfo[] = [];
+    for (let i = 0; i < itemCount; i++) {
+      const item = f.arrayGet(dockItemArr, i);
+      if (!item) continue;
+
+      const attrArr = f.arrayCreateMutable(null, 2, null);
+      f.arrayAppendValue(attrArr, titleKey);
+      f.arrayAppendValue(attrArr, frameKey);
+      const valuesOut: unknown[] = [null];
+      const batchErr = f.copyMultipleAttrValues(item, attrArr, 0, valuesOut);
+      release(attrArr);
+      if (batchErr !== kAXErrorSuccess || !valuesOut[0]) continue;
+      const values = valuesOut[0];
+      const titleVal = f.arrayGet(values, 0);
+      const frameVal = f.arrayGet(values, 1);
+      const title = titleVal ? cfStrToJs(titleVal) : '';
+      if (!frameVal) {
+        release(values);
+        continue;
+      }
+      const rectOut = [{ x: 0, y: 0, width: 0, height: 0 }];
+      const ok = f.axValueGetValue(frameVal, kAXValueCGRectType, rectOut);
+      release(values);
+      if (!ok) continue;
+      const { x, y, width: w, height: h } = rectOut[0];
+      if (w < 2 || h < 2) continue;
+      // Dock item 의 id 는 일반 CGWindowID 와 conflict 안 나도록 음수 + index.
+      items.push({ id: -1 - i, name: title || 'Dock', x, y, w, h });
+    }
+
+    release(titleKey);
+    release(frameKey);
+    release(dockItemArr);
+    return items;
+  } catch (err: unknown) {
+    console.warn('[asis] getDockItems 실패:', err);
     return null;
   }
 }
