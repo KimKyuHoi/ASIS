@@ -6,6 +6,7 @@ import {
   ipcMain,
   screen,
 } from 'electron';
+import { is } from '@electron-toolkit/utils';
 import { copyFile, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -92,7 +93,7 @@ export class RecorderWindowManager {
     win.setContentProtection(true);
     this.win = win;
     this.hidden = placement.hidden;
-    if (placement.hidden) {
+    if (placement.hidden && is.dev) {
       console.info(
         '[asis recorder] rect 가 너무 커 알약 hidden — ⌘⇧G 로 정지 가능',
       );
@@ -102,7 +103,7 @@ export class RecorderWindowManager {
       'console-message',
       (_event, level, message, line, sourceId) => {
         if (message.includes('[asis')) {
-          console.info(`[recorder L${level}]`, message);
+          if (is.dev) console.info(`[recorder L${level}]`, message);
         } else if (level === 3 && !message.includes('Autofill')) {
           console.error(`[recorder error] ${message} (${sourceId}:${line})`);
         }

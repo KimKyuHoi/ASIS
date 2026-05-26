@@ -8,6 +8,7 @@ import {
   Notification,
   screen,
 } from 'electron';
+import { is } from '@electron-toolkit/utils';
 import { existsSync } from 'node:fs';
 import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -93,7 +94,7 @@ export class EditorWindowManager {
       'console-message',
       (_event, level, message, line, sourceId) => {
         if (message.includes('[asis')) {
-          console.info(`[renderer L${level}]`, message);
+          if (is.dev) console.info(`[renderer L${level}]`, message);
         } else if (level === 3) {
           if (!message.includes('Autofill')) {
             console.error(
@@ -115,7 +116,7 @@ export class EditorWindowManager {
     });
 
     const onReady = (): void => {
-      console.info('[asis editor:main] prewarm: editor:ready 수신');
+      if (is.dev) console.info('[asis editor:main] prewarm: editor:ready 수신');
       this.rendererReady = true;
       this.readyHandler = null;
       if (this.pendingImageSend) {
@@ -193,7 +194,7 @@ export class EditorWindowManager {
 
     const sendImage = (): void => {
       if (!win.isDestroyed()) {
-        console.info('[asis editor:main] image 전송');
+        if (is.dev) console.info('[asis editor:main] image 전송');
         win.webContents.send(CHANNEL_LOAD_IMAGE, imagePath, logW, logH);
       }
     };

@@ -1,4 +1,5 @@
 import { BrowserWindow, ipcMain, screen } from 'electron';
+import { is } from '@electron-toolkit/utils';
 import { join } from 'node:path';
 import { settingsStore } from '../settings';
 
@@ -66,7 +67,7 @@ export class PinWindowManager {
       'console-message',
       (_event, level, message, line, sourceId) => {
         if (message.includes('[asis')) {
-          console.info(`[pin L${level}]`, message);
+          if (is.dev) console.info(`[pin L${level}]`, message);
         } else if (level === 3 && !message.includes('Autofill')) {
           console.error(`[pin error] ${message} (${sourceId}:${line})`);
         }
