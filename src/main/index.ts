@@ -61,6 +61,12 @@ const notifyError = (body: string): void => {
 };
 
 const HOVER_DELAY_MS = 3000;
+/**
+ * overlay 의 BrowserWindow close 후 macOS compositor 가 dim 픽셀을 화면에서
+ * 완전히 제거할 때까지 대기. 캡처 결과에 검은/흰 잔상이 남지 않도록 한다.
+ * 200ms 면 NSPanel close + Space 재합성까지 안전 (사용자 인지 어려운 지연).
+ */
+const OVERLAY_CLOSE_DELAY_MS = 200;
 
 /**
  * 캡처 → 에디터 → 클립보드 흐름 (권한 체크 없음 — 호출 전 체크 완료 가정).
@@ -116,15 +122,13 @@ const handleRegionCapture = (): void => {
       (result) => {
         if (result.kind === 'selected') {
           const { windowId, ...rect } = result.rect;
-          // overlay BrowserWindow close 직후엔 macOS compositor 에 dim 픽셀이
-          // 아직 남아 있을 수 있다 (특히 fullscreen Space). screencapture 결과가
-          // 검은 화면/흰 화면이 되지 않도록 충분히 대기 후 캡처.
-          // 200ms 면 NSPanel close + Space 재합성까지 안전 (사용자 인지 어려움).
+          // overlay close 후 macOS compositor 의 dim 잔상이 캡처에 들어가지
+          // 않도록 OVERLAY_CLOSE_DELAY_MS 대기 후 screencapture 실행.
           setTimeout(() => {
             handleCapture('영역 캡처', () =>
               windowId !== undefined ? captureWindowById(windowId) : captureRegion(rect),
             );
-          }, 200);
+          }, OVERLAY_CLOSE_DELAY_MS);
         }
       },
       (err: unknown) => {

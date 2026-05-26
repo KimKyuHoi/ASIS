@@ -220,10 +220,6 @@ export function listWindows(): Promise<WindowInfo[]> {
       for (const k of [kBounds, kOwner, kPID, kWindowNumber, kX, kY, kW, kH]) f.release(k);
       f.release(list);
 
-      console.info(
-        `[asis] listWindows: total=${count}, filtered=${windows.length}`,
-        windows.slice(0, 3).map((w) => `${w.name}(${w.x},${w.y},${w.w}x${w.h})`),
-      );
       resolve(windows);
     } catch (err: unknown) {
       console.warn('[asis] listWindows koffi 실패:', err);

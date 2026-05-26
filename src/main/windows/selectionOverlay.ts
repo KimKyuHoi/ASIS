@@ -212,8 +212,12 @@ export class SelectionOverlayManager {
     // 공간 전환 지속 감지 — overlay 가 떠 있는 동안 windows 목록과 background
     // 화면을 주기적으로 갱신해서 사용자가 trackpad 로 Space 를 전환해도 새 화면의
     // UI 가 감지되도록 한다.
-    // - windows polling 400ms: hoverWindow 표시가 0.4s 안에 새 화면 기준으로 갱신
-    // - background polling 1500ms: color picker magnifier 픽셀도 새 화면 반영
+    // - WINDOWS_POLL_MS 400: koffi 동기 호출 cost 가 낮아서 빠르게 폴링 가능
+    // - BG_POLL_MS 2500: screencapture spawn + PNG IO 비용이 커서 보수적으로
+    //   설정. Space 전환 후 magnifier 픽셀이 최악 2.5s 지연 갱신 (수용 가능).
+    const WINDOWS_POLL_MS = 400;
+    const BG_POLL_MS = 2500;
+
     const windowsPoll = setInterval(() => {
       if (win.isDestroyed()) {
         clearInterval(windowsPoll);
@@ -225,7 +229,7 @@ export class SelectionOverlayManager {
           win.webContents.send(CHANNEL_WINDOWS, updated.map(toLocal));
         }
       }).catch(() => { /* 다음 tick 에서 재시도 */ });
-    }, 400);
+    }, WINDOWS_POLL_MS);
 
     const bgPoll = setInterval(() => {
       if (win.isDestroyed()) {
@@ -233,7 +237,7 @@ export class SelectionOverlayManager {
         return;
       }
       captureBackgroundForOverlay(win).catch(() => { /* 다음 tick 에서 재시도 */ });
-    }, 1500);
+    }, BG_POLL_MS);
 
     // macOS 26β 에서 transparent+alwaysOnTop 윈도우가 keydown 을 못 받는 회귀 우회.
     const ESC_ACCEL = 'Escape';
