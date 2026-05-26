@@ -231,12 +231,20 @@ export class SelectionOverlayManager {
       }).catch(() => { /* 다음 tick 에서 재시도 */ });
     }, WINDOWS_POLL_MS);
 
+    // in-flight flag — 이전 screencapture spawn 미완료 시 다음 tick skip.
+    // 캡처가 BG_POLL_MS 보다 오래 걸리는 케이스(시스템 부하 등) 에서 중복 spawn
+    // 으로 IO·CPU 가 누적되는 것을 방지.
+    let bgCaptureInFlight = false;
     const bgPoll = setInterval(() => {
       if (win.isDestroyed()) {
         clearInterval(bgPoll);
         return;
       }
-      captureBackgroundForOverlay(win).catch(() => { /* 다음 tick 에서 재시도 */ });
+      if (bgCaptureInFlight) return;
+      bgCaptureInFlight = true;
+      captureBackgroundForOverlay(win)
+        .catch(() => { /* 다음 tick 에서 재시도 */ })
+        .finally(() => { bgCaptureInFlight = false; });
     }, BG_POLL_MS);
 
     // macOS 26β 에서 transparent+alwaysOnTop 윈도우가 keydown 을 못 받는 회귀 우회.
@@ -375,27 +383,32 @@ async function captureBackgroundForOverlay(
     tmpdir(),
     `asis-bg-${Date.now()}-${process.pid}.png`,
   );
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn('/usr/sbin/screencapture', [
-      '-x',
-      '-t',
-      'png',
-      tmpPath,
-    ]);
-    child.on('error', reject);
-    child.on('close', (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`screencapture exit ${code}`));
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn('/usr/sbin/screencapture', [
+        '-x',
+        '-t',
+        'png',
+        tmpPath,
+      ]);
+      child.on('error', reject);
+      child.on('close', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`screencapture exit ${code}`));
+      });
     });
-  });
-  const buf = await readFile(tmpPath);
-  const dataUrl = `data:image/png;base64,${buf.toString('base64')}`;
-  if (!win.isDestroyed()) {
-    win.webContents.send(CHANNEL_BACKGROUND, dataUrl);
+    const buf = await readFile(tmpPath);
+    const dataUrl = `data:image/png;base64,${buf.toString('base64')}`;
+    if (!win.isDestroyed()) {
+      win.webContents.send(CHANNEL_BACKGROUND, dataUrl);
+    }
+  } finally {
+    // screencapture 실패 시에도 부분 생성된 PNG 가 남을 수 있어 finally 에서 정리.
+    // ENOENT 는 정상 (실패 시 파일 자체가 안 생긴 경우).
+    await unlink(tmpPath).catch((err: unknown) => {
+      if (!isFileNotFound(err)) console.warn('[asis] background tmp cleanup failed', err);
+    });
   }
-  await unlink(tmpPath).catch((err: unknown) => {
-    if (!isFileNotFound(err)) console.warn('[asis] background tmp cleanup failed', err);
-  });
 }
 
 function isFileNotFound(err: unknown): boolean {
