@@ -126,7 +126,11 @@ const handleRegionCapture = (): void => {
           // 않도록 OVERLAY_CLOSE_DELAY_MS 대기 후 screencapture 실행.
           setTimeout(() => {
             handleCapture('영역 캡처', () =>
-              windowId !== undefined ? captureWindowById(windowId) : captureRegion(rect),
+              // Dock 아이템은 가짜 음수 ID — screencapture -l 가 invalid 처리하므로
+              // rect 기반 captureRegion 으로 fallback. 일반 윈도우(양수 ID) 는 그대로.
+              windowId !== undefined && windowId > 0
+                ? captureWindowById(windowId)
+                : captureRegion(rect),
             );
           }, OVERLAY_CLOSE_DELAY_MS);
         }
@@ -328,7 +332,11 @@ app.whenReady().then(() => {
           setTimeout(() => {
             const { windowId, ...rect } = result.rect;
             runCapture('영역 캡처', () =>
-              windowId !== undefined ? captureWindowById(windowId) : captureRegion(rect),
+              // Dock 아이템은 가짜 음수 ID — screencapture -l 가 invalid 처리하므로
+              // rect 기반 captureRegion 으로 fallback. 일반 윈도우(양수 ID) 는 그대로.
+              windowId !== undefined && windowId > 0
+                ? captureWindowById(windowId)
+                : captureRegion(rect),
             );
           }, HOVER_DELAY_MS);
         },
