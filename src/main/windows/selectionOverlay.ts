@@ -1,4 +1,5 @@
 import { BrowserWindow, globalShortcut, ipcMain, Notification, screen } from 'electron';
+import { is } from '@electron-toolkit/utils';
 import { spawn } from 'node:child_process';
 import { readFile, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -75,7 +76,7 @@ export class SelectionOverlayManager {
     ipcMain.once(CHANNEL_READY, () => {
       if (this.prewarmed === win) {
         this.prewarmedReady = true;
-        console.info('[asis] selectionOverlay: prewarm ready');
+        if (is.dev) console.info('[asis] selectionOverlay: prewarm ready');
       }
     });
 
@@ -133,7 +134,7 @@ export class SelectionOverlayManager {
       win = createOverlayWindow();
       skipReadyWait = false;
       const overlayPath = join(__dirname, '../renderer/selection/index.html');
-      console.info(`[asis] selectionOverlay loadFile (cold): ${overlayPath}`);
+      if (is.dev) console.info(`[asis] selectionOverlay loadFile (cold): ${overlayPath}`);
       win.loadFile(overlayPath).catch((err: unknown) => {
         console.error('[asis] selectionOverlay loadFile failed', err);
       });

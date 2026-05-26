@@ -2,7 +2,7 @@ import { app, clipboard, dialog, ipcMain, nativeImage, Notification, screen } fr
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
-import { electronApp, optimizer } from '@electron-toolkit/utils';
+import { electronApp, is, optimizer } from '@electron-toolkit/utils';
 import devAppIconPath from '../../resources/icon.png?asset';
 import { TrayManager } from './tray';
 import { ShortcutManager } from './shortcuts';
@@ -249,7 +249,7 @@ ipcMain.handle('history:pin', (_event, dataUrl: string, w: number, h: number) =>
 // app.dock.hide() 같은 동적 전환은 절대 호출하지 않는다.
 if (process.platform === 'darwin') {
   app.setActivationPolicy('accessory');
-  console.info('[asis] app.setActivationPolicy("accessory") applied');
+  if (is.dev) console.info('[asis] app.setActivationPolicy("accessory") applied');
 }
 
 app.whenReady().then(() => {
