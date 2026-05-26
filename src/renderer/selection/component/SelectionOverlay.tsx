@@ -5,6 +5,16 @@ import { Magnifier } from './Magnifier';
 import { normalize, chipPlacement } from '../lib/rect-utils';
 
 /**
+ * AX RoleDescription 중 사용자에게 정보 가치가 낮은 generic 이름들.
+ * 우상단 hover 정보 패널에서 이런 이름은 숨기고 윈도우 owner name 만 표시한다.
+ * (예: AXGroup 의 RoleDescription = "그룹" — 사용자에게 무의미.)
+ */
+const GENERIC_AX_NAMES: ReadonlySet<string> = new Set([
+  '그룹', 'Group', '윈도우', 'Window', '리스트', 'List',
+  '일반 콘텐트', 'Generic Content', 'AXGroup',
+]);
+
+/**
  * ASIS 영역 선택 오버레이.
  *
  * 풀스크린 transparent BrowserWindow 안에서 동작한다. 사용자 드래그로 사각형을
@@ -28,7 +38,7 @@ export default function SelectionOverlay(): JSX.Element {
   const [windows, setWindows] = useState<
     Array<{ id: number; name: string; x: number; y: number; w: number; h: number }>
   >([]);
-  type HoverElement = { x: number; y: number; w: number; h: number };
+  type HoverElement = { x: number; y: number; w: number; h: number; name?: string };
   const [hoverElement, setHoverElement] = useState<HoverElement | null>(null);
   // pointerdown 시 hit 된 윈도우 후보 — 이동 없이 pointerup 되면(클릭) 그 윈도우를 캡처.
   // 이동이 있으면(드래그) 무시 → 일반 rect 드래그로 전환.
@@ -214,7 +224,8 @@ export default function SelectionOverlay(): JSX.Element {
 
   // 마우스 hover 시점의 *작은 hit-target 윈도우* 찾기 (UI 자동 감지).
   // 여러 윈도우가 겹쳐있으면 *가장 작은* 게 사용자가 의도한 윈도우 (Snipaste 결).
-  const hoverWindow = ((): { x: number; y: number; w: number; h: number } | null => {
+  type HoverWindow = { id: number; name: string; x: number; y: number; w: number; h: number };
+  const hoverWindow = ((): HoverWindow | null => {
     if (!pointer || windows.length === 0 || state.kind !== 'idle') return null;
     const hits = windows.filter(
       (w) =>
@@ -248,18 +259,34 @@ export default function SelectionOverlay(): JSX.Element {
 
   return (
     <div className={overlayClass}>
-      {/* 디버그 패널 — 원인 파악 후 제거 */}
-      <div style={{
-        position: 'fixed', top: 8, right: 8, zIndex: 9999,
-        background: 'rgba(0,0,0,0.75)', color: '#0f0', fontFamily: 'monospace',
-        fontSize: 11, padding: '4px 8px', borderRadius: 4, pointerEvents: 'none',
-        lineHeight: 1.6,
-      }}>
-        windows: {windows.length}<br />
-        ptr: {pointer ? `${Math.round(pointer.x)},${Math.round(pointer.y)}` : 'null'}<br />
-        hover: {hoverWindow ? `${Math.round(hoverWindow.x)},${Math.round(hoverWindow.y)} ${Math.round(hoverWindow.w)}×${Math.round(hoverWindow.h)}` : 'null'}<br />
-        dim: {dimRect ? `${Math.round(dimRect.x)},${Math.round(dimRect.y)}` : 'null'}
-      </div>
+      {/* 우상단 hover 정보 패널.
+          - 1행: 윈도우 owner name (있을 때) — 사용자에게 친숙한 앱 이름
+          - 2행: AX element name (있을 때, "그룹"·"윈도우" 같은 generic 은 숨김)
+          - 3행: 실제 잡힌 영역의 w×h (hoverElement 가 우선, 없으면 hoverWindow)
+          highlight 박스(WindowSnap) 와 같은 영역의 크기를 표시한다. */}
+      {state.kind === 'idle' && (() => {
+        // 시각 표시(snap) 가 hoverElement 우선이므로 크기도 동일하게.
+        // 둘 다 null 이면 패널 자체를 안 그린다.
+        const sizeRect = hoverElement ?? hoverWindow;
+        if (!sizeRect) return null;
+        const elName = hoverElement?.name && hoverElement.name.length > 0
+          ? hoverElement.name
+          : null;
+        const showElName = elName !== null && !GENERIC_AX_NAMES.has(elName);
+        return (
+          <div className="hover-info">
+            {hoverWindow && (
+              <div className="hover-info__name">{hoverWindow.name}</div>
+            )}
+            {showElName && (
+              <div className="hover-info__element">{elName}</div>
+            )}
+            <div className="hover-info__size">
+              {Math.round(sizeRect.w)}×{Math.round(sizeRect.h)}
+            </div>
+          </div>
+        );
+      })()}
       {dimRect ? <DimStrips rect={dimRect} /> : <div className="dim dim--full" />}
 
       {rect ? (

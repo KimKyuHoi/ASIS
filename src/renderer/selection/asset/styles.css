@@ -103,6 +103,51 @@ body {
   }
 }
 
+/* ── hover info panel (우상단) ──────────────────────
+   hover 중인 윈도우/요소의 이름과 크기를 화면 우상단에 명확히 표시. */
+.hover-info {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 100;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.78);
+  color: #fff;
+  border-radius: 6px;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: dimAppear var(--duration-mid) var(--ease-mac);
+  max-width: 280px;
+}
+
+.hover-info__name {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hover-info__element {
+  font-size: 12px;
+  opacity: 0.9;
+  margin-top: 2px;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hover-info__size {
+  font-size: 12px;
+  opacity: 0.7;
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── crosshair guides ────────────────────────────── */
 
 .guide {

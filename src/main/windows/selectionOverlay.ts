@@ -209,19 +209,31 @@ export class SelectionOverlayManager {
       });
     });
 
-    // 공간 전환 후 재스캔 — 풀스크린 앱에서 단축키를 누른 뒤 다른 Space 로
-    // 슬라이딩하면 600ms 후 시점의 윈도우 목록으로 교체한다.
-    setTimeout(() => {
-      if (win.isDestroyed()) return;
+    // 공간 전환 지속 감지 — overlay 가 떠 있는 동안 windows 목록과 background
+    // 화면을 주기적으로 갱신해서 사용자가 trackpad 로 Space 를 전환해도 새 화면의
+    // UI 가 감지되도록 한다.
+    // - windows polling 400ms: hoverWindow 표시가 0.4s 안에 새 화면 기준으로 갱신
+    // - background polling 1500ms: color picker magnifier 픽셀도 새 화면 반영
+    const windowsPoll = setInterval(() => {
+      if (win.isDestroyed()) {
+        clearInterval(windowsPoll);
+        return;
+      }
       listWindows().then((updated) => {
         this.cachedWindows = updated;
         if (!win.isDestroyed()) {
           win.webContents.send(CHANNEL_WINDOWS, updated.map(toLocal));
         }
-      }).catch((err: unknown) => {
-        console.warn('[asis] selectionOverlay 재스캔 실패:', err);
-      });
-    }, 600);
+      }).catch(() => { /* 다음 tick 에서 재시도 */ });
+    }, 400);
+
+    const bgPoll = setInterval(() => {
+      if (win.isDestroyed()) {
+        clearInterval(bgPoll);
+        return;
+      }
+      captureBackgroundForOverlay(win).catch(() => { /* 다음 tick 에서 재시도 */ });
+    }, 1500);
 
     // macOS 26β 에서 transparent+alwaysOnTop 윈도우가 keydown 을 못 받는 회귀 우회.
     const ESC_ACCEL = 'Escape';
@@ -235,6 +247,8 @@ export class SelectionOverlayManager {
         ipcMain.removeAllListeners(CHANNEL_CANCEL);
         ipcMain.removeAllListeners(CHANNEL_READY);
         globalShortcut.unregister(ESC_ACCEL);
+        clearInterval(windowsPoll);
+        clearInterval(bgPoll);
         if (!win.isDestroyed()) {
           win.close();
         }
@@ -254,7 +268,13 @@ export class SelectionOverlayManager {
       ipcMain.handle(CHANNEL_ELEMENT_AT, (_event, x: number, y: number) => {
         const result = getElementBoundsAtPoint(x + minX, y + minY);
         if (!result) return null;
-        return { x: result.x - minX, y: result.y - minY, w: result.w, h: result.h };
+        return {
+          x: result.x - minX,
+          y: result.y - minY,
+          w: result.w,
+          h: result.h,
+          name: result.name,
+        };
       });
 
       ipcMain.handleOnce(CHANNEL_REGION, (_event, rect: Rect) => {
@@ -321,6 +341,11 @@ function createOverlayWindow(): BrowserWindow {
     roundedCorners: false,
     skipTaskbar: true,
     enableLargerThanScreen: true,
+    // NSPanel(type:'panel') 은 macOS 의 floating window 표준 — fullscreen Space
+    // (Slack/Opera 등) 위에도 그대로 떠서 Space 전환 없이 overlay 가 표시됨.
+    // NSWindow(default) 와 달리 keyboard focus 도 받을 수 있도록 setVisibleOnAll
+    // Workspaces + setAlwaysOnTop 조합으로 보강.
+    type: 'panel',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,

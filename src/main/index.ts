@@ -116,9 +116,15 @@ const handleRegionCapture = (): void => {
       (result) => {
         if (result.kind === 'selected') {
           const { windowId, ...rect } = result.rect;
-          handleCapture('영역 캡처', () =>
-            windowId !== undefined ? captureWindowById(windowId) : captureRegion(rect),
-          );
+          // overlay BrowserWindow close 직후엔 macOS compositor 에 dim 픽셀이
+          // 아직 남아 있을 수 있다 (특히 fullscreen Space). screencapture 결과가
+          // 검은 화면/흰 화면이 되지 않도록 충분히 대기 후 캡처.
+          // 200ms 면 NSPanel close + Space 재합성까지 안전 (사용자 인지 어려움).
+          setTimeout(() => {
+            handleCapture('영역 캡처', () =>
+              windowId !== undefined ? captureWindowById(windowId) : captureRegion(rect),
+            );
+          }, 200);
         }
       },
       (err: unknown) => {
@@ -230,6 +236,17 @@ ipcMain.handle('history:copy', (_event, dataUrl: string) => {
 ipcMain.handle('history:pin', (_event, dataUrl: string, w: number, h: number) => {
   pinWindow.pin(dataUrl, w, h);
 });
+
+// fullscreen Space 호환성 — macOS 의 regular 앱은 자체 Space 컨텍스트를 가져서
+// `makeKeyAndOrderFront:` → NSApp 활성화 → macOS 가 ASIS Space 로 강제 전환된다.
+// accessory 앱은 Space 컨텍스트가 없어 이 전환이 원천 차단된다.
+// `whenReady` *이전* 에 호출 = initial 설정 → macOS 26β 의 dynamic LSUIElement
+// 전환 시 키보드 포커스 영구 차단 회귀를 회피.
+// app.dock.hide() 같은 동적 전환은 절대 호출하지 않는다.
+if (process.platform === 'darwin') {
+  app.setActivationPolicy('accessory');
+  console.info('[asis] app.setActivationPolicy("accessory") applied');
+}
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.pinkfong.asis');

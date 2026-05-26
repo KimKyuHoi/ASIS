@@ -19,7 +19,7 @@ type SelectionAPI = {
   elementAt: (
     x: number,
     y: number,
-  ) => Promise<{ x: number; y: number; w: number; h: number } | null>;
+  ) => Promise<{ x: number; y: number; w: number; h: number; name?: string } | null>;
 };
 
 type EditorAPI = {

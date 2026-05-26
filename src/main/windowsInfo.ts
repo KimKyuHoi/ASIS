@@ -1,7 +1,7 @@
 import { systemPreferences } from 'electron';
 import koffi from 'koffi';
 
-export type ElementBounds = { x: number; y: number; w: number; h: number };
+export type ElementBounds = { x: number; y: number; w: number; h: number; name?: string };
 
 /**
  * macOS 의 *모든 visible 윈도우* 의 bounds 를 받아오는 모듈.
@@ -204,6 +204,13 @@ export function listWindows(): Promise<WindowInfo[]> {
         const name = cfStrToJs(f.dictGet(win, kOwner));
         // owner name 이 빈 윈도우 = macOS 내부 레이어 (Desktop 배경, 알림센터 등).
         if (!name) continue;
+        // 차단 대상 owner — kCGWindowBounds 가 정상적이지 않거나 자식 process.
+        // - screencapture: ASIS 자신이 color picker 용 background 캡처로 spawn.
+        //   PID 가 다르므로 selfPid 체크로 안 걸러짐.
+        // - Dock: kCGWindowBounds 가 화면 전체(1920×1080) 로 보고되어 cursor 어디
+        //   에든 hit. Opera 등 정상 윈도우가 작아도 빈 영역 클릭 시 Dock 으로 잡혀
+        //   전체 화면 캡처되는 문제 발생. macOS API 한계로 우회 불가.
+        if (name === 'screencapture' || name === 'Dock') continue;
 
         const id = cfNumToJs(f.dictGet(win, kWindowNumber));
         windows.push({ id, name, x, y, w, h });
@@ -213,7 +220,10 @@ export function listWindows(): Promise<WindowInfo[]> {
       for (const k of [kBounds, kOwner, kPID, kWindowNumber, kX, kY, kW, kH]) f.release(k);
       f.release(list);
 
-      console.info(`[asis] listWindows: CGWindowList total=${count}, filtered=${windows.length}`, windows.slice(0, 3).map((w) => `${w.name}(${w.x},${w.y},${w.w}x${w.h})`));
+      console.info(
+        `[asis] listWindows: total=${count}, filtered=${windows.length}`,
+        windows.slice(0, 3).map((w) => `${w.name}(${w.x},${w.y},${w.w}x${w.h})`),
+      );
       resolve(windows);
     } catch (err: unknown) {
       console.warn('[asis] listWindows koffi 실패:', err);
@@ -251,20 +261,23 @@ function getAxFns(): AXFns {
     '/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices',
   );
 
+  // AX 함수 시그니처를 CfRef 로 통일 — copyAttrValue 의 out 결과가 CFString
+  // (예: AXTitle) 일 때 cfStrToJs(CfRef) 에 그대로 넘길 수 있도록.
+  // AXRef·CFTypeRef·CFStringRef 모두 raw opaque pointer 이므로 명명만 통일하면 안전.
   _axFns = {
-    createSystemWide: AS.func('AXRef AXUIElementCreateSystemWide()'),
-    // AXError(int32) 반환 — 0 이면 success.
-    elementAtPos: AS.func('int32 AXUIElementCopyElementAtPosition(AXRef, float, float, _Out_ AXRef *)'),
-    // C 원형: AXUIElementCopyAttributeValue(AXUIElementRef, CFStringRef, CFTypeRef*)
-    // 2번째 파라미터가 CFStringRef = CfRef 이므로 AXRef 가 아님.
-    copyAttrValue: AS.func('int32 AXUIElementCopyAttributeValue(AXRef, CfRef, _Out_ AXRef *)'),
-    // koffi 3-arg: func(name, returnType, params) — AXRef 문자열명 사용으로 hot-reload 불일치 방지.
+    createSystemWide: AS.func('CfRef AXUIElementCreateSystemWide()'),
+    elementAtPos: AS.func(
+      'int32 AXUIElementCopyElementAtPosition(CfRef, float, float, _Out_ CfRef *)',
+    ),
+    copyAttrValue: AS.func(
+      'int32 AXUIElementCopyAttributeValue(CfRef, CfRef, _Out_ CfRef *)',
+    ),
     axValueGetValue: AS.func(
       'AXValueGetValue',
       'bool',
-      ['AXRef', 'int32', koffi.out(koffi.pointer(CGRectStruct))],
+      ['CfRef', 'int32', koffi.out(koffi.pointer(CGRectStruct))],
     ),
-    release: AS.func('void CFRelease(AXRef)'),
+    release: AS.func('void CFRelease(CfRef)'),
   };
   return _axFns;
 }
@@ -291,8 +304,28 @@ export function getElementBoundsAtPoint(
     if (axErr !== kAXErrorSuccess || !elOut[0]) return null;
 
     const el = elOut[0];
-    // kAXFrameAttribute 문자열을 CFString 으로 변환.
     const { strCreate, release } = getFns();
+
+    // AX 문자열 속성 helper — CFString 값을 JS string 으로 변환.
+    // 실패하거나 값이 없으면 빈 문자열.
+    const readStringAttr = (attr: string): string => {
+      const key = strCreate(null, attr, kCFStringEncodingUTF8);
+      const out: unknown[] = [null];
+      const err = f.copyAttrValue(el, key, out);
+      release(key);
+      if (err !== kAXErrorSuccess || !out[0]) return '';
+      const str = cfStrToJs(out[0]);
+      f.release(out[0]);
+      return str;
+    };
+
+    // 이름 우선순위: AXTitle(구체적 라벨, 예: "확인") → AXRoleDescription
+    // (사용자 언어로 번역된 역할, 예: "버튼") → AXDescription (대체 설명).
+    let name = readStringAttr('AXTitle');
+    if (!name) name = readStringAttr('AXRoleDescription');
+    if (!name) name = readStringAttr('AXDescription');
+
+    // kAXFrameAttribute 문자열을 CFString 으로 변환.
     const attrKey = strCreate(null, kAXFrameAttribute, kCFStringEncodingUTF8);
     const valOut: unknown[] = [null];
     const attrErr = f.copyAttrValue(el, attrKey, valOut);
@@ -308,7 +341,7 @@ export function getElementBoundsAtPoint(
 
     const { x, y, width: w, height: h } = rectOut[0];
     if (w < 2 || h < 2) return null;
-    return { x, y, w, h };
+    return { x, y, w, h, name: name || undefined };
   } catch (err: unknown) {
     console.warn('[asis] getElementBoundsAtPoint 실패:', err);
     return null;
