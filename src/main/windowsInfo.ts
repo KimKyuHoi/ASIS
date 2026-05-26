@@ -28,6 +28,25 @@ export function ensureAccessibilityPermission(prompt: boolean): boolean {
   return systemPreferences.isTrustedAccessibilityClient(prompt);
 }
 
+/**
+ * AX 권한 fast-path 캐시 — granted 한 번 확인 후엔 systemPreferences API
+ * 호출 없이 true 반환. pointermove 50ms throttle 아래서 매번 호출되던
+ * systemPreferences cost 제거.
+ *
+ * 한계: 사용자가 시스템 설정에서 권한을 revoke 해도 다음 앱 재시작 전까지
+ * 캐시가 true 로 유지된다. AX API 자체가 권한 revoke 시 axErr 를 반환하므로
+ * getElementBoundsAtPoint 가 자연스럽게 null 로 fallback 한다.
+ */
+let _axPermGranted = false;
+function checkAxPermFast(): boolean {
+  if (_axPermGranted) return true;
+  if (ensureAccessibilityPermission(false)) {
+    _axPermGranted = true;
+    return true;
+  }
+  return false;
+}
+
 // ---------------------------------------------------------------------------
 // CoreFoundation / CoreGraphics 상수
 // ---------------------------------------------------------------------------
@@ -290,7 +309,7 @@ export function getElementBoundsAtPoint(
   screenX: number,
   screenY: number,
 ): ElementBounds | null {
-  if (!ensureAccessibilityPermission(false)) return null;
+  if (!checkAxPermFast()) return null;
   try {
     const f = getAxFns();
     const sys = f.createSystemWide();
