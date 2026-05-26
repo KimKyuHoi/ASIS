@@ -68,6 +68,11 @@ type Fns = {
   strGetCString: (s: unknown, buf: Buffer, maxLen: number, enc: number) => boolean;
   numVal: (num: unknown, type: number, out: number[]) => boolean;
   release: (ref: unknown) => void;
+  // CF type 판별 — batch AX 결과에 섞여 있는 kAXValueTypeIllegal AXValueRef 를
+  // CFString 인 척 처리하면 NSInvalidArgumentException(_fastCStringContents:) 로
+  // 프로세스가 죽으므로 type ID 비교가 필수.
+  getTypeID: (ref: unknown) => number;
+  stringTypeID: () => number;
 };
 
 // ---------------------------------------------------------------------------
@@ -138,6 +143,8 @@ function getFns(): Fns {
     // 문자열 타입명으로 선언 — hot-reload 후 anonymous fallback 타입과의 불일치 방지.
     numVal: CF.func('CFNumberGetValue', 'bool', ['CfRef', 'int', koffi.out(koffi.pointer('double'))]),
     release: CF.func('void CFRelease(CfRef)'),
+    getTypeID: CF.func('long CFGetTypeID(CfRef)'),
+    stringTypeID: CF.func('long CFStringGetTypeID()'),
   };
   return _fns;
 }
@@ -149,8 +156,18 @@ function cfStr(s: string): unknown {
   return getFns().strCreate(null, s, kCFStringEncodingUTF8);
 }
 
+/** CFStringRef 의 CFTypeID — singleton 한 번만 조회. */
+let _cfStringTypeID: number | null = null;
+function cfStringTypeID(): number {
+  if (_cfStringTypeID === null) _cfStringTypeID = getFns().stringTypeID();
+  return _cfStringTypeID;
+}
+
 function cfStrToJs(ref: unknown): string {
   if (!ref) return '';
+  // type guard — CFString 이 아닌 ref (AXValueRef of kAXValueTypeIllegal 등)
+  // 가 들어오면 빈 문자열 반환. 잘못된 selector 호출로 인한 native crash 방지.
+  if (getFns().getTypeID(ref) !== cfStringTypeID()) return '';
   // 빠른 경로: 8-bit 저장 CFString 은 포인터 직접 반환.
   const ptr = getFns().strPtr(ref, kCFStringEncodingUTF8);
   if (typeof ptr === 'string') return ptr;
