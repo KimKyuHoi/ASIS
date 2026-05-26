@@ -234,7 +234,9 @@ export class SelectionOverlayManager {
     // in-flight flag — 이전 screencapture spawn 미완료 시 다음 tick skip.
     // 캡처가 BG_POLL_MS 보다 오래 걸리는 케이스(시스템 부하 등) 에서 중복 spawn
     // 으로 IO·CPU 가 누적되는 것을 방지.
+    // 영구 실패 시 noisy 한 반복 로그를 피하려고 첫 실패만 한 번 기록한다.
     let bgCaptureInFlight = false;
+    let bgPollFailureLogged = false;
     const bgPoll = setInterval(() => {
       if (win.isDestroyed()) {
         clearInterval(bgPoll);
@@ -243,7 +245,12 @@ export class SelectionOverlayManager {
       if (bgCaptureInFlight) return;
       bgCaptureInFlight = true;
       captureBackgroundForOverlay(win)
-        .catch(() => { /* 다음 tick 에서 재시도 */ })
+        .catch((err: unknown) => {
+          if (!bgPollFailureLogged) {
+            console.warn('[asis] background polling 실패 (이후 silent):', err);
+            bgPollFailureLogged = true;
+          }
+        })
         .finally(() => { bgCaptureInFlight = false; });
     }, BG_POLL_MS);
 
@@ -391,8 +398,18 @@ async function captureBackgroundForOverlay(
         'png',
         tmpPath,
       ]);
-      child.on('error', reject);
+      // screencapture 가 hang 하는 극단 케이스(드물지만 시스템 freeze 등)
+      // 에서 process leak 방지. 5초 timeout 충분 (일반 캡처 100-300ms).
+      const timeout = setTimeout(() => {
+        child.kill();
+        reject(new Error('screencapture timeout (5s)'));
+      }, 5000);
+      child.on('error', (err) => {
+        clearTimeout(timeout);
+        reject(err);
+      });
       child.on('close', (code) => {
+        clearTimeout(timeout);
         if (code === 0) resolve();
         else reject(new Error(`screencapture exit ${code}`));
       });
