@@ -255,11 +255,20 @@ type AXFns = {
   createSystemWide: () => unknown;
   elementAtPos: (sys: unknown, x: number, y: number, out: unknown[]) => number;
   copyAttrValue: (el: unknown, attr: unknown, out: unknown[]) => number;
+  // batch — 여러 attribute 를 1번의 AX IPC 로 읽음. cost 절감.
+  copyMultipleAttrValues: (
+    el: unknown, attrs: unknown, options: number, out: unknown[],
+  ) => number;
   axValueGetValue: (
     val: unknown,
     type: number,
     out: Array<{ x: number; y: number; width: number; height: number }>,
   ) => boolean;
+  // 결과 array parsing 용 — CFArrayGetValueAtIndex.
+  arrayGet: (arr: unknown, idx: number) => unknown;
+  // batch input array 구성용 — CFArrayCreateMutable + CFArrayAppendValue.
+  arrayCreateMutable: (alloc: null, capacity: number, callbacks: null) => unknown;
+  arrayAppendValue: (arr: unknown, val: unknown) => void;
   release: (ref: unknown) => void;
 };
 
@@ -279,6 +288,7 @@ function getAxFns(): AXFns {
   // AX 함수 시그니처를 CfRef 로 통일 — copyAttrValue 의 out 결과가 CFString
   // (예: AXTitle) 일 때 cfStrToJs(CfRef) 에 그대로 넘길 수 있도록.
   // AXRef·CFTypeRef·CFStringRef 모두 raw opaque pointer 이므로 명명만 통일하면 안전.
+  const CF = koffi.load('/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation');
   _axFns = {
     createSystemWide: AS.func('CfRef AXUIElementCreateSystemWide()'),
     elementAtPos: AS.func(
@@ -287,11 +297,19 @@ function getAxFns(): AXFns {
     copyAttrValue: AS.func(
       'int32 AXUIElementCopyAttributeValue(CfRef, CfRef, _Out_ CfRef *)',
     ),
+    copyMultipleAttrValues: AS.func(
+      'int32 AXUIElementCopyMultipleAttributeValues(CfRef, CfRef, uint32, _Out_ CfRef *)',
+    ),
     axValueGetValue: AS.func(
       'AXValueGetValue',
       'bool',
       ['CfRef', 'int32', koffi.out(koffi.pointer(CGRectStruct))],
     ),
+    arrayGet: CF.func('CfRef CFArrayGetValueAtIndex(CfRef, long)'),
+    arrayCreateMutable: CF.func(
+      'CFArrayCreateMutable', 'CfRef', ['CfRef', 'long', koffi.pointer('uint8')],
+    ),
+    arrayAppendValue: CF.func('void CFArrayAppendValue(CfRef, CfRef)'),
     release: AS.func('void CFRelease(CfRef)'),
   };
   return _axFns;
@@ -321,37 +339,50 @@ export function getElementBoundsAtPoint(
     const el = elOut[0];
     const { strCreate, release } = getFns();
 
-    // AX 문자열 속성 helper — CFString 값을 JS string 으로 변환.
-    // 실패하거나 값이 없으면 빈 문자열.
-    const readStringAttr = (attr: string): string => {
-      const key = strCreate(null, attr, kCFStringEncodingUTF8);
-      const out: unknown[] = [null];
-      const err = f.copyAttrValue(el, key, out);
-      release(key);
-      if (err !== kAXErrorSuccess || !out[0]) return '';
-      const str = cfStrToJs(out[0]);
-      f.release(out[0]);
-      return str;
-    };
-
-    // 이름 우선순위: AXTitle(구체적 라벨, 예: "확인") → AXRoleDescription
-    // (사용자 언어로 번역된 역할, 예: "버튼") → AXDescription (대체 설명).
-    let name = readStringAttr('AXTitle');
-    if (!name) name = readStringAttr('AXRoleDescription');
-    if (!name) name = readStringAttr('AXDescription');
-
-    // kAXFrameAttribute 문자열을 CFString 으로 변환.
-    const attrKey = strCreate(null, kAXFrameAttribute, kCFStringEncodingUTF8);
-    const valOut: unknown[] = [null];
-    const attrErr = f.copyAttrValue(el, attrKey, valOut);
-    release(attrKey);
+    // 4개 attribute 를 1번의 AX IPC 로 batch 읽기. macOS AX IPC 비용이 koffi
+    // FFI 비용보다 큰 편이라 4 → 1 호출로 의미 있는 절감.
+    // 우선 순위: AXTitle(구체 라벨) → AXRoleDescription(역할명, 예: "버튼")
+    //          → AXDescription(대체 설명), 마지막에 AXFrame.
+    const titleKey = strCreate(null, 'AXTitle', kCFStringEncodingUTF8);
+    const roleKey = strCreate(null, 'AXRoleDescription', kCFStringEncodingUTF8);
+    const descKey = strCreate(null, 'AXDescription', kCFStringEncodingUTF8);
+    const frameKey = strCreate(null, kAXFrameAttribute, kCFStringEncodingUTF8);
+    const attrArr = f.arrayCreateMutable(null, 4, null);
+    f.arrayAppendValue(attrArr, titleKey);
+    f.arrayAppendValue(attrArr, roleKey);
+    f.arrayAppendValue(attrArr, descKey);
+    f.arrayAppendValue(attrArr, frameKey);
+    const valuesOut: unknown[] = [null];
+    const batchErr = f.copyMultipleAttrValues(el, attrArr, 0, valuesOut);
+    // CFString 키들 + input array 정리.
+    release(titleKey);
+    release(roleKey);
+    release(descKey);
+    release(frameKey);
+    release(attrArr);
     f.release(el);
-    if (attrErr !== kAXErrorSuccess || !valOut[0]) return null;
+    if (batchErr !== kAXErrorSuccess || !valuesOut[0]) return null;
+    const values = valuesOut[0];
 
-    const axVal = valOut[0];
+    // 각 attribute 의 값 추출. 실패한 attribute 는 AXValueRef of kAXValueTypeIllegal
+    // 이지만 우리는 string 결과는 cfStrToJs 가 빈 문자열로, frame 결과는
+    // axValueGetValue 가 false 로 자연스럽게 fail 처리한다.
+    const titleVal = f.arrayGet(values, 0);
+    const roleVal = f.arrayGet(values, 1);
+    const descVal = f.arrayGet(values, 2);
+    const frameVal = f.arrayGet(values, 3);
+
+    let name = titleVal ? cfStrToJs(titleVal) : '';
+    if (!name && roleVal) name = cfStrToJs(roleVal);
+    if (!name && descVal) name = cfStrToJs(descVal);
+
+    if (!frameVal) {
+      release(values);
+      return null;
+    }
     const rectOut = [{ x: 0, y: 0, width: 0, height: 0 }];
-    const ok = f.axValueGetValue(axVal, kAXValueCGRectType, rectOut);
-    f.release(axVal);
+    const ok = f.axValueGetValue(frameVal, kAXValueCGRectType, rectOut);
+    release(values);
     if (!ok) return null;
 
     const { x, y, width: w, height: h } = rectOut[0];
