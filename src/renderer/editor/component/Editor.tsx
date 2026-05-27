@@ -11,7 +11,7 @@ import {
 import type Konva from 'konva';
 import { useEditorStore } from '../lib/store';
 import type { LineShape, Shape as ShapeData, StepShape, TextShape } from '../types/shapes';
-import { cancelEditor, copyToClipboard } from '../lib/editor-actions';
+import { cancelEditor, copyToClipboard, stageToDataUrl } from '../lib/editor-actions';
 import { addImageFromSource, clamp } from '../lib/image-utils';
 import { intersectsMarquee, shapeBBox } from '../lib/geometry';
 import { useEditorImages } from '../hook/useEditorImages';
@@ -62,7 +62,10 @@ export default function Editor(): JSX.Element {
   const dragStartPositionsRef = useRef<Map<string, { x: number; y: number }> | null>(null);
 
   const { bgImage, stageScale } = useEditorImages(containerRef);
-  useEditorKeyboard(stageRef);
+  // stageScale 이 1 미만이면 창이 이미지보다 작다는 뜻 — toDataURL pixelRatio 를 보정해
+  // 항상 원본 물리 픽셀(devicePixelRatio × 논리 픽셀) 해상도로 export 한다.
+  const exportPixelRatio = window.devicePixelRatio / stageScale;
+  useEditorKeyboard(stageRef, exportPixelRatio);
   useEditorDrag(stageRef);
 
   const tool = useEditorStore((s) => s.tool);
@@ -74,6 +77,8 @@ export default function Editor(): JSX.Element {
   const incrementStepNum = useEditorStore((s) => s.incrementStepNum);
   const imageWidth = useEditorStore((s) => s.imageWidth);
   const imageHeight = useEditorStore((s) => s.imageHeight);
+  const textAlign = useEditorStore((s) => s.textAlign);
+  const lineHeight = useEditorStore((s) => s.lineHeight);
   const shapes = useEditorStore((s) => s.shapes);
   const drawing = useEditorStore((s) => s.drawing);
   const selectedIds = useEditorStore((s) => s.selectedIds);
@@ -240,6 +245,8 @@ export default function Editor(): JSX.Element {
         fill: color,
         fontSize,
         fontFamily,
+        align: textAlign,
+        lineHeight,
       };
       startDrawing(newShape);
       finishDrawing();
@@ -382,7 +389,7 @@ export default function Editor(): JSX.Element {
   };
 
   const onCopyClick = (): void => {
-    copyToClipboard(stageRef.current);
+    copyToClipboard(stageRef.current, exportPixelRatio);
   };
 
   const onCancelClick = (): void => {
@@ -395,7 +402,7 @@ export default function Editor(): JSX.Element {
       console.error('[asis editor] saveFolder: stage null');
       return;
     }
-    const dataUrl = stage.toDataURL({ pixelRatio: 2 });
+    const dataUrl = stageToDataUrl(stage, exportPixelRatio);
     window.editor.saveFolder(dataUrl).then(
       (result) => {
         console.info(`[asis editor] 폴더 저장 완료: ${result.path}`);
@@ -412,7 +419,7 @@ export default function Editor(): JSX.Element {
       console.error('[asis editor] pin: stage null');
       return;
     }
-    const dataUrl = stage.toDataURL({ pixelRatio: 2 });
+    const dataUrl = stageToDataUrl(stage, exportPixelRatio);
     // 핀 윈도우는 *원본 이미지 픽셀 크기* 그대로 — 큰 캡처면 큰 핀, 작은 캡처면 작은 핀.
     window.editor.pin(dataUrl, imageWidth, imageHeight).catch((err: unknown) => {
       console.error('[asis editor] pin 실패', err);

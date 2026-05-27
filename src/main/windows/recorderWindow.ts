@@ -11,7 +11,6 @@ import { copyFile, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SequenceCaptureManager } from '../sequenceCapture';
-import { encodeGifFromVideo, VideoCaptureManager } from '../videoCapture';
 import { settingsStore } from '../settings';
 
 const CHANNEL_STOP = 'recorder:stop';
@@ -23,24 +22,9 @@ export type RecorderResult =
   { kind: 'canceled' } |
   { kind: 'failed'; error: Error };
 
-/**
- * 시퀀스 캡처 컨트롤 윈도우 lifecycle 관리.
- *
- * 흐름
- *   1) 사용자 영역 선택 (selectionOverlay 재사용) → rect 받음
- *   2) RecorderWindowManager.show(rect) 호출
- *      - SequenceCaptureManager.start(rect) — interval 캡처 시작
- *      - 작은 floating BrowserWindow 띄움 (정지/취소/경과)
- *   3) 사용자 "정지" → GIF 인코딩 → 파일 저장 다이얼로그 → 결과 리턴
- *   4) 사용자 "취소" → frames 폐기 → canceled
- */
-export type RecorderMode = 'sequence' | 'video';
-
 export class RecorderWindowManager {
   private win: BrowserWindow | null = null;
   private sequence = new SequenceCaptureManager();
-  private video = new VideoCaptureManager();
-  private mode: RecorderMode = 'sequence';
 
   /**
    * 시작 시 hidden 으로 떠있는지 (rect 가 화면 거의 전체) 외부에서 알 수 있도록.
@@ -54,12 +38,10 @@ export class RecorderWindowManager {
 
   show(
     rect: { x: number; y: number; w: number; h: number },
-    mode: RecorderMode = 'sequence',
   ): Promise<RecorderResult> {
     if (this.win) {
       return Promise.resolve({ kind: 'canceled' });
     }
-    this.mode = mode;
 
     // 알약 위치 fitting — rect 와 안 겹치는 가장자리 자동 선택.
     // 후보 모두 실패 (rect 가 화면 거의 전체) 면 알약을 *안 띄우고* 시작 알림으로
@@ -129,48 +111,30 @@ export class RecorderWindowManager {
         resolve(result);
       };
 
+      const cancelCurrent = (): Promise<void> => this.sequence.cancel();
+
       // ESC 글로벌 — 알약이 hidden 이거나 focus 못 받는 케이스에도 취소 가능.
       globalShortcut.register('Escape', () => {
-        this.sequence.cancel().finally(() => settle({ kind: 'canceled' }));
+        cancelCurrent().finally(() => settle({ kind: 'canceled' }));
       });
 
-      // 모드별 녹화 시작.
       const gifFps = settingsStore.get('misc').gifFps;
-      if (this.mode === 'sequence') {
-        this.sequence.start({ rect, fps: gifFps }).catch((err: unknown) => {
-          console.error('[asis] sequence start failed', err);
-          settle({
-            kind: 'failed',
-            error: err instanceof Error ? err : new Error(String(err)),
-          });
+      this.sequence.start({ rect, fps: gifFps }).catch((err: unknown) => {
+        console.error('[asis] sequence start failed', err);
+        settle({
+          kind: 'failed',
+          error: err instanceof Error ? err : new Error(String(err)),
         });
-      } else {
-        this.video.start({ rect }).catch((err: unknown) => {
-          console.error('[asis] video start failed', err);
-          settle({
-            kind: 'failed',
-            error: err instanceof Error ? err : new Error(String(err)),
-          });
-        });
-      }
+      });
 
-      // frame count — 시퀀스만 의미. 영상은 0 (recorder UI 가 시간만 표시).
-      ipcMain.handle(CHANNEL_GET_FRAME_COUNT, () =>
-        this.mode === 'sequence' ? this.sequence.count() : 0,
-      );
+      ipcMain.handle(CHANNEL_GET_FRAME_COUNT, () => this.sequence.count());
 
       ipcMain.once(CHANNEL_STOP, () => {
         if (!win.isDestroyed()) {
           win.webContents.send('recorder:encoding');
         }
         const tmpGif = join(tmpdir(), `asis-gif-${Date.now()}.gif`);
-        // 모드별 인코딩.
-        const stopPromise = this.mode === 'sequence'
-          ? this.sequence.stop(tmpGif)
-          : this.video.stop().then(async (videoPath) => {
-            await encodeGifFromVideo(videoPath, tmpGif, { fps: gifFps });
-            return tmpGif;
-          });
+        const stopPromise = this.sequence.stop(tmpGif);
         stopPromise.then(
           async (gifPath) => {
             const defaultPath = join(
@@ -205,12 +169,6 @@ export class RecorderWindowManager {
           },
         );
       });
-
-      const cancelCurrent = (): Promise<void> => {
-        if (this.mode === 'sequence') return this.sequence.cancel();
-        this.video.cancel();
-        return Promise.resolve();
-      };
 
       ipcMain.once(CHANNEL_CANCEL, () => {
         cancelCurrent().finally(() => settle({ kind: 'canceled' }));

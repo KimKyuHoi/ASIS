@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Shape, StrokeWidth, Tool } from '../types/shapes';
+import type { Shape, StrokeWidth, TextAlign, Tool } from '../types/shapes';
 
 /**
  * 어노테이션 에디터 단일 zustand 스토어.
@@ -41,6 +41,8 @@ export const MOSAIC_BLOCK_SIZES: readonly number[] = [5, 10, 15, 20, 30];
 
 export const FONT_SIZES: readonly number[] = [12, 16, 20, 24, 32, 48, 64];
 
+export const LINE_HEIGHTS: readonly number[] = [1.0, 1.2, 1.5, 2.0];
+
 export const FONT_FAMILIES: readonly { label: string; value: string }[] = [
   { label: 'Pretendard', value: 'Pretendard, -apple-system, BlinkMacSystemFont, sans-serif' },
   { label: 'Apple SD Gothic', value: '"Apple SD Gothic Neo", sans-serif' },
@@ -69,6 +71,8 @@ type EditorStore = {
   mosaicBlockSize: number;
   fontSize: number;
   fontFamily: string;
+  textAlign: TextAlign;
+  lineHeight: number;
   nextStepNum: number;
 
   // 캔버스
@@ -98,6 +102,8 @@ type EditorStore = {
   setMosaicBlockSize: (s: number) => void;
   setFontSize: (s: number) => void;
   setFontFamily: (f: string) => void;
+  setTextAlign: (a: TextAlign) => void;
+  setLineHeight: (h: number) => void;
   incrementStepNum: () => void;
 
   reorderShape: (id: string, dir: 'front' | 'forward' | 'backward' | 'back') => void;
@@ -122,6 +128,7 @@ type EditorStore = {
   updateShape: (id: string, patch: Partial<Shape>) => void;
   deleteShape: (id: string) => void;
   deleteSelected: () => void;
+  pasteShapes: (shapes: Shape[]) => void;
   setEditingId: (id: string | null) => void;
 
   undo: () => void;
@@ -138,6 +145,8 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   mosaicBlockSize: 10,
   fontSize: 24,
   fontFamily: DEFAULT_FONT_FAMILY,
+  textAlign: 'left',
+  lineHeight: 1.2,
   nextStepNum: 1,
 
   imageSrc: null,
@@ -160,6 +169,8 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   setMosaicBlockSize: (s) => set({ mosaicBlockSize: s }),
   setFontSize: (s) => set({ fontSize: s }),
   setFontFamily: (f) => set({ fontFamily: f }),
+  setTextAlign: (a) => set({ textAlign: a }),
+  setLineHeight: (h) => set({ lineHeight: h }),
   incrementStepNum: () => set((s) => ({ nextStepNum: s.nextStepNum + 1 })),
 
   reorderShape: (id, dir) => set((s) => {
@@ -253,6 +264,13 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       future: [],
     };
   }),
+
+  pasteShapes: (newShapes) => set((s) => ({
+    shapes: [...s.shapes, ...newShapes],
+    selectedIds: newShapes.map((sh) => sh.id),
+    past: [...s.past, s.shapes],
+    future: [],
+  })),
 
   setEditingId: (id) => set({ editingId: id }),
 

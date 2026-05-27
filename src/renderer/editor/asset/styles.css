@@ -371,6 +371,12 @@ button:disabled {
   background: var(--surface-2);
 }
 
+.iconbtn--active {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--accent);
+}
+
 /* ── 액션 버튼 (취소/복사) ─────────────────────────── */
 
 .action {

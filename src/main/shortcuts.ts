@@ -1,17 +1,19 @@
 import { globalShortcut } from 'electron';
-import { settingsStore } from './settings';
+import { DEFAULT_HOTKEYS, settingsStore } from './settings';
 
 export type ShortcutHandlers = {
   onRegion: () => void;
   onFullscreen: () => void;
   onWindow: () => void;
+  /** 3초 대기 후 전체화면 캡처 — 호버 상태 재현용. */
+  onDelayedFullscreen: () => void;
+  /** 영역 선택 후 3초 대기 → 캡처 — 호버 상태 재현용. */
+  onDelayedRegion: () => void;
   /** 모든 핀의 click-through 해제 — click-through 활성 핀이 키보드/마우스를
    *  못 받으니 외부 글로벌 단축키만이 유일한 회수 경로. */
   onDisableClickThrough: () => void;
-  /** 시퀀스 GIF 녹화 시작 — 영역 선택 → 일정 간격 캡처 → GIF. */
-  onSequenceGif: () => void;
-  /** 영상 GIF 녹화 — ffmpeg avfoundation 으로 영상 녹화 → GIF. */
-  onVideoGif: () => void;
+  /** GIF 녹화 시작 — 영역 선택 → 일정 간격 캡처 → GIF. */
+  onGif: () => void;
   /** 클립보드 이미지를 바로 Pin window 로 (Snipaste F3 결). */
   onClipboardPin: () => void;
 };
@@ -51,14 +53,16 @@ export class ShortcutManager {
   }
 
   private _register(handlers: ShortcutHandlers): void {
-    const hotkeys = settingsStore.get('hotkeys');
+    // 기존 저장값에 새로 추가된 키가 없을 수 있으므로 DEFAULT_HOTKEYS 로 fallback 병합.
+    const hotkeys = { ...DEFAULT_HOTKEYS, ...settingsStore.get('hotkeys') };
     const bindings: Array<[string, () => void]> = [
       [hotkeys.region, handlers.onRegion],
       [hotkeys.fullscreen, handlers.onFullscreen],
       [hotkeys.window, handlers.onWindow],
+      [hotkeys.delayedFullscreen, handlers.onDelayedFullscreen],
+      [hotkeys.delayedRegion, handlers.onDelayedRegion],
       [hotkeys.disableClickThrough, handlers.onDisableClickThrough],
-      [hotkeys.sequenceGif, handlers.onSequenceGif],
-      [hotkeys.videoGif, handlers.onVideoGif],
+      [hotkeys.gif, handlers.onGif],
       [hotkeys.clipboardPin, handlers.onClipboardPin],
     ];
 

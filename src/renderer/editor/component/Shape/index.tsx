@@ -330,6 +330,8 @@ export function Shape({
           fill={shape.fill}
           fontSize={shape.fontSize}
           fontFamily={shape.fontFamily}
+          align={shape.align ?? 'left'}
+          lineHeight={shape.lineHeight ?? 1.2}
           padding={4}
           visible={!isEditing}
           draggable={draggable}

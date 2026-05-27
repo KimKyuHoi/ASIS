@@ -13,6 +13,7 @@ export default defineConfig({
           editor: resolve('src/renderer/editor/index.html'),
           pin: resolve('src/renderer/pin/index.html'),
           recorder: resolve('src/renderer/recorder/index.html'),
+          countdown: resolve('src/renderer/countdown/index.html'),
           settings: resolve('src/renderer/settings/index.html'),
           history: resolve('src/renderer/history/index.html'),
         },

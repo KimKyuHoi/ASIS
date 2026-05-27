@@ -55,9 +55,10 @@ type HotkeyConfig = {
   region: string;
   fullscreen: string;
   window: string;
+  delayedFullscreen: string;
+  delayedRegion: string;
   disableClickThrough: string;
-  sequenceGif: string;
-  videoGif: string;
+  gif: string;
   clipboardPin: string;
 };
 

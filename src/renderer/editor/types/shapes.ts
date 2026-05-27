@@ -71,6 +71,8 @@ export type PenShape = Stroked & Rotatable & {
   points: number[];
 };
 
+export type TextAlign = 'left' | 'center' | 'right';
+
 export type TextShape = {
   kind: 'text';
   id: string;
@@ -84,6 +86,9 @@ export type TextShape = {
   fill: string;
   fontSize: number;
   fontFamily: string;
+  align?: TextAlign;
+  /** 줄간격 배율 — Konva lineHeight 와 동일 (1.0 = 줄간격 없음, 1.2 기본). */
+  lineHeight?: number;
 };
 
 export type HighlightShape = {

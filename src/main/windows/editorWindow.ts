@@ -90,6 +90,14 @@ export class EditorWindowManager {
     this.win = win;
     this.rendererReady = false;
 
+    // 어노테이션 세션 중 Cmd+R 새로고침 차단 — renderer 가 리셋되면 이미지가 유실되고
+    // ready 핸들러가 재등록되지 않아 "캡처를 불러오는 중…" 상태로 멈춘다.
+    win.webContents.on('before-input-event', (event, input) => {
+      if (this.active && input.type === 'keyDown' && input.meta && input.key === 'r') {
+        event.preventDefault();
+      }
+    });
+
     win.webContents.on(
       'console-message',
       (_event, level, message, line, sourceId) => {
@@ -185,11 +193,11 @@ export class EditorWindowManager {
     const logW = Math.round(imgW / sf);
     const logH = Math.round(imgH / sf);
 
-    const padX = 80;
-    const padY = 200;
-    const winW = Math.min(logW + padX, display.workAreaSize.width - 80);
-    const winH = Math.min(logH + padY, display.workAreaSize.height - 80);
-    win.setSize(Math.max(winW, 720), Math.max(winH, 480));
+    // 캡처 크기에 무관한 고정 창 크기 — 화면 비율 기반으로 한 번만 계산.
+    // 이미지는 renderer 의 stageScale 이 창 안에 맞게 fit-scale 한다.
+    const fixedW = Math.min(Math.round(display.workAreaSize.width * 0.72), 1100);
+    const fixedH = Math.min(Math.round(display.workAreaSize.height * 0.78), 820);
+    win.setSize(Math.max(fixedW, 720), Math.max(fixedH, 520));
     win.center();
 
     const sendImage = (): void => {

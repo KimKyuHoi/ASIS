@@ -122,8 +122,8 @@ export function TextEditor({
     color: shape.fill,
     fontSize: displayFontSize,
     fontFamily: shape.fontFamily,
-    lineHeight: 1.2,
-    letterSpacing: '0.01em',
+    textAlign: shape.align ?? 'left',
+    lineHeight: shape.lineHeight ?? 1.2,
     // overflow 미지정(default auto) — hidden 은 Chromium/Electron 에서 textarea
     // 내부 word-wrap 알고리즘을 비활성화해 한 줄로 이어버린다.
     // 시각적 클리핑은 상위 stageWrap(overflow:hidden) 이 담당한다.

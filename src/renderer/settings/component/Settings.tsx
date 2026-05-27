@@ -6,9 +6,10 @@ type HotkeyConfig = {
   region: string;
   fullscreen: string;
   window: string;
+  delayedFullscreen: string;
+  delayedRegion: string;
   disableClickThrough: string;
-  sequenceGif: string;
-  videoGif: string;
+  gif: string;
   clipboardPin: string;
 };
 
@@ -30,9 +31,10 @@ const DEFAULT: HotkeyConfig = {
   region: 'CommandOrControl+Shift+A',
   fullscreen: 'CommandOrControl+Shift+F',
   window: 'CommandOrControl+Shift+W',
+  delayedFullscreen: 'CommandOrControl+Shift+D',
+  delayedRegion: 'CommandOrControl+Shift+Alt+D',
   disableClickThrough: 'CommandOrControl+Shift+X',
-  sequenceGif: 'CommandOrControl+Shift+G',
-  videoGif: 'CommandOrControl+Shift+Alt+G',
+  gif: 'CommandOrControl+Shift+G',
   clipboardPin: 'CommandOrControl+Shift+V',
 };
 
@@ -40,9 +42,10 @@ const LABELS: Record<keyof HotkeyConfig, string> = {
   region: '영역 캡처',
   fullscreen: '전체 화면 캡처',
   window: '윈도우 캡처',
+  delayedFullscreen: '지연 전체화면 캡처 (3초)',
+  delayedRegion: '지연 영역 캡처 (3초)',
   disableClickThrough: '클릭 통과 해제',
-  sequenceGif: '시퀀스 GIF',
-  videoGif: '영상 GIF',
+  gif: 'GIF 녹화',
   clipboardPin: '클립보드 핀',
 };
 
@@ -50,9 +53,10 @@ const HOTKEY_FIELDS: Array<keyof HotkeyConfig> = [
   'region',
   'fullscreen',
   'window',
+  'delayedFullscreen',
+  'delayedRegion',
   'disableClickThrough',
-  'sequenceGif',
-  'videoGif',
+  'gif',
   'clipboardPin',
 ];
 

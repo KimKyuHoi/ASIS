@@ -1,9 +1,10 @@
 import type { JSX } from 'react';
-import type { Tool } from '../types/shapes';
+import type { TextAlign, Tool } from '../types/shapes';
 import {
   BLUR_RADII,
   FONT_FAMILIES,
   FONT_SIZES,
+  LINE_HEIGHTS,
   MOSAIC_BLOCK_SIZES,
   PALETTE,
   STROKE_WIDTHS,
@@ -53,6 +54,10 @@ export function Toolbar({
   const setFontSize = useEditorStore((s) => s.setFontSize);
   const fontFamily = useEditorStore((s) => s.fontFamily);
   const setFontFamily = useEditorStore((s) => s.setFontFamily);
+  const textAlign = useEditorStore((s) => s.textAlign);
+  const setTextAlign = useEditorStore((s) => s.setTextAlign);
+  const lineHeight = useEditorStore((s) => s.lineHeight);
+  const setLineHeight = useEditorStore((s) => s.setLineHeight);
   const updateShape = useEditorStore((s) => s.updateShape);
   const undo = useEditorStore((s) => s.undo);
   const redo = useEditorStore((s) => s.redo);
@@ -79,6 +84,8 @@ export function Toolbar({
   const hasTextSelected = selectedShapes.some((s) => s.kind === 'text');
   const hasStepSelected = selectedShapes.some((s) => s.kind === 'step');
   const isText = tool === 'text' || tool === 'step' || hasTextSelected || hasStepSelected;
+  // 정렬·줄간격은 text 전용 (step 제외).
+  const showTextFormatting = tool === 'text' || hasTextSelected;
 
   const isStroked = (k: string): boolean =>
     k === 'rect' || k === 'ellipse' || k === 'arrow' || k === 'pen';
@@ -115,6 +122,22 @@ export function Toolbar({
       .forEach((sh) => updateShape(sh.id, { fontFamily: f } as Partial<typeof sh>));
   };
 
+  // 텍스트 정렬 변경: 선택된 text 도형 *전부* 에 적용.
+  const handleTextAlign = (a: TextAlign): void => {
+    setTextAlign(a);
+    selectedShapes
+      .filter((sh) => sh.kind === 'text')
+      .forEach((sh) => updateShape(sh.id, { align: a } as Partial<typeof sh>));
+  };
+
+  // 줄간격 변경: 선택된 text 도형 *전부* 에 적용.
+  const handleLineHeight = (h: number): void => {
+    setLineHeight(h);
+    selectedShapes
+      .filter((sh) => sh.kind === 'text')
+      .forEach((sh) => updateShape(sh.id, { lineHeight: h } as Partial<typeof sh>));
+  };
+
   // 색상 변경: 선택된 도형 *모두* 에 종류별 적합한 필드로 patch.
   const handleColor = (c: string): void => {
     setColor(c);
@@ -145,6 +168,12 @@ export function Toolbar({
   const displayFontFamily = firstSelected?.kind === 'text' && selectedShapes.length === 1
     ? firstSelected.fontFamily
     : fontFamily;
+  const displayTextAlign: TextAlign = firstSelected?.kind === 'text' && selectedShapes.length === 1
+    ? (firstSelected.align ?? 'left')
+    : textAlign;
+  const displayLineHeight = firstSelected?.kind === 'text' && selectedShapes.length === 1
+    ? (firstSelected.lineHeight ?? 1.2)
+    : lineHeight;
   const displayBlurRadius = firstSelected?.kind === 'blur' && selectedShapes.length === 1
     ? firstSelected.blurRadius
     : blurRadius;
@@ -271,6 +300,50 @@ export function Toolbar({
               </button>
             ))}
           </div>
+          {showTextFormatting && (
+            <>
+              <div className="toolbar__group toolbar__group--align">
+                <button
+                  type="button"
+                  className={`iconbtn ${displayTextAlign === 'left' ? 'iconbtn--active' : ''}`}
+                  onClick={(): void => handleTextAlign('left')}
+                  title="왼쪽 정렬"
+                >
+                  <AlignLeftIcon />
+                </button>
+                <button
+                  type="button"
+                  className={`iconbtn ${displayTextAlign === 'center' ? 'iconbtn--active' : ''}`}
+                  onClick={(): void => handleTextAlign('center')}
+                  title="가운데 정렬"
+                >
+                  <AlignCenterIcon />
+                </button>
+                <button
+                  type="button"
+                  className={`iconbtn ${displayTextAlign === 'right' ? 'iconbtn--active' : ''}`}
+                  onClick={(): void => handleTextAlign('right')}
+                  title="오른쪽 정렬"
+                >
+                  <AlignRightIcon />
+                </button>
+              </div>
+              <div className="toolbar__group toolbar__group--slider">
+                <span className="slider-label">줄간격</span>
+                {LINE_HEIGHTS.map((h) => (
+                  <button
+                    key={h}
+                    type="button"
+                    className={`radius ${displayLineHeight === h ? 'radius--active' : ''}`}
+                    onClick={(): void => handleLineHeight(h)}
+                    title={`줄간격 × ${h}`}
+                  >
+                    {h}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </>
       ) : (
         <div className="toolbar__group toolbar__group--strokes">
@@ -395,6 +468,36 @@ function ToolButton({
       <span className="tool__label">{label}</span>
       <span className="tool__shortcut">{shortcut}</span>
     </button>
+  );
+}
+
+function AlignLeftIcon(): JSX.Element {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+      <line x1="3" y1="6" x2="21" y2="6" />
+      <line x1="3" y1="12" x2="15" y2="12" />
+      <line x1="3" y1="18" x2="18" y2="18" />
+    </svg>
+  );
+}
+
+function AlignCenterIcon(): JSX.Element {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+      <line x1="3" y1="6" x2="21" y2="6" />
+      <line x1="6" y1="12" x2="18" y2="12" />
+      <line x1="4" y1="18" x2="20" y2="18" />
+    </svg>
+  );
+}
+
+function AlignRightIcon(): JSX.Element {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+      <line x1="3" y1="6" x2="21" y2="6" />
+      <line x1="9" y1="12" x2="21" y2="12" />
+      <line x1="6" y1="18" x2="21" y2="18" />
+    </svg>
   );
 }
 

@@ -4,14 +4,15 @@ export type HotkeyConfig = {
   region: string;
   fullscreen: string;
   window: string;
+  delayedFullscreen: string;
+  delayedRegion: string;
   disableClickThrough: string;
-  sequenceGif: string;
-  videoGif: string;
+  gif: string;
   clipboardPin: string;
 };
 
 export type MiscConfig = {
-  /** GIF 인코딩 fps. 시퀀스/영상 GIF 모두 적용. */
+  /** GIF 인코딩 fps. */
   gifFps: number;
   /** 로그인 시 자동 시작 (macOS 로그인 항목). */
   openAtLogin: boolean;
@@ -34,9 +35,10 @@ export const DEFAULT_HOTKEYS: HotkeyConfig = {
   region: 'CommandOrControl+Shift+A',
   fullscreen: 'CommandOrControl+Shift+F',
   window: 'CommandOrControl+Shift+W',
+  delayedFullscreen: 'CommandOrControl+Shift+D',
+  delayedRegion: 'CommandOrControl+Shift+Alt+D',
   disableClickThrough: 'CommandOrControl+Shift+X',
-  sequenceGif: 'CommandOrControl+Shift+G',
-  videoGif: 'CommandOrControl+Shift+Alt+G',
+  gif: 'CommandOrControl+Shift+G',
   clipboardPin: 'CommandOrControl+Shift+V',
 };
 

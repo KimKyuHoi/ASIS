@@ -23,6 +23,7 @@ import { HistoryWindowManager } from './windows/historyWindow';
 import { getEntries } from './captureHistory';
 import { checkPermissionsOnLaunch, guardCapture, openPermissionSettings } from './permissions';
 import { isNewer, setupAutoUpdater, checkForUpdates } from './updateChecker';
+import { CountdownWindow } from './windows/countdownWindow';
 
 /**
  * ASIS — macOS 메뉴바 캡처·어노테이션 도구.
@@ -44,6 +45,7 @@ const pinWindow = new PinWindowManager();
 const recorderWindow = new RecorderWindowManager();
 const settingsWindow = new SettingsWindowManager();
 const historyWindow = new HistoryWindowManager();
+const countdownWindow = new CountdownWindow();
 editorWindow.setPinHandler((dataUrl, w, h) => pinWindow.pin(dataUrl, w, h));
 
 // 단일 인스턴스 보장.
@@ -159,7 +161,7 @@ const handleClipboardPin = (): void => {
   pinWindow.pin(dataUrl, width, height);
 };
 
-const handleRecorderGif = (mode: 'sequence' | 'video', label: string): void => {
+const handleGif = (): void => {
   // 녹화 중이면 정지 (toggle) — 알약 안 띄우니 *유일한 회수 경로*.
   if (recorderWindow.isActive()) {
     notifyInfo('GIF 인코딩 중…');
@@ -172,14 +174,14 @@ const handleRecorderGif = (mode: 'sequence' | 'video', label: string): void => {
     selectionOverlay.show().then(
       (selResult) => {
         if (selResult.kind !== 'selected') return;
-        const showPromise = recorderWindow.show(selResult.rect, mode);
+        const showPromise = recorderWindow.show(selResult.rect);
         if (recorderWindow.isHidden()) {
-          notifyInfo(`${label} 녹화 중 — 단축키로 정지`);
+          notifyInfo('GIF 녹화 중 — 단축키로 정지');
         }
         showPromise.then(
           (recResult) => {
             if (recResult.kind === 'saved') {
-              notifyInfo(`${label} 저장 — ${recResult.path}`);
+              notifyInfo(`GIF 저장 — ${recResult.path}`);
             } else if (recResult.kind === 'failed') {
               notifyError(`GIF 인코딩 실패: ${recResult.error.message}`);
             }
@@ -191,18 +193,14 @@ const handleRecorderGif = (mode: 'sequence' | 'video', label: string): void => {
           },
         );
       },
-      // selectionOverlay 실패 분기.
       (err: unknown) => {
         const message = err instanceof Error ? err.message : String(err);
-        console.error(`[asis] ${label} 영역 선택 실패`, err);
-        notifyError(`${label} 시작 실패: ${message}`);
+        console.error('[asis] GIF 영역 선택 실패', err);
+        notifyError(`GIF 시작 실패: ${message}`);
       },
     );
   });
 };
-
-const handleSequenceGif = (): void => handleRecorderGif('sequence', '시퀀스 GIF');
-const handleVideoGif = (): void => handleRecorderGif('video', '영상 GIF');
 
 // 환경설정 IPC — 앱 전체 lifecycle 동안 유효.
 ipcMain.handle('settings:get', () => settingsStore.get('hotkeys'));
@@ -308,13 +306,12 @@ app.whenReady().then(() => {
   const onDelayedFullscreen = (): void => {
     guardCapture().then((ok) => {
       if (!ok) return;
-      new Notification({
-        title: 'ASIS',
-        body: `마우스를 원하는 위치에 두세요 — ${HOVER_DELAY_MS / 1000}초 후 전체화면을 캡처합니다.`,
-      }).show();
+      const cursor = screen.getCursorScreenPoint();
+      countdownWindow.show(HOVER_DELAY_MS / 1000, cursor);
       setTimeout(() => {
-        const cursor = screen.getCursorScreenPoint();
-        const d = screen.getDisplayNearestPoint(cursor);
+        countdownWindow.close();
+        const newCursor = screen.getCursorScreenPoint();
+        const d = screen.getDisplayNearestPoint(newCursor);
         runCapture('전체화면 캡처', () =>
           captureRegion({ x: d.bounds.x, y: d.bounds.y, w: d.bounds.width, h: d.bounds.height }),
         );
@@ -328,11 +325,10 @@ app.whenReady().then(() => {
       selectionOverlay.show().then(
         (result) => {
           if (result.kind !== 'selected') return;
-          new Notification({
-            title: 'ASIS',
-            body: `마우스를 원하는 위치에 두세요 — ${HOVER_DELAY_MS / 1000}초 후 캡처합니다.`,
-          }).show();
+          const cursor = screen.getCursorScreenPoint();
+          countdownWindow.show(HOVER_DELAY_MS / 1000, cursor);
           setTimeout(() => {
+            countdownWindow.close();
             const { windowId, ...rect } = result.rect;
             runCapture('영역 캡처', () =>
               // Dock 아이템은 가짜 음수 ID — screencapture -l 가 invalid 처리하므로
@@ -362,11 +358,8 @@ app.whenReady().then(() => {
     pinWindow.closeAll();
     if (n > 0) notifyInfo(`핀 ${n}개 닫음`);
   };
-  const onSequenceGif = (): void => {
-    handleSequenceGif();
-  };
-  const onVideoGif = (): void => {
-    handleVideoGif();
+  const onGif = (): void => {
+    handleGif();
   };
   const onClipboardPin = (): void => {
     handleClipboardPin();
@@ -389,8 +382,7 @@ app.whenReady().then(() => {
     onDelayedRegion,
     onDisableClickThrough,
     onCloseAllPins,
-    onSequenceGif,
-    onVideoGif,
+    onGif,
     onClipboardPin,
     onSettings,
     onHistory,

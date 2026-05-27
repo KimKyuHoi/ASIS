@@ -23,8 +23,7 @@ export type TrayMenuHandlers = {
   onDelayedRegion: () => void;
   onDisableClickThrough: () => void;
   onCloseAllPins: () => void;
-  onSequenceGif: () => void;
-  onVideoGif: () => void;
+  onGif: () => void;
   onClipboardPin: () => void;
   onSettings: () => void;
   onHistory: () => void;
@@ -89,25 +88,21 @@ export class TrayManager {
       },
       {
         label: '지연 전체화면 캡처 (3초)',
+        accelerator: 'CommandOrControl+Shift+D',
         click: handlers.onDelayedFullscreen,
       },
       {
         label: '지연 영역 캡처 (3초)',
+        accelerator: 'CommandOrControl+Shift+Alt+D',
         click: handlers.onDelayedRegion,
       },
 
       { type: 'separator' },
 
-      // GIF — 영역 선택 후 시퀀스 캡처 / 영상 녹화 → GIF 인코딩.
       {
-        label: '시퀀스 GIF 녹화…',
+        label: 'GIF 녹화…',
         accelerator: 'CommandOrControl+Shift+G',
-        click: handlers.onSequenceGif,
-      },
-      {
-        label: '영상 GIF 녹화…',
-        accelerator: 'CommandOrControl+Shift+Alt+G',
-        click: handlers.onVideoGif,
+        click: handlers.onGif,
       },
       // 클립보드 이미지 → 바로 Pin (Snipaste F3 결).
       {
