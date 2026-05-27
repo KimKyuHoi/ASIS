@@ -51,12 +51,51 @@ jobs:
       - name: Build renderer + main
         run: pnpm run build
 
+      - name: Import signing certificate into keychain
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 20)"
+
+          # base64 인증서 → .p12 파일
+          echo "$CSC_LINK" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+
+          # 임시 keychain 생성 및 잠금 해제
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # 인증서 import — codesign / security 가 비밀번호 없이 접근 가능하도록 -T 설정
+          security import "$RUNNER_TEMP/certificate.p12" \
+            -k "$KEYCHAIN_PATH" \
+            -P "$CSC_KEY_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security \
+            -f pkcs12
+
+          # keychain 검색 목록에 추가
+          security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain
+
+          # codesign 이 keychain 에 비밀번호 프롬프트 없이 접근하도록 partition list 설정
+          # ← 이 단계가 없으면 codesign 이 대화형 프롬프트를 기다리며 hang 한다
+          security set-key-partition-list \
+            -S "apple-tool:,apple:,codesign:" \
+            -s -k "$KEYCHAIN_PASSWORD" \
+            "$KEYCHAIN_PATH"
+
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
       - name: Package macOS DMG (signed + notarized)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # CSC_LINK / CSC_KEY_PASSWORD 는 electron-builder 가 인증서를 식별하는 데 사용.
+          # 앞 step 에서 keychain 에 set-key-partition-list 를 설정했으므로
+          # codesign 이 비밀번호 프롬프트 없이 접근 가능 → hang 발생하지 않는다.
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
         # tag push면 GitHub Release에 publish, 수동 실행이면 아티팩트만 업로드
