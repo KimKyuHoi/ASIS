@@ -22,7 +22,7 @@ import { SettingsWindowManager } from './windows/settingsWindow';
 import { HistoryWindowManager } from './windows/historyWindow';
 import { getEntries } from './captureHistory';
 import { checkPermissionsOnLaunch, guardCapture, openPermissionSettings } from './permissions';
-import { fetchLatestTag, isNewer, downloadUpdatePkg, installPkg } from './updateChecker';
+import { isNewer, setupAutoUpdater, checkForUpdates } from './updateChecker';
 
 /**
  * ASIS — macOS 메뉴바 캡처·어노테이션 도구.
@@ -256,6 +256,9 @@ if (process.platform === 'darwin') {
   if (is.dev) console.info('[asis] app.setActivationPolicy("accessory") applied');
 }
 
+// electron-updater 이벤트 리스너를 app.whenReady 이전에 등록.
+setupAutoUpdater();
+
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.pinkfong.asis');
 
@@ -404,59 +407,10 @@ app.whenReady().then(() => {
   });
 
   // 업데이트 체크 — 앱 시작 5초 후 첫 체크, 이후 3일마다 반복.
-  // 새 버전이 있으면 백그라운드에서 조용히 다운로드 → 완료 후 설치 확인 다이얼로그 한 번.
+  // electron-updater 가 백그라운드 다운로드 → 완료 후 설치 확인 다이얼로그를 처리한다.
   const CHECK_INTERVAL_MS = 3 * 24 * 60 * 60 * 1000; // 3일
-  let pendingUpdateVersion: string | null = null;
-
-  const checkAndNotifyUpdate = (): void => {
-    const current = app.getVersion();
-    fetchLatestTag().then((latest) => {
-      if (!latest || !isNewer(latest, current)) return;
-      // 같은 버전 다운로드가 이미 진행 중이면 중복 방지
-      if (pendingUpdateVersion === latest) return;
-      pendingUpdateVersion = latest;
-
-      // 백그라운드에서 조용히 다운로드 → 완료 후 설치 확인 한 번만 표시
-      downloadUpdatePkg(latest).then((pkgPath) => {
-        dialog.showMessageBox({
-          type: 'info',
-          title: `ASIS ${latest} 업데이트`,
-          message: `ASIS ${latest} 업데이트가 준비되었습니다.`,
-          detail: '지금 설치하시겠어요?\n비밀번호를 한 번 입력하면 설치 후 자동으로 재시작됩니다.',
-          buttons: ['지금 설치', '나중에'],
-          defaultId: 0,
-          cancelId: 1,
-        }).then((result) => {
-          if (result.response !== 0) {
-            // 나중에 — 다음 앱 시작 시 다시 감지하도록 초기화
-            pendingUpdateVersion = null;
-            return;
-          }
-          installPkg(pkgPath).then(() => {
-            app.relaunch();
-            // exit(0) — before-quit 이벤트 체인을 건너뛰고 즉시 종료.
-            setTimeout(() => app.exit(0), 300);
-          }).catch((err: unknown) => {
-            pendingUpdateVersion = null;
-            const msg = err instanceof Error ? err.message : String(err);
-            if (msg !== 'canceled') {
-              notifyError(`업데이트 설치 실패: ${msg}`);
-            }
-          });
-        }).catch(() => {});
-      }).catch((err: unknown) => {
-        pendingUpdateVersion = null;
-        const msg = err instanceof Error ? err.message : String(err);
-        console.warn('[asis] update download failed', err);
-        notifyError(`업데이트 다운로드 실패: ${msg}`);
-      });
-    }).catch((err: unknown) => {
-      console.warn('[asis] update check failed', err);
-    });
-  };
-
-  setTimeout(checkAndNotifyUpdate, 5000);
-  setInterval(checkAndNotifyUpdate, CHECK_INTERVAL_MS);
+  setTimeout(() => checkForUpdates(), 5000);
+  setInterval(() => checkForUpdates(), CHECK_INTERVAL_MS);
 }).catch((err: unknown) => {
   // app.whenReady() 체인의 미처리 에러가 조용히 삼켜지는 걸 방지.
   console.error('[asis] app initialization failed', err);

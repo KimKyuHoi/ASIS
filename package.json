@@ -42,6 +42,7 @@
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
     "electron-store": "^7.0.3",
+    "electron-updater": "^6.8.3",
     "ffmpeg-static": "^5.3.0",
     "koffi": "^2.16.2",
     "konva": "^9.3.16",
@@ -82,16 +83,21 @@
     "mac": {
       "category": "public.app-category.utilities",
       "icon": "build/icon.icns",
-      "identity": null,
-      "minimumSystemVersion": "13.0",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
+      "notarize": {
+        "teamId": "437BBPM436"
+      },
+      "minimumSystemVersion": "13.0",
       "extendInfo": {
         "NSScreenCaptureUsageDescription": "캡처 기능에 화면 녹화 권한이 필요합니다.",
         "NSAccessibilityUsageDescription": "UI 자동 감지에 손쉬운 사용 권한이 필요합니다."
       },
       "target": [
         {
-          "target": "pkg",
+          "target": "dmg",
           "arch": [
             "arm64",
             "x64"
@@ -99,11 +105,8 @@
         }
       ]
     },
-    "pkg": {
-      "artifactName": "ASIS-${version}-${arch}.pkg",
-      "installLocation": "/Applications",
-      "isRelocatable": false,
-      "scripts": "build/pkg-scripts"
+    "dmg": {
+      "artifactName": "ASIS-${version}-${arch}.dmg"
     },
     "linux": {
       "target": [
