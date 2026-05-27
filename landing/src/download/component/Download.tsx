@@ -73,22 +73,26 @@ export function Download({ armHref, intelHref, version }: DownloadProps): React.
             href={armHref}
             onClick={() => window.gtag?.('event', 'download_click', { arch: 'arm64' })}
           >
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <path d="M10 2v11M5 8.5l5 5 5-5M3 17h14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+              <path d="M10 2v11M5 8.5l5 5 5-5M3 17h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-            <span className="download-arch-label">Apple Silicon</span>
-            <span className="download-arch-sub">{version ? `${version} · arm64` : 'arm64'}</span>
+            <div className="download-arch-text">
+              <span className="download-arch-label">Apple Silicon</span>
+              <span className="download-arch-sub">{version ? `${version} · arm64` : 'arm64'}</span>
+            </div>
           </a>
           <a
             className="download-arch-btn download-arch-btn--secondary"
             href={intelHref}
             onClick={() => window.gtag?.('event', 'download_click', { arch: 'x64' })}
           >
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <path d="M10 2v11M5 8.5l5 5 5-5M3 17h14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+              <path d="M10 2v11M5 8.5l5 5 5-5M3 17h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-            <span className="download-arch-label">Intel</span>
-            <span className="download-arch-sub">{version ? `${version} · x64` : 'x64'}</span>
+            <div className="download-arch-text">
+              <span className="download-arch-label">Intel</span>
+              <span className="download-arch-sub">{version ? `${version} · x64` : 'x64'}</span>
+            </div>
           </a>
         </div>
 
