@@ -13,3 +13,4 @@ package-lock.json
 
 # TypeScript 증분 빌드 캐시 — 머신별로 다르므로 추적 불필요
 *.tsbuildinfo
+.claude/scheduled_tasks.lock
