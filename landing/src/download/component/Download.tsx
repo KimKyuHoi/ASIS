@@ -135,7 +135,7 @@ export function Download({ armHref, intelHref, version }: DownloadProps): React.
         </p>
 
         <p className="download-note">
-          {version && `${version} · `}직접 PKG 파일을 설치하려면{' '}
+          {version && `${version} · `}직접 DMG 파일을 설치하려면{' '}
           <a
             href={armHref}
             className="download-link"

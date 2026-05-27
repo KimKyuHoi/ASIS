@@ -20,8 +20,8 @@ export default function App(): React.JSX.Element {
       .then((r) => r.json())
       .then((data: Release) => {
         const assets = data.assets ?? [];
-        const arm = assets.find((a) => a.name.endsWith('-arm64.pkg'));
-        const intel = assets.find((a) => a.name.endsWith('-x64.pkg'));
+        const arm = assets.find((a) => a.name.endsWith('-arm64.dmg'));
+        const intel = assets.find((a) => a.name.endsWith('-x64.dmg'));
         if (data.tag_name) setVersion(data.tag_name);
         if (arm) setArmHref(arm.browser_download_url);
         if (intel) setIntelHref(intel.browser_download_url);
