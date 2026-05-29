@@ -33,13 +33,15 @@ export default function Pin(): JSX.Element {
       console.error('[asis pin] window.pin 미노출');
       throw new Error('window.pin 미노출 — preload 셋업 확인.');
     }
-    api.onLoadImage((src, w, h, initialOpacity) => {
+    // IPC 구독 — teardown 에서 리스너 해제 (Strict Mode 이중 마운트 시 중복 등록 방지).
+    const offLoadImage = api.onLoadImage((src, w, h, initialOpacity) => {
       setImageSrc(src);
       setImageW(w);
       setImageH(h);
       setOpacity(initialOpacity);
     });
     api.ready();
+    return offLoadImage;
   }, []);
 
   // 키보드 단축키.

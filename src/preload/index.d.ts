@@ -1,4 +1,5 @@
 import { type ElectronAPI } from '@electron-toolkit/preload';
+import type { HotkeyConfig, MiscConfig } from '../main/settings';
 
 type Rect = {
   x: number;
@@ -13,8 +14,8 @@ type WindowInfo = { id: number; name: string; x: number; y: number; w: number; h
 type SelectionAPI = {
   capture: (rect: Rect) => Promise<void>;
   cancel: () => void;
-  onBackground: (callback: (dataUrl: string) => void) => void;
-  onWindows: (callback: (windows: WindowInfo[]) => void) => void;
+  onBackground: (callback: (dataUrl: string) => void) => () => void;
+  onWindows: (callback: (windows: WindowInfo[]) => void) => () => void;
   ready: () => void;
   elementAt: (
     x: number,
@@ -25,7 +26,7 @@ type SelectionAPI = {
 type EditorAPI = {
   onLoadImage: (
     callback: (imagePath: string, width: number, height: number) => void,
-  ) => void;
+  ) => () => void;
   ready: () => void;
   copy: (dataUrl: string) => Promise<void>;
   cancel: () => void;
@@ -35,7 +36,9 @@ type EditorAPI = {
 };
 
 type PinAPI = {
-  onLoadImage: (callback: (src: string, w: number, h: number, opacity: number) => void) => void;
+  onLoadImage: (
+    callback: (src: string, w: number, h: number, opacity: number) => void,
+  ) => () => void;
   ready: () => void;
   close: () => void;
   setSize: (w: number, h: number) => void;
@@ -46,27 +49,9 @@ type RecorderAPI = {
   stop: () => void;
   cancel: () => void;
   getFrameCount: () => Promise<number>;
-  onEncoding: (callback: () => void) => void;
-  onTriggerStop: (callback: () => void) => void;
-  onTriggerCancel: (callback: () => void) => void;
-};
-
-type HotkeyConfig = {
-  region: string;
-  fullscreen: string;
-  window: string;
-  delayedFullscreen: string;
-  delayedRegion: string;
-  disableClickThrough: string;
-  gif: string;
-  clipboardPin: string;
-};
-
-type MiscConfig = {
-  gifFps: number;
-  openAtLogin: boolean;
-  captureSound: boolean;
-  pinDefaultOpacity: number;
+  onEncoding: (callback: () => void) => () => void;
+  onTriggerStop: (callback: () => void) => () => void;
+  onTriggerCancel: (callback: () => void) => () => void;
 };
 
 type SettingsAPI = {

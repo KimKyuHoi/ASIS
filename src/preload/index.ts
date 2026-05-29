@@ -1,5 +1,6 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import { electronAPI } from '@electron-toolkit/preload';
+import type { HotkeyConfig, MiscConfig } from '../main/settings';
 
 type Rect = {
   x: number;
@@ -15,21 +16,30 @@ const selection = {
   capture: (rect: Rect): Promise<void> =>
     ipcRenderer.invoke('capture:region', rect),
   cancel: (): void => ipcRenderer.send('capture:cancel'),
-  /** Color picker / Magnifier 용 — overlay 띄우기 전 화면의 dataURL. */
-  onBackground: (callback: (dataUrl: string) => void): void => {
-    ipcRenderer.on('capture:background', (_event, dataUrl: string) => {
+  /** Color picker / Magnifier 용 — overlay 띄우기 전 화면의 dataURL.
+      반환값은 cleanup — useEffect teardown 에서 호출해 리스너를 해제한다. */
+  onBackground: (callback: (dataUrl: string) => void): (() => void) => {
+    const handler = (_event: IpcRendererEvent, dataUrl: string): void => {
       callback(dataUrl);
-    });
+    };
+    ipcRenderer.on('capture:background', handler);
+    return () => ipcRenderer.removeListener('capture:background', handler);
   },
-  /** UI 자동 감지 — visible 윈도우 list. 권한 없으면 빈 배열. */
+  /** UI 자동 감지 — visible 윈도우 list. 권한 없으면 빈 배열.
+      반환값은 cleanup — useEffect teardown 에서 호출해 리스너를 해제한다. */
   onWindows: (
     callback: (
       windows: Array<{ name: string; x: number; y: number; w: number; h: number }>,
     ) => void,
-  ): void => {
-    ipcRenderer.on('capture:windows', (_event, windows) => {
+  ): (() => void) => {
+    const handler = (
+      _event: IpcRendererEvent,
+      windows: Array<{ name: string; x: number; y: number; w: number; h: number }>,
+    ): void => {
       callback(windows);
-    });
+    };
+    ipcRenderer.on('capture:windows', handler);
+    return () => ipcRenderer.removeListener('capture:windows', handler);
   },
   /** onWindows listener 를 attach 한 후 호출 — main 에 "이제 보내도 됨" 신호. */
   ready: (): void => ipcRenderer.send('capture:ready'),
@@ -52,13 +62,17 @@ const selection = {
 const editor = {
   onLoadImage: (
     callback: (imagePath: string, width: number, height: number) => void,
-  ): void => {
-    ipcRenderer.on(
-      'editor:load-image',
-      (_event, imagePath: string, width: number, height: number) => {
-        callback(imagePath, width, height);
-      },
-    );
+  ): (() => void) => {
+    const handler = (
+      _event: IpcRendererEvent,
+      imagePath: string,
+      width: number,
+      height: number,
+    ): void => {
+      callback(imagePath, width, height);
+    };
+    ipcRenderer.on('editor:load-image', handler);
+    return () => ipcRenderer.removeListener('editor:load-image', handler);
   },
   /**
    * renderer 의 useEffect 가 onLoadImage 콜백을 attach 한 *이후* 호출.
@@ -87,13 +101,18 @@ const editor = {
 const pin = {
   onLoadImage: (
     callback: (src: string, w: number, h: number, opacity: number) => void,
-  ): void => {
-    ipcRenderer.on(
-      'pin:load-image',
-      (_event, src: string, w: number, h: number, opacity: number) => {
-        callback(src, w, h, opacity);
-      },
-    );
+  ): (() => void) => {
+    const handler = (
+      _event: IpcRendererEvent,
+      src: string,
+      w: number,
+      h: number,
+      opacity: number,
+    ): void => {
+      callback(src, w, h, opacity);
+    };
+    ipcRenderer.on('pin:load-image', handler);
+    return () => ipcRenderer.removeListener('pin:load-image', handler);
   },
   ready: (): void => ipcRenderer.send('pin:ready'),
   close: (): void => ipcRenderer.send('pin:close'),
@@ -115,34 +134,22 @@ const recorder = {
   cancel: (): void => ipcRenderer.send('recorder:cancel'),
   getFrameCount: (): Promise<number> =>
     ipcRenderer.invoke('recorder:get-frame-count'),
-  onEncoding: (callback: () => void): void => {
-    ipcRenderer.on('recorder:encoding', () => callback());
+  onEncoding: (callback: () => void): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on('recorder:encoding', handler);
+    return () => ipcRenderer.removeListener('recorder:encoding', handler);
   },
   /** main 이 외부 트리거 (단축키/트레이) 로 정지 요청. renderer 가 자기 stop 흐름 실행. */
-  onTriggerStop: (callback: () => void): void => {
-    ipcRenderer.on('recorder:trigger-stop', () => callback());
+  onTriggerStop: (callback: () => void): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on('recorder:trigger-stop', handler);
+    return () => ipcRenderer.removeListener('recorder:trigger-stop', handler);
   },
-  onTriggerCancel: (callback: () => void): void => {
-    ipcRenderer.on('recorder:trigger-cancel', () => callback());
+  onTriggerCancel: (callback: () => void): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on('recorder:trigger-cancel', handler);
+    return () => ipcRenderer.removeListener('recorder:trigger-cancel', handler);
   },
-};
-
-type HotkeyConfig = {
-  region: string;
-  fullscreen: string;
-  window: string;
-  delayedFullscreen: string;
-  delayedRegion: string;
-  disableClickThrough: string;
-  gif: string;
-  clipboardPin: string;
-};
-
-type MiscConfig = {
-  gifFps: number;
-  openAtLogin: boolean;
-  captureSound: boolean;
-  pinDefaultOpacity: number;
 };
 
 /**

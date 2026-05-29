@@ -25,6 +25,8 @@ export function ensureEditorIpcBridge(): void {
   }
 
   // main → renderer 단발 init: image path + 크기. zustand store 에 직접 commit.
+  // 모듈 스코프 single-init 이라 윈도우 수명 = 리스너 수명 → cleanup 불필요.
+  // (컴포넌트 useEffect 와 달리 재마운트가 없으므로 반환된 off 를 의도적으로 버린다.)
   api.onLoadImage((path, w, h) => {
     console.info(`[asis editor] onLoadImage path=${path} w=${w} h=${h}`);
     useEditorStore.getState().loadImage(`file://${path}`, w, h);

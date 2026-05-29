@@ -71,8 +71,9 @@ export default function SelectionOverlay(): JSX.Element {
   useEffect(() => {
     const api = window.selection;
     if (!api) throw new Error('window.selection 미노출 — preload 셋업 확인.');
-    api.onWindows((list) => setWindows(list));
+    const off = api.onWindows((list) => setWindows(list));
     api.ready();
+    return off;
   }, []);
 
   // main → renderer: 화면 background dataURL → hidden canvas 에 그림.
@@ -82,7 +83,7 @@ export default function SelectionOverlay(): JSX.Element {
     if (!bgCanvas) return undefined;
     let raf1 = 0;
     let raf2 = 0;
-    api.onBackground((dataUrl) => {
+    const off = api.onBackground((dataUrl) => {
       const img = new Image();
       img.onload = (): void => {
         // bgSize state 갱신 → 다음 렌더에 canvas 가 그 크기로 render → 그 다음
@@ -99,6 +100,7 @@ export default function SelectionOverlay(): JSX.Element {
       img.src = dataUrl;
     });
     return () => {
+      off();
       cancelAnimationFrame(raf1);
       cancelAnimationFrame(raf2);
     };
