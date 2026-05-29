@@ -10,6 +10,7 @@ import { is } from '@electron-toolkit/utils';
 import { copyFile, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { preloadPath } from './common';
 import { SequenceCaptureManager } from '../sequenceCapture';
 import { settingsStore } from '../settings';
 
@@ -66,7 +67,7 @@ export class RecorderWindowManager {
       // hidden 결정되면 mount 후 안 띄움.
       show: !placement.hidden,
       webPreferences: {
-        preload: join(__dirname, '../preload/index.js'),
+        preload: preloadPath(),
         sandbox: false,
       },
     });

@@ -12,6 +12,7 @@ import { is } from '@electron-toolkit/utils';
 import { existsSync } from 'node:fs';
 import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { preloadPath } from './common';
 import { addEntry } from '../captureHistory';
 import devIconPath from '../../../resources/icon.png?asset';
 
@@ -83,7 +84,7 @@ export class EditorWindowManager {
       backgroundColor: '#161618',
       show: false,
       webPreferences: {
-        preload: join(__dirname, '../preload/index.js'),
+        preload: preloadPath(),
         sandbox: false,
       },
     });
