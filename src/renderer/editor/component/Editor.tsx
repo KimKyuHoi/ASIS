@@ -14,6 +14,7 @@ import type { LineShape, Shape as ShapeData, StepShape, TextShape } from '../typ
 import { cancelEditor, copyToClipboard, stageToDataUrl } from '../lib/editor-actions';
 import { addImageFromSource, clamp } from '../lib/image-utils';
 import { intersectsMarquee, shapeBBox } from '../lib/geometry';
+import { shapeDeltaPatch } from '../lib/shape-transform';
 import { useEditorImages } from '../hook/useEditorImages';
 import { useEditorKeyboard } from '../hook/useEditorKeyboard';
 import { useEditorDrag } from '../hook/useEditorDrag';
@@ -639,47 +640,23 @@ export default function Editor(): JSX.Element {
                       const dx = e.target.x() - start.x;
                       const dy = e.target.y() - start.y;
                       const allShapes = useEditorStore.getState().shapes;
+                      // startPos 를 앵커로 넘겨 기존 `startPos + delta` 동작 보존.
+                      // shapeDeltaPatch 로 leader 드래그(useEditorDrag)와 동일 로직 공유
+                      // — 기존에 여기서 누락됐던 line 도형도 함께 처리된다.
                       selectedIds.forEach((sid) => {
                         const sh = allShapes.find((s) => s.id === sid);
                         const startPos = positions.get(sid);
                         if (!sh || !startPos) return;
-                        switch (sh.kind) {
-                          case 'rect':
-                          case 'highlight':
-                          case 'blur':
-                          case 'mosaic':
-                          case 'image':
-                          case 'text':
-                          case 'step':
-                            updateShape(sid, {
-                              x: startPos.x + dx,
-                              y: startPos.y + dy,
-                            });
-                            break;
-                          case 'ellipse':
-                            updateShape(sid, {
-                              cx: startPos.x + dx,
-                              cy: startPos.y + dy,
-                            });
-                            break;
-                          case 'arrow':
-                          case 'pen': {
-                            const newPoints = sh.points.map((v, i) =>
-                              i % 2 === 0 ? v + dx : v + dy,
-                            );
-                            updateShape(sid, { points: newPoints });
-                            break;
-                          }
-                        }
+                        updateShape(sid, shapeDeltaPatch(sh, dx, dy, startPos));
                       });
-                      // arrow/pen 노드 position reset.
+                      // arrow/line/pen 노드 position reset.
                       const stage = stageRef.current;
                       if (stage) {
                         selectedIds.forEach((sid) => {
                           const sh = allShapes.find((s) => s.id === sid);
                           const node = stage.findOne(`#${sid}`);
                           if (!node || !sh) return;
-                          if (sh.kind === 'arrow' || sh.kind === 'pen') {
+                          if (sh.kind === 'arrow' || sh.kind === 'line' || sh.kind === 'pen') {
                             node.position({ x: 0, y: 0 });
                           }
                         });

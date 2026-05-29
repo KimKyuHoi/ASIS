@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { RefObject } from 'react';
 import type Konva from 'konva';
 import { useEditorStore } from '../lib/store';
+import { shapeDeltaPatch } from '../lib/shape-transform';
 
 /**
  * 다중 선택 drag 동기화 — Konva Stage imperative 이벤트.
@@ -65,32 +66,11 @@ export function useEditorDrag(stageRef: RefObject<Konva.Stage | null>): void {
       const dx = e.target.x() - start.x;
       const dy = e.target.y() - start.y;
       const { shapes, updateShape } = useEditorStore.getState();
+      // startPos(드래그 시작 시 node 위치)를 앵커로 넘겨 기존 `startPos + delta` 동작 보존.
       positions.forEach((startPos, sid) => {
         const sh = shapes.find((s) => s.id === sid);
         if (!sh) return;
-        switch (sh.kind) {
-          case 'rect':
-          case 'highlight':
-          case 'blur':
-          case 'mosaic':
-          case 'image':
-          case 'text':
-          case 'step':
-            updateShape(sid, { x: startPos.x + dx, y: startPos.y + dy });
-            break;
-          case 'ellipse':
-            updateShape(sid, { cx: startPos.x + dx, cy: startPos.y + dy });
-            break;
-          case 'arrow':
-          case 'line':
-          case 'pen': {
-            const newPoints = sh.points.map((v, i) =>
-              i % 2 === 0 ? v + dx : v + dy,
-            );
-            updateShape(sid, { points: newPoints });
-            break;
-          }
-        }
+        updateShape(sid, shapeDeltaPatch(sh, dx, dy, startPos));
       });
       positions.forEach((_, sid) => {
         const node = stage.findOne(`#${sid}`);
