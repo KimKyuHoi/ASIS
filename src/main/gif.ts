@@ -1,8 +1,8 @@
-import { spawn } from 'node:child_process';
 import { mkdir, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ffmpegPath from 'ffmpeg-static';
+import { runProcess } from './runProcess';
 
 /**
  * GIF 인코더 — frame PNG 들의 폴더를 받아 ffmpeg palette 2-pass 로 GIF 생성.
@@ -77,25 +77,11 @@ export async function encodeGif(
   return outputPath;
 }
 
-function runFfmpeg(args: string[]): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(FFMPEG_BIN, args);
-    const stderrChunks: Buffer[] = [];
-    child.stderr.on('data', (chunk: Buffer) => {
-      stderrChunks.push(chunk);
-    });
-    child.on('error', (err) => {
-      reject(new Error(`ffmpeg spawn 실패: ${err.message}`));
-    });
-    child.on('close', (code) => {
-      if (code === 0) {
-        resolve();
-        return;
-      }
-      const stderr = Buffer.concat(stderrChunks).toString('utf8').trim();
-      reject(new Error(`ffmpeg 실패 (exit ${code ?? 'null'}): ${stderr}`));
-    });
-  });
+async function runFfmpeg(args: string[]): Promise<void> {
+  const { code, stderr } = await runProcess(FFMPEG_BIN, args, 'ffmpeg');
+  if (code !== 0) {
+    throw new Error(`ffmpeg 실패 (exit ${code ?? 'null'}): ${stderr}`);
+  }
 }
 
 /**
