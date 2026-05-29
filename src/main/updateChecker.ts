@@ -38,7 +38,10 @@ export function setupAutoUpdater(): void {
           autoUpdater.quitAndInstall();
         }
       })
-      .catch(() => {});
+      .catch((err) => {
+        // 다이얼로그 표시/응답 실패 — 다음 실행 시 재시도되므로 치명적이지 않다.
+        if (is.dev) console.warn('[asis] 업데이트 다이얼로그 실패', err);
+      });
   });
 
   autoUpdater.on('error', (err) => {
