@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { JSX } from 'react';
-import { formatTime } from '../lib/format-time';
+import { formatTimestamp } from '../lib/format-time';
 
 type HistoryEntry = {
   id: string;
@@ -57,12 +57,12 @@ export default function History(): JSX.Element {
               <img
                 className="history-card__thumb"
                 src={entry.dataUrl}
-                alt={`캡처 ${formatTime(entry.timestamp)}`}
+                alt={`캡처 ${formatTimestamp(entry.timestamp)}`}
                 loading="lazy"
               />
             </div>
             <div className="history-card__footer">
-              <span className="history-card__time">{formatTime(entry.timestamp)}</span>
+              <span className="history-card__time">{formatTimestamp(entry.timestamp)}</span>
               <div className="history-card__actions">
                 <button
                   type="button"

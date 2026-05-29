@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { JSX } from 'react';
-import { formatTime } from '../lib/format-time';
+import { formatDuration } from '../lib/format-time';
 
 type Phase = 'recording' | 'encoding';
 
@@ -32,9 +32,15 @@ export default function Recorder(): JSX.Element {
   useEffect(() => {
     const api = window.recorder;
     if (!api) throw new Error('window.recorder 미노출 — preload 셋업 확인.');
-    api.onEncoding(() => setPhase('encoding'));
-    api.onTriggerStop(() => api.stop());
-    api.onTriggerCancel(() => api.cancel());
+    // IPC 구독 — teardown 에서 모두 해제 (Strict Mode 이중 마운트 시 중복 등록 방지).
+    const offEncoding = api.onEncoding(() => setPhase('encoding'));
+    const offTriggerStop = api.onTriggerStop(() => api.stop());
+    const offTriggerCancel = api.onTriggerCancel(() => api.cancel());
+    return () => {
+      offEncoding();
+      offTriggerStop();
+      offTriggerCancel();
+    };
   }, []);
 
   // 키보드: ESC = 취소(recording), Enter = 정지(recording). encoding 중에는 무시.
@@ -72,7 +78,7 @@ export default function Recorder(): JSX.Element {
         REC
       </div>
       <div className="recorder__time">
-        {formatTime(seconds)}
+        {formatDuration(seconds)}
         <span className="recorder__sub">{frames}프레임</span>
       </div>
       <button
