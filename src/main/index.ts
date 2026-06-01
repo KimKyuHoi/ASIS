@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { electronApp, is, optimizer } from '@electron-toolkit/utils';
+import log from 'electron-log/main';
 import devAppIconPath from '../../resources/icon.png?asset';
 import { TrayManager } from './tray';
 import { ShortcutManager } from './shortcuts';
@@ -22,7 +23,12 @@ import { SettingsWindowManager } from './windows/settingsWindow';
 import { HistoryWindowManager } from './windows/historyWindow';
 import { getEntries } from './captureHistory';
 import { checkPermissionsOnLaunch, guardCapture, openPermissionSettings } from './permissions';
-import { isNewer, setupAutoUpdater, checkForUpdates } from './updateChecker';
+import {
+  isNewer,
+  setupAutoUpdater,
+  checkForUpdates,
+  isQuittingForUpdate,
+} from './updateChecker';
 import { CountdownWindow } from './windows/countdownWindow';
 
 /**
@@ -410,12 +416,17 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+  // macOS 는 트레이 앱이라 모든 창이 닫혀도 평소엔 종료하지 않는다.
+  // 단, 자동 업데이트 설치(quitAndInstall) 중에는 반드시 종료해야 Squirrel.Mac 의
+  // ShipIt 이 번들 교체를 진행한다. quitAndInstall 경로는 before-quit 을 정상 순서로
+  // 발생시키지 않으므로 여기서 플래그를 직접 확인한다. → electron/electron#15453
+  if (process.platform !== 'darwin' || isQuittingForUpdate()) {
     app.quit();
   }
 });
 
 app.on('before-quit', () => {
+  log.info('[app] before-quit', { quittingForUpdate: isQuittingForUpdate() });
   shortcutManager.stop();
   trayManager.stop();
   selectionOverlay.stop();
