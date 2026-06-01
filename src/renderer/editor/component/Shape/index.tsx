@@ -166,20 +166,8 @@ export function Shape({
             });
             e.target.position({ x: 0, y: 0 });
           }}
-          onTransformEnd={(e): void => {
-            const node = e.target;
-            const sx = node.scaleX();
-            const sy = node.scaleY();
-            const dx = node.x();
-            const dy = node.y();
-            node.scaleX(1);
-            node.scaleY(1);
-            node.position({ x: 0, y: 0 });
-            updateShape(shape.id, {
-              points: transformPoints(shape.points, sx, sy, dx, dy),
-              rotation: node.rotation(),
-            });
-          }}
+          // arrow 는 Transformer 가 붙지 않는다 — 끝점 핸들(EndpointHandles)로 조작.
+          // 따라서 onTransformEnd 불필요 (박스 스케일 음수화로 좌표가 날뛰던 원인 제거).
         />
       );
 
@@ -205,20 +193,7 @@ export function Shape({
             });
             e.target.position({ x: 0, y: 0 });
           }}
-          onTransformEnd={(e): void => {
-            const node = e.target;
-            const sx = node.scaleX();
-            const sy = node.scaleY();
-            const dx = node.x();
-            const dy = node.y();
-            node.scaleX(1);
-            node.scaleY(1);
-            node.position({ x: 0, y: 0 });
-            updateShape(shape.id, {
-              points: transformPoints(shape.points, sx, sy, dx, dy),
-              rotation: node.rotation(),
-            });
-          }}
+          // line 도 Transformer 가 붙지 않는다 — 끝점 핸들(EndpointHandles)로 조작.
         />
       );
 
