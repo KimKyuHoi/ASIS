@@ -9,6 +9,13 @@ import {
 } from 'react-konva';
 import type Konva from 'konva';
 import { useEditorStore } from '../../lib/store';
+import {
+  clampXY,
+  commitBoxDrag,
+  commitBoxTransform,
+  shiftPointsClamped,
+  transformPoints,
+} from '../../lib/shape-transform';
 import type { Shape as ShapeData } from '../../types/shapes';
 import { BlurShapeNode } from './BlurShapeNode';
 import { ImageShapeNode } from './ImageShapeNode';
@@ -54,36 +61,7 @@ export function Shape({
 
   const handleContextMenu = onContextMenu ?? ((): void => {});
 
-  // 이미지 경계 안으로 좌표를 clamp 하는 헬퍼.
-  // 이벤트 핸들러 안에서 getState() 로 꺼내 최신값을 쓴다.
-  const clampXY = (x: number, y: number, w = 0, h = 0): { x: number; y: number } => {
-    const { imageWidth: iw, imageHeight: ih } = useEditorStore.getState();
-    return {
-      x: Math.max(0, Math.min(x, iw - w)),
-      y: Math.max(0, Math.min(y, ih - h)),
-    };
-  };
-
-  // point 배열([x0,y0,x1,y1,...])의 bounding box를 이미지 안으로 clamp 하는 delta 반환.
-  const clampPointsDelta = (
-    points: number[],
-    dx: number,
-    dy: number,
-  ): { dx: number; dy: number } => {
-    const { imageWidth: iw, imageHeight: ih } = useEditorStore.getState();
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (let i = 0; i < points.length; i += 2) {
-      minX = Math.min(minX, points[i]);
-      maxX = Math.max(maxX, points[i]);
-      minY = Math.min(minY, points[i + 1]);
-      maxY = Math.max(maxY, points[i + 1]);
-    }
-    return {
-      dx: Math.max(-minX, Math.min(dx, iw - maxX)),
-      dy: Math.max(-minY, Math.min(dy, ih - maxY)),
-    };
-  };
-
+  // clamp/scale-reset 로직은 lib/shape-transform 으로 추출 (도형별 case 가 공유).
   // dragBoundFunc 은 폐기 — 도형 종류별 좌표계가 달라(특히 arrow/pen 의 node.position 이 (0,0))
   // 일률적 clamp 가 음수 방향 이동을 막아 막혔다. onDragEnd 에서 post-clamp 처리.
 
@@ -107,24 +85,12 @@ export function Shape({
           onContextMenu={handleContextMenu}
           onDragEnd={(e): void => {
             if (isMultiDrag()) return;
-            const { x, y } = clampXY(e.target.x(), e.target.y(), shape.w, shape.h);
-            e.target.position({ x, y });
+            const { x, y } = commitBoxDrag(e.target, shape.w, shape.h);
             updateShape(shape.id, { x, y });
           }}
           onTransformEnd={(e): void => {
-            const node = e.target;
-            const sx = node.scaleX();
-            const sy = node.scaleY();
-            node.scaleX(1);
-            node.scaleY(1);
-            const { x, y } = clampXY(node.x(), node.y(), shape.w * sx, shape.h * sy);
-            updateShape(shape.id, {
-              x,
-              y,
-              w: Math.max(5, shape.w * sx),
-              h: Math.max(5, shape.h * sy),
-              rotation: node.rotation(),
-            });
+            const box = commitBoxTransform(e.target, shape.w, shape.h, 5);
+            updateShape(shape.id, { ...box, rotation: e.target.rotation() });
           }}
         />
       );
@@ -195,32 +161,13 @@ export function Shape({
           onContextMenu={handleContextMenu}
           onDragEnd={(e): void => {
             if (isMultiDrag()) return;
-            const rawDx = e.target.x();
-            const rawDy = e.target.y();
-            const { dx, dy } = clampPointsDelta(shape.points, rawDx, rawDy);
-            const shifted = shape.points.map((v, i) =>
-              i % 2 === 0 ? v + dx : v + dy,
-            );
-            updateShape(shape.id, { points: shifted });
+            updateShape(shape.id, {
+              points: shiftPointsClamped(shape.points, e.target.x(), e.target.y()),
+            });
             e.target.position({ x: 0, y: 0 });
           }}
-          onTransformEnd={(e): void => {
-            const node = e.target;
-            const sx = node.scaleX();
-            const sy = node.scaleY();
-            const dx = node.x();
-            const dy = node.y();
-            node.scaleX(1);
-            node.scaleY(1);
-            node.position({ x: 0, y: 0 });
-            const newPoints = shape.points.map((v, i) =>
-              i % 2 === 0 ? v * sx + dx : v * sy + dy,
-            );
-            updateShape(shape.id, {
-              points: newPoints,
-              rotation: node.rotation(),
-            });
-          }}
+          // arrow 는 Transformer 가 붙지 않는다 — 끝점 핸들(EndpointHandles)로 조작.
+          // 따라서 onTransformEnd 불필요 (박스 스케일 음수화로 좌표가 날뛰던 원인 제거).
         />
       );
 
@@ -241,32 +188,12 @@ export function Shape({
           onContextMenu={handleContextMenu}
           onDragEnd={(e): void => {
             if (isMultiDrag()) return;
-            const rawDx = e.target.x();
-            const rawDy = e.target.y();
-            const { dx, dy } = clampPointsDelta(shape.points, rawDx, rawDy);
-            const shifted = shape.points.map((v, i) =>
-              i % 2 === 0 ? v + dx : v + dy,
-            );
-            updateShape(shape.id, { points: shifted });
+            updateShape(shape.id, {
+              points: shiftPointsClamped(shape.points, e.target.x(), e.target.y()),
+            });
             e.target.position({ x: 0, y: 0 });
           }}
-          onTransformEnd={(e): void => {
-            const node = e.target;
-            const sx = node.scaleX();
-            const sy = node.scaleY();
-            const dx = node.x();
-            const dy = node.y();
-            node.scaleX(1);
-            node.scaleY(1);
-            node.position({ x: 0, y: 0 });
-            const newPoints = shape.points.map((v, i) =>
-              i % 2 === 0 ? v * sx + dx : v * sy + dy,
-            );
-            updateShape(shape.id, {
-              points: newPoints,
-              rotation: node.rotation(),
-            });
-          }}
+          // line 도 Transformer 가 붙지 않는다 — 끝점 핸들(EndpointHandles)로 조작.
         />
       );
 
@@ -288,13 +215,9 @@ export function Shape({
           onContextMenu={handleContextMenu}
           onDragEnd={(e): void => {
             if (isMultiDrag()) return;
-            const rawDx = e.target.x();
-            const rawDy = e.target.y();
-            const { dx, dy } = clampPointsDelta(shape.points, rawDx, rawDy);
-            const shifted = shape.points.map((v, i) =>
-              i % 2 === 0 ? v + dx : v + dy,
-            );
-            updateShape(shape.id, { points: shifted });
+            updateShape(shape.id, {
+              points: shiftPointsClamped(shape.points, e.target.x(), e.target.y()),
+            });
             e.target.position({ x: 0, y: 0 });
           }}
           onTransformEnd={(e): void => {
@@ -306,11 +229,8 @@ export function Shape({
             node.scaleX(1);
             node.scaleY(1);
             node.position({ x: 0, y: 0 });
-            const newPoints = shape.points.map((v, i) =>
-              i % 2 === 0 ? v * sx + dx : v * sy + dy,
-            );
             updateShape(shape.id, {
-              points: newPoints,
+              points: transformPoints(shape.points, sx, sy, dx, dy),
               rotation: node.rotation(),
             });
           }}
@@ -402,23 +322,12 @@ export function Shape({
           onContextMenu={handleContextMenu}
           onDragEnd={(e): void => {
             if (isMultiDrag()) return;
-            const { x, y } = clampXY(e.target.x(), e.target.y(), shape.w, shape.h);
-            e.target.position({ x, y });
+            const { x, y } = commitBoxDrag(e.target, shape.w, shape.h);
             updateShape(shape.id, { x, y });
           }}
           onTransformEnd={(e): void => {
-            const node = e.target;
-            const sx = node.scaleX();
-            const sy = node.scaleY();
-            node.scaleX(1);
-            node.scaleY(1);
-            const { x, y } = clampXY(node.x(), node.y(), shape.w * sx, shape.h * sy);
-            updateShape(shape.id, {
-              x,
-              y,
-              w: Math.max(5, shape.w * sx),
-              h: Math.max(5, shape.h * sy),
-            });
+            // highlight 는 rotation 미커밋 — 박스 위치·크기만 갱신.
+            updateShape(shape.id, commitBoxTransform(e.target, shape.w, shape.h, 5));
           }}
         />
       );
@@ -433,22 +342,11 @@ export function Shape({
           onContextMenu={handleContextMenu}
           onDragEnd={(node): void => {
             if (isMultiDrag()) return;
-            const { x, y } = clampXY(node.x(), node.y(), shape.w, shape.h);
-            node.position({ x, y });
+            const { x, y } = commitBoxDrag(node, shape.w, shape.h);
             updateShape(shape.id, { x, y });
           }}
           onTransformEnd={(node): void => {
-            const sx = node.scaleX();
-            const sy = node.scaleY();
-            node.scaleX(1);
-            node.scaleY(1);
-            const { x, y } = clampXY(node.x(), node.y(), shape.w * sx, shape.h * sy);
-            updateShape(shape.id, {
-              x,
-              y,
-              w: Math.max(10, shape.w * sx),
-              h: Math.max(10, shape.h * sy),
-            });
+            updateShape(shape.id, commitBoxTransform(node, shape.w, shape.h, 10));
           }}
         />
       );
@@ -463,22 +361,11 @@ export function Shape({
           onContextMenu={handleContextMenu}
           onDragEnd={(node): void => {
             if (isMultiDrag()) return;
-            const { x, y } = clampXY(node.x(), node.y(), shape.w, shape.h);
-            node.position({ x, y });
+            const { x, y } = commitBoxDrag(node, shape.w, shape.h);
             updateShape(shape.id, { x, y });
           }}
           onTransformEnd={(node): void => {
-            const sx = node.scaleX();
-            const sy = node.scaleY();
-            node.scaleX(1);
-            node.scaleY(1);
-            const { x, y } = clampXY(node.x(), node.y(), shape.w * sx, shape.h * sy);
-            updateShape(shape.id, {
-              x,
-              y,
-              w: Math.max(10, shape.w * sx),
-              h: Math.max(10, shape.h * sy),
-            });
+            updateShape(shape.id, commitBoxTransform(node, shape.w, shape.h, 10));
           }}
         />
       );
@@ -492,23 +379,12 @@ export function Shape({
           onContextMenu={handleContextMenu}
           onDragEnd={(node): void => {
             if (isMultiDrag()) return;
-            const { x, y } = clampXY(node.x(), node.y(), shape.w, shape.h);
-            node.position({ x, y });
+            const { x, y } = commitBoxDrag(node, shape.w, shape.h);
             updateShape(shape.id, { x, y });
           }}
           onTransformEnd={(node): void => {
-            const sx = node.scaleX();
-            const sy = node.scaleY();
-            node.scaleX(1);
-            node.scaleY(1);
-            const { x, y } = clampXY(node.x(), node.y(), shape.w * sx, shape.h * sy);
-            updateShape(shape.id, {
-              x,
-              y,
-              w: Math.max(10, shape.w * sx),
-              h: Math.max(10, shape.h * sy),
-              rotation: node.rotation(),
-            });
+            const box = commitBoxTransform(node, shape.w, shape.h, 10);
+            updateShape(shape.id, { ...box, rotation: node.rotation() });
           }}
         />
       );

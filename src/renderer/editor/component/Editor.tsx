@@ -14,10 +14,12 @@ import type { LineShape, Shape as ShapeData, StepShape, TextShape } from '../typ
 import { cancelEditor, copyToClipboard, stageToDataUrl } from '../lib/editor-actions';
 import { addImageFromSource, clamp } from '../lib/image-utils';
 import { intersectsMarquee, shapeBBox } from '../lib/geometry';
+import { shapeDeltaPatch } from '../lib/shape-transform';
 import { useEditorImages } from '../hook/useEditorImages';
 import { useEditorKeyboard } from '../hook/useEditorKeyboard';
 import { useEditorDrag } from '../hook/useEditorDrag';
 import { Shape } from './Shape';
+import { EndpointHandles } from './EndpointHandles';
 import { Toolbar } from './Toolbar';
 import { TextEditor } from './TextEditor';
 
@@ -29,6 +31,12 @@ type ContextMenu = { x: number; y: number; shapeId: string };
 // hotspot: (2, 14) — 지우개 지우는 끝 부분(좌하단).
 const CURSOR_ERASER =
   "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21' stroke='%23000' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M22 21H7' stroke='%23000' stroke-width='4' stroke-linecap='round'/%3E%3Cpath d='m5 11 9 9' stroke='%23000' stroke-width='4' stroke-linecap='round'/%3E%3Cpath d='m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21' fill='%23ff9999' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M22 21H7' stroke='white' stroke-width='1.8' stroke-linecap='round'/%3E%3Cpath d='m5 11 9 9' stroke='white' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E\") 2 14, auto";
+
+// 회전 화살표 커서 — 끝점 핸들 hover/드래그 시 "방향을 바꿀 수 있는 지점"임을 알림.
+// 거의 한 바퀴 도는 원호 + 끝에 화살촉. 검정 그림자(4px) 위 흰 선(2px) 2겹으로
+// 밝은/어두운 배경 모두에서 선명. hotspot: 중앙(11,11).
+const CURSOR_ROTATE =
+  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='M12 4 A8 8 0 1 1 6.86 5.87' stroke='%23000' stroke-width='4' stroke-linecap='round'/%3E%3Cpath d='M6.86 5.87 L4 4.5 M6.86 5.87 L6.2 9' stroke='%23000' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M12 4 A8 8 0 1 1 6.86 5.87' stroke='white' stroke-width='2' stroke-linecap='round'/%3E%3Cpath d='M6.86 5.87 L4 4.5 M6.86 5.87 L6.2 9' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\") 11 11, auto";
 
 /**
  * 어노테이션 에디터 메인.
@@ -454,15 +462,19 @@ export default function Editor(): JSX.Element {
 
   // 회전·리사이즈 활성 여부.
   // - 리사이즈는 항상 (단일/다중 모두 핸들 보이게).
-  // - 회전은 단일 + rect/ellipse 만 (Arrow/Pen points 회전 미구현, 다중 회전도 미구현).
+  // - 회전은 단일 + rect/ellipse/pen/image 만 (다중 회전 미구현).
   const singleSelected = selectedIds.length === 1
     ? (shapes.find((s) => s.id === selectedIds[0]) ?? null)
+    : null;
+  // arrow/line 단일 선택은 Transformer 박스 변환 대신 끝점 핸들 2개로 조작한다.
+  // (선분에 박스 스케일을 적용하면 얇은 축에서 음수/0 scale 이 나와 좌표가 날뛴다.)
+  const lineLikeSelected = singleSelected &&
+    (singleSelected.kind === 'arrow' || singleSelected.kind === 'line')
+    ? singleSelected
     : null;
   const canRotate = !!singleSelected && (
     singleSelected.kind === 'rect' ||
     singleSelected.kind === 'ellipse' ||
-    singleSelected.kind === 'arrow' ||
-    singleSelected.kind === 'line' ||
     singleSelected.kind === 'pen' ||
     singleSelected.kind === 'image'
   );
@@ -639,47 +651,23 @@ export default function Editor(): JSX.Element {
                       const dx = e.target.x() - start.x;
                       const dy = e.target.y() - start.y;
                       const allShapes = useEditorStore.getState().shapes;
+                      // startPos 를 앵커로 넘겨 기존 `startPos + delta` 동작 보존.
+                      // shapeDeltaPatch 로 leader 드래그(useEditorDrag)와 동일 로직 공유
+                      // — 기존에 여기서 누락됐던 line 도형도 함께 처리된다.
                       selectedIds.forEach((sid) => {
                         const sh = allShapes.find((s) => s.id === sid);
                         const startPos = positions.get(sid);
                         if (!sh || !startPos) return;
-                        switch (sh.kind) {
-                          case 'rect':
-                          case 'highlight':
-                          case 'blur':
-                          case 'mosaic':
-                          case 'image':
-                          case 'text':
-                          case 'step':
-                            updateShape(sid, {
-                              x: startPos.x + dx,
-                              y: startPos.y + dy,
-                            });
-                            break;
-                          case 'ellipse':
-                            updateShape(sid, {
-                              cx: startPos.x + dx,
-                              cy: startPos.y + dy,
-                            });
-                            break;
-                          case 'arrow':
-                          case 'pen': {
-                            const newPoints = sh.points.map((v, i) =>
-                              i % 2 === 0 ? v + dx : v + dy,
-                            );
-                            updateShape(sid, { points: newPoints });
-                            break;
-                          }
-                        }
+                        updateShape(sid, shapeDeltaPatch(sh, dx, dy, startPos));
                       });
-                      // arrow/pen 노드 position reset.
+                      // arrow/line/pen 노드 position reset.
                       const stage = stageRef.current;
                       if (stage) {
                         selectedIds.forEach((sid) => {
                           const sh = allShapes.find((s) => s.id === sid);
                           const node = stage.findOne(`#${sid}`);
                           if (!node || !sh) return;
-                          if (sh.kind === 'arrow' || sh.kind === 'pen') {
+                          if (sh.kind === 'arrow' || sh.kind === 'line' || sh.kind === 'pen') {
                             node.position({ x: 0, y: 0 });
                           }
                         });
@@ -732,7 +720,7 @@ export default function Editor(): JSX.Element {
                     listening={false}
                   />
                 ) : null}
-                {tool === 'select' ? (
+                {tool === 'select' && !lineLikeSelected ? (
                   <Transformer
                     ref={transformerRef}
                     rotateEnabled={canRotate}
@@ -746,6 +734,14 @@ export default function Editor(): JSX.Element {
                     anchorStroke="#5ea2ff"
                     anchorStrokeWidth={1}
                     anchorSize={10}
+                  />
+                ) : null}
+                {tool === 'select' && lineLikeSelected ? (
+                  <EndpointHandles
+                    shape={lineLikeSelected}
+                    stageScale={stageScale}
+                    cursor={CURSOR_ROTATE}
+                    restoreCursor="default"
                   />
                 ) : null}
               </Layer>

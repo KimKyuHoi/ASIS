@@ -1,4 +1,5 @@
 import { BrowserWindow, screen } from 'electron';
+import { is } from '@electron-toolkit/utils';
 import { join } from 'node:path';
 
 export class CountdownWindow {
@@ -35,7 +36,10 @@ export class CountdownWindow {
     win.setIgnoreMouseEvents(true);
 
     const countdownPath = join(__dirname, '../renderer/countdown/index.html');
-    win.loadFile(countdownPath, { query: { seconds: String(seconds) } }).catch(() => {});
+    win.loadFile(countdownPath, { query: { seconds: String(seconds) } }).catch((err: unknown) => {
+      // 카운트다운 화면 로드 실패 — 오버레이만 안 보일 뿐 실제 캡처는 진행된다.
+      if (is.dev) console.warn('[asis] 카운트다운 로드 실패', err);
+    });
 
     this.win = win;
     win.on('closed', () => {

@@ -1,4 +1,5 @@
 import { dialog, shell, systemPreferences } from 'electron';
+import { is } from '@electron-toolkit/utils';
 
 const SCREEN_URL =
   'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture';
@@ -6,6 +7,13 @@ const SCREEN_URL =
 function screenStatus(): string {
   if (process.platform !== 'darwin') return 'granted';
   return systemPreferences.getMediaAccessStatus('screen');
+}
+
+/** 화면 녹화 설정 패널 열기. 실패해도 사용자가 수동으로 열 수 있으므로 치명적이지 않다. */
+function openScreenSettings(): void {
+  shell.openExternal(SCREEN_URL).catch((err: unknown) => {
+    if (is.dev) console.warn('[asis] 시스템 설정 열기 실패', err);
+  });
 }
 
 /** 앱 시작 시 한 번 호출 — 권한 상태에 따라 안내 다이얼로그 표시. */
@@ -29,7 +37,7 @@ export async function checkPermissionsOnLaunch(): Promise<void> {
     cancelId: 1,
   });
 
-  if (response === 0) shell.openExternal(SCREEN_URL).catch(() => {});
+  if (response === 0) openScreenSettings();
 }
 
 /**
@@ -51,10 +59,10 @@ export async function guardCapture(): Promise<boolean> {
     cancelId: 1,
   });
 
-  if (response === 0) shell.openExternal(SCREEN_URL).catch(() => {});
+  if (response === 0) openScreenSettings();
   return false;
 }
 
 export function openPermissionSettings(): void {
-  shell.openExternal(SCREEN_URL).catch(() => {});
+  openScreenSettings();
 }

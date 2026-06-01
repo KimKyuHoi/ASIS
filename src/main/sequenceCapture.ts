@@ -1,5 +1,7 @@
-import { spawn } from 'node:child_process';
 import { GifManager } from './gif';
+import { runProcess } from './runProcess';
+
+const SCREENCAPTURE_BIN = '/usr/sbin/screencapture';
 
 /**
  * 시퀀스 캡처 — 일정 간격(N ms) 으로 macOS `screencapture -R` 호출해
@@ -101,32 +103,17 @@ export class SequenceCaptureManager {
   }
 }
 
-function runScreencaptureRegion(
+async function runScreencaptureRegion(
   rect: { x: number; y: number; w: number; h: number },
   outputPath: string,
 ): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const region = `${rect.x},${rect.y},${rect.w},${rect.h}`;
-    const child = spawn('/usr/sbin/screencapture', [
-      '-x',
-      '-R',
-      region,
-      '-t',
-      'png',
-      outputPath,
-    ]);
-    const stderrChunks: Buffer[] = [];
-    child.stderr.on('data', (chunk: Buffer) => stderrChunks.push(chunk));
-    child.on('error', (err) => {
-      reject(new Error(`screencapture spawn 실패: ${err.message}`));
-    });
-    child.on('close', (code) => {
-      if (code === 0) {
-        resolve();
-        return;
-      }
-      const stderr = Buffer.concat(stderrChunks).toString('utf8').trim();
-      reject(new Error(`screencapture 실패 (exit ${code}): ${stderr}`));
-    });
-  });
+  const region = `${rect.x},${rect.y},${rect.w},${rect.h}`;
+  const { code, stderr } = await runProcess(
+    SCREENCAPTURE_BIN,
+    ['-x', '-R', region, '-t', 'png', outputPath],
+    'screencapture',
+  );
+  if (code !== 0) {
+    throw new Error(`screencapture 실패 (exit ${code ?? 'null'}): ${stderr}`);
+  }
 }

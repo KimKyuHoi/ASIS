@@ -48,6 +48,13 @@ export function Magnifier({
     };
   }, [pointer, bgCanvas, sampleCanvas]);
 
+  // 언마운트 시 대기 중인 "복사됨" 리셋 타이머 정리 — 사라진 컴포넌트에 setState 방지.
+  useEffect(() => {
+    return () => {
+      if (resetTimerRef.current !== null) clearTimeout(resetTimerRef.current);
+    };
+  }, []);
+
   const hex = rgbToHex(rgb[0], rgb[1], rgb[2]);
   const hsl = rgbToHsl(rgb[0], rgb[1], rgb[2]);
 
@@ -59,7 +66,10 @@ export function Magnifier({
 
   function handleCopy(): void {
     const value = formatValue(format);
-    navigator.clipboard.writeText(value).catch(() => {});
+    navigator.clipboard.writeText(value).catch((err: unknown) => {
+      // 클립보드 쓰기 실패 — 포커스 없음/권한 등. 치명적이지 않으므로 로깅만.
+      console.error('[asis magnifier] 클립보드 복사 실패', err);
+    });
     setCopied(true);
     if (resetTimerRef.current !== null) clearTimeout(resetTimerRef.current);
     resetTimerRef.current = setTimeout(() => setCopied(false), 1000);

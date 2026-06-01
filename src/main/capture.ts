@@ -1,7 +1,7 @@
-import { spawn } from 'node:child_process';
 import { stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { runProcess } from './runProcess';
 
 /**
  * macOS `screencapture` 자식 프로세스 래퍼 — *임시 PNG 파일 path 반환*.
@@ -71,78 +71,50 @@ function captureToFile(args: string[]): Promise<CaptureResult> {
   return runScreencapture(args, tmpPath);
 }
 
-function runScreencapture(
+async function runScreencapture(
   args: string[],
   outputPath: string,
 ): Promise<CaptureResult> {
-  return new Promise<CaptureResult>((resolve, reject) => {
-    let settled = false;
-    const settle = (action: () => void): void => {
-      if (settled) return;
-      settled = true;
-      action();
-    };
-
-    const child = spawn(SCREENCAPTURE_BIN, [...args, outputPath]);
-    const stderrChunks: Buffer[] = [];
-
-    child.stderr.on('data', (chunk: Buffer) => {
-      stderrChunks.push(chunk);
-    });
-
-    child.on('error', (err) => {
-      settle(() => {
-        reject(new Error(`screencapture spawn failed: ${err.message}`));
-      });
-    });
-
-    child.on('close', (code) => {
-      settle(() => {
-        const stderr = Buffer.concat(stderrChunks).toString('utf8').trim();
-        verifyAndResolve(code, stderr, outputPath, resolve, reject);
-      });
-    });
-  });
+  const { code, stderr } = await runProcess(
+    SCREENCAPTURE_BIN,
+    [...args, outputPath],
+    'screencapture',
+  );
+  return verifyResult(code, stderr, outputPath);
 }
 
-async function verifyAndResolve(
+async function verifyResult(
   code: number | null,
   stderr: string,
   outputPath: string,
-  resolve: (r: CaptureResult) => void,
-  reject: (e: Error) => void,
-): Promise<void> {
+): Promise<CaptureResult> {
   // exit 0 + stderr 없음 = 성공 후보. 파일 검증 후 path 반환.
   if (code === 0 && !stderr) {
+    let fileStat: Awaited<ReturnType<typeof stat>>;
     try {
-      const fileStat = await stat(outputPath);
-      if (fileStat.size === 0) {
-        reject(new Error(`screencapture produced empty file: ${outputPath}`));
-        return;
-      }
-      resolve({ kind: 'success', path: outputPath });
+      fileStat = await stat(outputPath);
     } catch (err) {
       // ENOENT = 파일 미생성 (사용자 취소 추정). 그 외는 진짜 에러.
+      // size 체크의 throw 가 이 catch 에 잡히지 않도록 stat 호출만 감싼다.
       if (isFileNotFound(err)) {
-        resolve({ kind: 'canceled' });
-        return;
+        return { kind: 'canceled' };
       }
-      reject(
-        new Error(
-          `screencapture stat failed: ${err instanceof Error ? err.message : String(err)}`,
-        ),
+      throw new Error(
+        `screencapture stat failed: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
-    return;
+    if (fileStat.size === 0) {
+      throw new Error(`screencapture produced empty file: ${outputPath}`);
+    }
+    return { kind: 'success', path: outputPath };
   }
 
   // exit code != 0 또는 stderr 있음.
   // stderr 비어 있으면 사용자 취소 (man page 미명시 휴리스틱).
   if (!stderr) {
-    resolve({ kind: 'canceled' });
-    return;
+    return { kind: 'canceled' };
   }
-  reject(new Error(`screencapture failed (exit ${code ?? 'null'}): ${stderr}`));
+  throw new Error(`screencapture failed (exit ${code ?? 'null'}): ${stderr}`);
 }
 
 function isFileNotFound(err: unknown): boolean {

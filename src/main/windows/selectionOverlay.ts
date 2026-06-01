@@ -1,5 +1,6 @@
 import { BrowserWindow, globalShortcut, ipcMain, Notification, screen } from 'electron';
 import { is } from '@electron-toolkit/utils';
+import { preloadPath } from './common';
 import { spawn } from 'node:child_process';
 import { readFile, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -398,7 +399,7 @@ function createOverlayWindow(): BrowserWindow {
     // Workspaces + setAlwaysOnTop 조합으로 보강.
     type: 'panel',
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
+      preload: preloadPath(),
       sandbox: false,
     },
   });

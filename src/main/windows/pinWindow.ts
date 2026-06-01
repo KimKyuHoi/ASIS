@@ -2,6 +2,7 @@ import { BrowserWindow, ipcMain, screen } from 'electron';
 import { is } from '@electron-toolkit/utils';
 import { join } from 'node:path';
 import { settingsStore } from '../settings';
+import { preloadPath } from './common';
 
 const CHANNEL_LOAD_IMAGE = 'pin:load-image';
 const CHANNEL_READY = 'pin:ready';
@@ -54,7 +55,7 @@ export class PinWindowManager {
       skipTaskbar: true,
       backgroundColor: '#00000000',
       webPreferences: {
-        preload: join(__dirname, '../preload/index.js'),
+        preload: preloadPath(),
         sandbox: false,
       },
     });
