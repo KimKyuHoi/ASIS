@@ -57,3 +57,19 @@ export const settingsStore = new ElectronStore<Settings>({
     lastLaunchedVersion: '',
   },
 });
+
+/**
+ * 저장된 hotkeys 를 DEFAULT_HOTKEYS 와 병합해 모든 키가 채워진 완전한 객체를 보장한다.
+ * electron-store 의 defaults 는 top-level 키 단위로만 적용된다 — 중첩 객체인 hotkeys 의
+ * 누락 필드는 deep-merge 하지 않으므로, 구버전에 저장된 부분 hotkeys 는 새로 추가된 키가
+ * undefined 로 남는다. 그대로 렌더러로 넘어가면 toDisplayString(undefined) 가 throw 한다.
+ * 읽는 시점에 병합해 이를 막는다.
+ */
+export function loadHotkeys(): HotkeyConfig {
+  return { ...DEFAULT_HOTKEYS, ...settingsStore.get('hotkeys') };
+}
+
+/** misc 도 hotkeys 와 같은 이유로 읽는 시점에 DEFAULT_MISC 와 병합한다. */
+export function loadMisc(): MiscConfig {
+  return { ...DEFAULT_MISC, ...settingsStore.get('misc') };
+}

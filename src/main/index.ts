@@ -7,7 +7,7 @@ import log from 'electron-log/main';
 import devAppIconPath from '../../resources/icon.png?asset';
 import { TrayManager } from './tray';
 import { ShortcutManager } from './shortcuts';
-import { settingsStore } from './settings';
+import { settingsStore, loadHotkeys, loadMisc } from './settings';
 import type { HotkeyConfig, MiscConfig } from './settings';
 import {
   captureRegion,
@@ -209,7 +209,7 @@ const handleGif = (): void => {
 };
 
 // 환경설정 IPC — 앱 전체 lifecycle 동안 유효.
-ipcMain.handle('settings:get', () => settingsStore.get('hotkeys'));
+ipcMain.handle('settings:get', () => loadHotkeys());
 ipcMain.handle('settings:set', (_event, hotkeys: HotkeyConfig) => {
   settingsStore.set('hotkeys', hotkeys);
   shortcutManager.reload();
@@ -231,7 +231,7 @@ ipcMain.handle('settings:pick-folder', async () => {
   return picked;
 });
 
-ipcMain.handle('settings:get-misc', () => settingsStore.get('misc'));
+ipcMain.handle('settings:get-misc', () => loadMisc());
 ipcMain.handle('settings:set-misc', (_event, misc: MiscConfig) => {
   settingsStore.set('misc', misc);
   if (process.platform === 'darwin') {

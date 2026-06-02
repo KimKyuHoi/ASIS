@@ -1,5 +1,5 @@
 import { globalShortcut } from 'electron';
-import { DEFAULT_HOTKEYS, settingsStore } from './settings';
+import { loadHotkeys } from './settings';
 
 export type ShortcutHandlers = {
   onRegion: () => void;
@@ -53,8 +53,8 @@ export class ShortcutManager {
   }
 
   private _register(handlers: ShortcutHandlers): void {
-    // 기존 저장값에 새로 추가된 키가 없을 수 있으므로 DEFAULT_HOTKEYS 로 fallback 병합.
-    const hotkeys = { ...DEFAULT_HOTKEYS, ...settingsStore.get('hotkeys') };
+    // 저장값에 새로 추가된 키가 없을 수 있어 DEFAULT_HOTKEYS 로 병합 (loadHotkeys).
+    const hotkeys = loadHotkeys();
     const bindings: Array<[string, () => void]> = [
       [hotkeys.region, handlers.onRegion],
       [hotkeys.fullscreen, handlers.onFullscreen],
