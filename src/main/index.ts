@@ -54,6 +54,22 @@ const historyWindow = new HistoryWindowManager();
 const countdownWindow = new CountdownWindow();
 editorWindow.setPinHandler((dataUrl, w, h) => pinWindow.pin(dataUrl, w, h));
 
+/**
+ * 모든 매니저 정리 — stopped 플래그가 세워져 prewarm 의 closed→재생성 재귀가
+ * 차단된다. before-quit 과 업데이트 설치 경로(updateChecker) 양쪽에서 호출되며,
+ * 각 stop() 은 멱등이라 이중 호출 안전.
+ */
+const stopAllManagers = (): void => {
+  shortcutManager.stop();
+  trayManager.stop();
+  selectionOverlay.stop();
+  editorWindow.stop();
+  pinWindow.closeAll();
+  recorderWindow.stop();
+  settingsWindow.stop();
+  historyWindow.stop();
+};
+
 // 단일 인스턴스 보장.
 const gotInstanceLock = app.requestSingleInstanceLock();
 if (!gotInstanceLock) {
@@ -261,7 +277,8 @@ if (process.platform === 'darwin') {
 }
 
 // electron-updater 이벤트 리스너를 app.whenReady 이전에 등록.
-setupAutoUpdater();
+// stopAllManagers 주입 — 설치 직전 prewarm 재생성 차단 + 창 정리용.
+setupAutoUpdater(stopAllManagers);
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.pinkfong.asis');
@@ -427,12 +444,5 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   log.info('[app] before-quit', { quittingForUpdate: isQuittingForUpdate() });
-  shortcutManager.stop();
-  trayManager.stop();
-  selectionOverlay.stop();
-  editorWindow.stop();
-  pinWindow.closeAll();
-  recorderWindow.stop();
-  settingsWindow.stop();
-  historyWindow.stop();
+  stopAllManagers();
 });
