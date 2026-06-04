@@ -18,13 +18,18 @@ type MiscConfig = {
   openAtLogin: boolean;
   captureSound: boolean;
   pinDefaultOpacity: number;
+  delayedCaptureSeconds: number;
+  autoOpenEditor: boolean;
 };
 
+// 기본값은 src/main/settings.ts 의 DEFAULT_MISC 와 동일하게 유지한다.
 const DEFAULT_MISC: MiscConfig = {
   gifFps: 15,
   openAtLogin: false,
   captureSound: true,
   pinDefaultOpacity: 1.0,
+  delayedCaptureSeconds: 3,
+  autoOpenEditor: true,
 };
 
 const DEFAULT: HotkeyConfig = {

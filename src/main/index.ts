@@ -84,7 +84,13 @@ const notifyError = (body: string): void => {
   new Notification({ title: 'ASIS — 오류', body }).show();
 };
 
-const HOVER_DELAY_MS = 3000;
+/** 캡처 완료음 — 설정이 켜져 있고 macOS 일 때만 재생. */
+const playCaptureSound = (): void => {
+  if (loadMisc().captureSound && process.platform === 'darwin') {
+    spawn('afplay', ['/System/Library/Sounds/Tink.aiff']).on('error', () => {});
+  }
+};
+
 /**
  * overlay 의 BrowserWindow close 후 macOS compositor 가 dim 픽셀을 화면에서
  * 완전히 제거할 때까지 대기. 캡처 결과에 검은/흰 잔상이 남지 않도록 한다.
@@ -102,13 +108,23 @@ const runCapture = (
   capture().then(
     (result) => {
       if (result.kind !== 'success') return;
+      // 에디터 자동 열기 OFF — 에디터를 띄우지 않고 바로 클립보드에 복사한다.
+      if (!loadMisc().autoOpenEditor) {
+        const image = nativeImage.createFromPath(result.path);
+        if (image.isEmpty()) {
+          notifyError(`${label} — 캡처 이미지를 읽지 못했습니다`);
+          return;
+        }
+        clipboard.writeImage(image);
+        notifyInfo(`${label} — 클립보드에 복사되었습니다`);
+        playCaptureSound();
+        return;
+      }
       editorWindow.show(result.path).then(
         (editorResult) => {
           if (editorResult.kind === 'copied') {
             notifyInfo(`${label} — 클립보드에 복사되었습니다`);
-            if (settingsStore.get('misc').captureSound && process.platform === 'darwin') {
-              spawn('afplay', ['/System/Library/Sounds/Tink.aiff']).on('error', () => {});
-            }
+            playCaptureSound();
           }
         },
         (err: unknown) => {
@@ -329,8 +345,9 @@ app.whenReady().then(() => {
   const onDelayedFullscreen = (): void => {
     guardCapture().then((ok) => {
       if (!ok) return;
+      const delayMs = loadMisc().delayedCaptureSeconds * 1000;
       const cursor = screen.getCursorScreenPoint();
-      countdownWindow.show(HOVER_DELAY_MS / 1000, cursor);
+      countdownWindow.show(delayMs / 1000, cursor);
       setTimeout(() => {
         countdownWindow.close();
         const newCursor = screen.getCursorScreenPoint();
@@ -338,7 +355,7 @@ app.whenReady().then(() => {
         runCapture('전체화면 캡처', () =>
           captureRegion({ x: d.bounds.x, y: d.bounds.y, w: d.bounds.width, h: d.bounds.height }),
         );
-      }, HOVER_DELAY_MS);
+      }, delayMs);
     });
   };
 
@@ -348,8 +365,9 @@ app.whenReady().then(() => {
       selectionOverlay.show().then(
         (result) => {
           if (result.kind !== 'selected') return;
+          const delayMs = loadMisc().delayedCaptureSeconds * 1000;
           const cursor = screen.getCursorScreenPoint();
-          countdownWindow.show(HOVER_DELAY_MS / 1000, cursor);
+          countdownWindow.show(delayMs / 1000, cursor);
           setTimeout(() => {
             countdownWindow.close();
             const { windowId, ...rect } = result.rect;
@@ -360,7 +378,7 @@ app.whenReady().then(() => {
                 ? captureWindowById(windowId)
                 : captureRegion(rect),
             );
-          }, HOVER_DELAY_MS);
+          }, delayMs);
         },
         (err: unknown) => {
           const message = err instanceof Error ? err.message : String(err);

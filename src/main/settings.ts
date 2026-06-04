@@ -20,6 +20,10 @@ export type MiscConfig = {
   captureSound: boolean;
   /** 핀 기본 투명도 (0.15 ~ 1.0). */
   pinDefaultOpacity: number;
+  /** 지연 캡처 카운트다운 시간(초). 1~10. */
+  delayedCaptureSeconds: number;
+  /** 캡처 후 에디터 자동 열기. false 면 에디터를 띄우지 않고 바로 클립보드에 복사. */
+  autoOpenEditor: boolean;
 };
 
 export type Settings = {
@@ -47,6 +51,8 @@ export const DEFAULT_MISC: MiscConfig = {
   openAtLogin: false,
   captureSound: true,
   pinDefaultOpacity: 1.0,
+  delayedCaptureSeconds: 3,
+  autoOpenEditor: true,
 };
 
 export const settingsStore = new ElectronStore<Settings>({

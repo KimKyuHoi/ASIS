@@ -13,7 +13,7 @@ export class SettingsWindowManager extends SingletonWindowManager {
     height: 600,
     title: 'ASIS 환경설정',
     resizable: false,
-    minimizable: false,
+    minimizable: true,
     maximizable: false,
   };
   protected readonly htmlPath = '../renderer/settings/index.html';
