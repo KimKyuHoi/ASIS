@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { JSX } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -25,6 +25,11 @@ import { TextEditor } from './TextEditor';
 
 type Marquee = { x: number; y: number; w: number; h: number };
 type ContextMenu = { x: number; y: number; shapeId: string };
+
+// 줌 시 Stage 캔버스 상한 (한 변, CSS px) — 대형 캡처를 최대 배율로 확대하면
+// 캔버스 메모리가 수백 MB 로 튀는 것을 막는다. Retina(2x)에서는 디바이스 픽셀이
+// 이 값의 2배가 되므로 Chromium canvas 한계(16384)의 절반 이하로 잡는다.
+const MAX_STAGE_PX = 4096;
 
 // 지우개 커서 — Lucide eraser 형태를 SVG data URL 로 인코딩.
 // 그림자 패스(검정)를 먼저 그려 밝은/어두운 배경 모두에서 선명히 보임.
@@ -69,11 +74,7 @@ export default function Editor(): JSX.Element {
   const dragLeaderIdRef = useRef<string | null>(null);
   const dragStartPositionsRef = useRef<Map<string, { x: number; y: number }> | null>(null);
 
-  const { bgImage, stageScale } = useEditorImages(containerRef);
-  // stageScale 이 1 미만이면 창이 이미지보다 작다는 뜻 — toDataURL pixelRatio 를 보정해
-  // 항상 원본 물리 픽셀(devicePixelRatio × 논리 픽셀) 해상도로 export 한다.
-  const exportPixelRatio = window.devicePixelRatio / stageScale;
-  useEditorKeyboard(stageRef, exportPixelRatio);
+  const { bgImage, stageScale: fitScale } = useEditorImages(containerRef);
   useEditorDrag(stageRef);
 
   const tool = useEditorStore((s) => s.tool);
@@ -103,6 +104,19 @@ export default function Editor(): JSX.Element {
   const reorderShape = useEditorStore((s) => s.reorderShape);
   const editingId = useEditorStore((s) => s.editingId);
   const setEditingId = useEditorStore((s) => s.setEditingId);
+  const zoom = useEditorStore((s) => s.zoom);
+  const setZoom = useEditorStore((s) => s.setZoom);
+
+  // 사용자 줌 — fit 스케일 × zoom. 작은 캡처를 돋보기처럼 확대해서 어노테이션.
+  // 캔버스 메모리 폭주 방지로 Stage 한 변이 MAX_STAGE_PX 를 넘지 않게 상한.
+  const stageScale = Math.min(
+    fitScale * zoom,
+    MAX_STAGE_PX / Math.max(imageWidth, imageHeight, 1),
+  );
+  // toDataURL pixelRatio 보정 — stageScale 과 무관하게 항상 원본 물리 픽셀
+  // (devicePixelRatio × 논리 픽셀) 해상도로 export 한다 (줌 상태도 무관).
+  const exportPixelRatio = window.devicePixelRatio / stageScale;
+  useEditorKeyboard(stageRef, exportPixelRatio);
 
   // marquee 드래그 중인지 추적 — pointermove 에서 marquee 갱신, pointerup 에서
   // hit 판정 후 selectedIds set. ref 로 두어 재렌더 안 일으킴.
@@ -122,6 +136,56 @@ export default function Editor(): JSX.Element {
     window.addEventListener('mousedown', close);
     return () => window.removeEventListener('mousedown', close);
   }, [contextMenu]);
+
+  // 줌 앵커 — 휠 줌 직전 포인터 아래 이미지 좌표를 기록해 두고, 새 stageScale 이
+  // DOM 에 반영된 직후(useLayoutEffect) 같은 화면 위치에 오도록 스크롤을 보정한다.
+  const zoomAnchorRef = useRef<{
+    imgX: number;
+    imgY: number;
+    clientX: number;
+    clientY: number;
+  } | null>(null);
+
+  // 트랙패드 핀치(Chromium 에서 ctrlKey=true 인 wheel) / ⌘+휠 → 줌.
+  // 일반 두 손가락 스크롤은 컨테이너 스크롤(패닝)에 그대로 쓴다.
+  // React onWheel 은 passive 등록이라 preventDefault 가 무시될 수 있어 native 등록.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !stageWrap) return undefined;
+    const onWheel = (ev: WheelEvent): void => {
+      if (!ev.ctrlKey && !ev.metaKey) return;
+      ev.preventDefault();
+      const wrapRect = stageWrap.getBoundingClientRect();
+      zoomAnchorRef.current = {
+        imgX: (ev.clientX - wrapRect.left) / stageScale,
+        imgY: (ev.clientY - wrapRect.top) / stageScale,
+        clientX: ev.clientX,
+        clientY: ev.clientY,
+      };
+      // exp 스케일 — deltaY 크기에 비례한 부드러운 줌 (핀치·휠 모두 자연스럽다).
+      setZoom(zoom * Math.exp(-ev.deltaY * 0.01));
+    };
+    container.addEventListener('wheel', onWheel, { passive: false });
+    return () => container.removeEventListener('wheel', onWheel);
+  }, [stageWrap, stageScale, zoom, setZoom]);
+
+  // 줌 반영 직후 스크롤 보정 — 앵커의 이미지 좌표가 포인터 위치에 머물게 한다.
+  // useLayoutEffect: 브라우저 paint 전에 스크롤을 맞춰야 한 프레임 튐이 없다.
+  useLayoutEffect(() => {
+    const anchor = zoomAnchorRef.current;
+    const container = containerRef.current;
+    if (!anchor || !container || !stageWrap) return;
+    zoomAnchorRef.current = null;
+    const wrapRect = stageWrap.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    // 스크롤 콘텐츠 안에서 stage-wrap 의 고정 오프셋 (margin 포함).
+    const wrapLeft = wrapRect.left - containerRect.left + container.scrollLeft;
+    const wrapTop = wrapRect.top - containerRect.top + container.scrollTop;
+    container.scrollLeft =
+      wrapLeft + anchor.imgX * stageScale - (anchor.clientX - containerRect.left);
+    container.scrollTop =
+      wrapTop + anchor.imgY * stageScale - (anchor.clientY - containerRect.top);
+  }, [stageScale, stageWrap]);
 
   // 어떤 mouseup 이든 끝난 직후 stage-wrap 에 focus 회복.
   // (단 textarea 편집 중, 혹은 toolbar 내 포커서블 요소(<select>/<input> 등) 에
@@ -543,6 +607,11 @@ export default function Editor(): JSX.Element {
               height: imageHeight * stageScale,
               overflow: 'hidden',
               outline: 'none',
+              // 줌으로 컨테이너보다 커져도 줄어들지 않게 + 작을 땐 중앙 정렬.
+              // (flex 컨테이너의 justify/align center 는 overflow 시 시작 부분이
+              //  스크롤 불가로 잘리는 문제가 있어 margin:auto 방식을 쓴다.)
+              flex: '0 0 auto',
+              margin: 'auto',
             }}
             onMouseDown={(): void => {
               // 항상 focus 를 stageWrap 으로 가져온다.

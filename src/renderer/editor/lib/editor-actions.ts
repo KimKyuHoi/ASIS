@@ -1,20 +1,47 @@
 import type Konva from 'konva';
+import { useEditorStore } from './store';
 
 /**
- * Transformer 핸들을 숨긴 채로 toDataURL 을 호출하고 즉시 복원한다.
- * 선택 앵커박스가 export 이미지에 포함되는 것을 방지한다.
+ * 줌 시각 보정 노드(name="zoom-comp")의 stroke·화살표 머리를 base 값 × factor 로
+ * 설정한다. factor=1 이면 원본(이미지 픽셀) 두께, factor=1/zoom 이면 화면 보정 두께.
+ * base attr 가 없는 노드는 건드리지 않는다 (silent fallback 아님 — 보정 대상만 마킹됨).
+ */
+function applyZoomComp(stage: Konva.Stage, factor: number): void {
+  stage.find('.zoom-comp').forEach((n) => {
+    const node = n as Konva.Shape;
+    const baseStrokeWidth = node.getAttr('baseStrokeWidth') as number | undefined;
+    if (baseStrokeWidth !== undefined) {
+      node.strokeWidth(baseStrokeWidth * factor);
+    }
+    const basePointer = node.getAttr('basePointer') as number | undefined;
+    if (basePointer !== undefined) {
+      (node as Konva.Arrow).pointerLength(basePointer * factor);
+      (node as Konva.Arrow).pointerWidth(basePointer * factor);
+    }
+  });
+}
+
+/**
+ * Transformer 핸들을 숨기고, 줌 시각 보정(1/zoom 두께)을 원본 두께로 되돌린 채
+ * toDataURL 을 호출한 뒤 즉시 복원한다.
+ * - Transformer 숨김: 선택 앵커박스가 export 이미지에 포함되는 것 방지.
+ * - 두께 복원: 화면에서는 줌과 무관하게 일정 두께로 보이지만(Shape 의 vw 보정),
+ *   export 는 데이터의 이미지 픽셀 두께 그대로 — 줌 상태와 무관한 결과 보장.
  *
- * Konva.toDataURL 은 오프스크린 캔버스에 씬을 재렌더하므로 hide/show 가 동기적으로
- * 동작하고, 화면에 깜빡임이 발생하지 않는다.
+ * Konva.toDataURL 은 오프스크린 캔버스에 씬을 재렌더하므로 hide/show·attr 변경이
+ * 동기적으로 동작하고, 화면에 깜빡임이 발생하지 않는다.
  */
 export function stageToDataUrl(stage: Konva.Stage, pixelRatio: number): string {
   const tr = stage.findOne('Transformer') as Konva.Transformer | undefined;
   if (tr) tr.hide();
+  const { zoom } = useEditorStore.getState();
+  applyZoomComp(stage, 1);
   const dataUrl = stage.toDataURL({ pixelRatio });
+  applyZoomComp(stage, 1 / zoom);
   if (tr) {
     tr.show();
-    tr.getLayer()?.batchDraw();
   }
+  stage.batchDraw();
   return dataUrl;
 }
 

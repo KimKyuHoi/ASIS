@@ -72,10 +72,11 @@ button:disabled {
 .editor__canvas {
   flex: 1;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  /* 중앙 정렬은 stage-wrap 의 margin:auto 가 담당 — align/justify center 는
+     줌으로 overflow 시 시작 부분이 스크롤 불가로 잘리는 flex 의 알려진 문제가 있다. */
   padding: 16px 16px 0;
-  overflow: hidden;
+  /* 줌 인 시 두 손가락 스크롤로 패닝. */
+  overflow: auto;
 }
 
 .editor__empty {
@@ -365,6 +366,15 @@ button:disabled {
   font-size: 18px;
   line-height: 1;
   transition: background var(--duration-fast) var(--ease-mac);
+}
+
+/* 줌 퍼센트 표시 — 클릭하면 원래 크기(100%)로. 자릿수 변동에도 폭 고정. */
+.iconbtn.zoom-pct {
+  width: auto;
+  min-width: 44px;
+  padding: 0 4px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 .iconbtn:hover:not(:disabled) {

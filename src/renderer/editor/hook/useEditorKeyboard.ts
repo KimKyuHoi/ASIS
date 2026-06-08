@@ -111,6 +111,17 @@ export function useEditorKeyboard(
       } else if (isMeta && e.code === 'KeyW') {
         e.preventDefault();
         cancelEditor();
+      } else if (e.code === 'Equal' || e.code === 'NumpadAdd') {
+        // +(=) 줌 인 — 작은 캡처 돋보기. ⌘+ 도 동일. clamp 는 store setZoom 이 처리.
+        e.preventDefault();
+        st.setZoom(st.zoom * 1.25);
+      } else if (e.code === 'Minus' || e.code === 'NumpadSubtract') {
+        // - 줌 아웃. ⌘- 도 동일.
+        e.preventDefault();
+        st.setZoom(st.zoom / 1.25);
+      } else if (isMeta && e.code === 'Digit0') {
+        e.preventDefault();
+        st.setZoom(1);
       } else if (e.key === 'Escape') {
         cancelEditor();
       } else if (

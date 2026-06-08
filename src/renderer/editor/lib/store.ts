@@ -62,6 +62,10 @@ export const FONT_FAMILIES: readonly { label: string; value: string }[] = [
 
 export const DEFAULT_FONT_FAMILY = FONT_FAMILIES[0].value;
 
+// 줌 배율 범위 — 1 미만(fit 이하 축소)은 허용하지 않는다. 작은 캡처 확대가 목적.
+export const ZOOM_MIN = 1;
+export const ZOOM_MAX = 8;
+
 type EditorStore = {
   // 도구·스타일
   tool: Tool;
@@ -79,6 +83,8 @@ type EditorStore = {
   imageSrc: string | null;
   imageWidth: number;
   imageHeight: number;
+  /** 사용자 줌 배율 — fit 스케일에 곱해 stageScale 이 된다. ZOOM_MIN~MAX clamp. */
+  zoom: number;
 
   // 도형
   shapes: Shape[];
@@ -104,6 +110,7 @@ type EditorStore = {
   setFontFamily: (f: string) => void;
   setTextAlign: (a: TextAlign) => void;
   setLineHeight: (h: number) => void;
+  setZoom: (z: number) => void;
   incrementStepNum: () => void;
 
   reorderShape: (id: string, dir: 'front' | 'forward' | 'backward' | 'back') => void;
@@ -152,6 +159,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   imageSrc: null,
   imageWidth: 0,
   imageHeight: 0,
+  zoom: 1,
 
   shapes: [],
   drawing: null,
@@ -171,6 +179,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   setFontFamily: (f) => set({ fontFamily: f }),
   setTextAlign: (a) => set({ textAlign: a }),
   setLineHeight: (h) => set({ lineHeight: h }),
+  setZoom: (z) => set({ zoom: Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z)) }),
   incrementStepNum: () => set((s) => ({ nextStepNum: s.nextStepNum + 1 })),
 
   reorderShape: (id, dir) => set((s) => {

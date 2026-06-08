@@ -8,6 +8,8 @@ import {
   MOSAIC_BLOCK_SIZES,
   PALETTE,
   STROKE_WIDTHS,
+  ZOOM_MAX,
+  ZOOM_MIN,
   useEditorStore,
 } from '../lib/store';
 import { hexToRgba } from '../lib/color-utils';
@@ -65,6 +67,8 @@ export function Toolbar({
   const future = useEditorStore((s) => s.future);
   const selectedIds = useEditorStore((s) => s.selectedIds);
   const shapes = useEditorStore((s) => s.shapes);
+  const zoom = useEditorStore((s) => s.zoom);
+  const setZoom = useEditorStore((s) => s.setZoom);
 
   // 선택된 도형들 — toolbar 의 색상/굵기/blur 가 *모든 선택된 도형* 에 즉시 적용.
   const selectedShapes = selectedIds.length > 0
@@ -424,6 +428,37 @@ export function Toolbar({
         </button>
       </div>
 
+      <div className="toolbar__divider" aria-hidden="true" />
+
+      <div className="toolbar__group">
+        <button
+          type="button"
+          className="iconbtn"
+          onClick={(): void => setZoom(zoom / 1.25)}
+          disabled={zoom <= ZOOM_MIN}
+          title="축소 (-)"
+        >
+          <ZoomOutIcon />
+        </button>
+        <button
+          type="button"
+          className="iconbtn zoom-pct"
+          onClick={(): void => setZoom(1)}
+          title="원래 크기로 (⌘0)"
+        >
+          {Math.round(zoom * 100)}%
+        </button>
+        <button
+          type="button"
+          className="iconbtn"
+          onClick={(): void => setZoom(zoom * 1.25)}
+          disabled={zoom >= ZOOM_MAX}
+          title="확대 (+)"
+        >
+          <ZoomInIcon />
+        </button>
+      </div>
+
       <div className="toolbar__spacer" />
 
       <div className="toolbar__group toolbar__group--actions">
@@ -573,6 +608,49 @@ function SaveFolderIcon(): JSX.Element {
   );
 }
 
+
+/** 돋보기 + — lucide zoom-in 형태의 stroke SVG (의존성 없이 inline). */
+function ZoomInIcon(): JSX.Element {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+      <line x1="11" y1="8" x2="11" y2="14" />
+      <line x1="8" y1="11" x2="14" y2="11" />
+    </svg>
+  );
+}
+
+/** 돋보기 - — lucide zoom-out 형태의 stroke SVG (의존성 없이 inline). */
+function ZoomOutIcon(): JSX.Element {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+      <line x1="8" y1="11" x2="14" y2="11" />
+    </svg>
+  );
+}
 
 function ToolbarButton({
   label,
