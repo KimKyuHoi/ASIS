@@ -1,5 +1,6 @@
 import { BrowserWindow, type BrowserWindowConstructorOptions } from 'electron';
 import { join } from 'node:path';
+import { is } from '@electron-toolkit/utils';
 
 /**
  * preload 스크립트 절대 경로.
@@ -8,6 +9,31 @@ import { join } from 'node:path';
  */
 export function preloadPath(): string {
   return join(__dirname, '../preload/index.js');
+}
+
+/**
+ * renderer 페이지 로드 — dev 에서는 electron-vite dev 서버 URL 로 로드해 HMR 이
+ * 동작하고, 프로덕션에서는 out/renderer 빌드 산출물을 로드한다.
+ *
+ * 기존에는 모든 창이 loadFile 만 사용해서 dev 모드에서도 *마지막 빌드 시점* 의
+ * renderer 가 떠 코드 변경이 전혀 반영되지 않았다 (dev 인데 UI 가 옛날인 증상).
+ * electron-vite 는 dev 실행 시 ELECTRON_RENDERER_URL 환경변수로 dev 서버 주소를
+ * 주입하고, 멀티 페이지 입력은 `<devUrl>/<page>/index.html` 로 서빙된다.
+ */
+export function loadRendererPage(
+  win: BrowserWindow,
+  page: string,
+  query?: Record<string, string>,
+): Promise<void> {
+  const devUrl = process.env['ELECTRON_RENDERER_URL'];
+  if (is.dev && devUrl) {
+    const qs = query ? `?${new URLSearchParams(query).toString()}` : '';
+    return win.loadURL(`${devUrl}/${page}/index.html${qs}`);
+  }
+  return win.loadFile(
+    join(__dirname, `../renderer/${page}/index.html`),
+    query ? { query } : undefined,
+  );
 }
 
 /**
@@ -21,9 +47,9 @@ export abstract class SingletonWindowManager {
   protected win: BrowserWindow | null = null;
   /** BrowserWindow 옵션 — webPreferences.preload/sandbox 는 베이스가 채운다. */
   protected abstract readonly windowOptions: BrowserWindowConstructorOptions;
-  /** renderer html 의 out/main 기준 상대 경로 (예: '../renderer/history/index.html'). */
-  protected abstract readonly htmlPath: string;
-  /** loadFile 실패 로그용 라벨 (예: 'historyWindow'). */
+  /** renderer 페이지 디렉토리 이름 (예: 'settings', 'history'). */
+  protected abstract readonly page: string;
+  /** 로드 실패 로그용 라벨 (예: 'historyWindow'). */
   protected abstract readonly logLabel: string;
 
   show(): void {
@@ -42,8 +68,8 @@ export abstract class SingletonWindowManager {
     });
     this.win = win;
 
-    win.loadFile(join(__dirname, this.htmlPath)).catch((err: unknown) => {
-      console.error(`[asis] ${this.logLabel} loadFile failed`, err);
+    loadRendererPage(win, this.page).catch((err: unknown) => {
+      console.error(`[asis] ${this.logLabel} load failed`, err);
     });
 
     win.on('closed', () => {

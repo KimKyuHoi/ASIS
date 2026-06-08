@@ -16,6 +16,6 @@ export class SettingsWindowManager extends SingletonWindowManager {
     minimizable: true,
     maximizable: false,
   };
-  protected readonly htmlPath = '../renderer/settings/index.html';
+  protected readonly page = 'settings';
   protected readonly logLabel = 'settingsWindow';
 }

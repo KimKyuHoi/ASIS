@@ -12,7 +12,7 @@ import { is } from '@electron-toolkit/utils';
 import { existsSync } from 'node:fs';
 import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { preloadPath } from './common';
+import { loadRendererPage, preloadPath } from './common';
 import { addEntry } from '../captureHistory';
 import devIconPath from '../../../resources/icon.png?asset';
 
@@ -73,7 +73,6 @@ export class EditorWindowManager {
   prewarm(): void {
     if (this.stopped || this.win) return;
 
-    const editorPath = join(__dirname, '../renderer/editor/index.html');
     const win = new BrowserWindow({
       width: 720,
       height: 480,
@@ -120,8 +119,8 @@ export class EditorWindowManager {
       );
     });
 
-    win.loadFile(editorPath).catch((err: unknown) => {
-      console.error('[asis] editorWindow prewarm loadFile failed', err);
+    loadRendererPage(win, 'editor').catch((err: unknown) => {
+      console.error('[asis] editorWindow prewarm load failed', err);
     });
 
     const onReady = (): void => {

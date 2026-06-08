@@ -10,7 +10,7 @@ import { is } from '@electron-toolkit/utils';
 import { copyFile, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { preloadPath } from './common';
+import { loadRendererPage, preloadPath } from './common';
 import { SequenceCaptureManager } from '../sequenceCapture';
 import { settingsStore } from '../settings';
 
@@ -93,9 +93,8 @@ export class RecorderWindowManager {
       },
     );
 
-    const recorderPath = join(__dirname, '../renderer/recorder/index.html');
-    win.loadFile(recorderPath).catch((err: unknown) => {
-      console.error('[asis] recorderWindow loadFile failed', err);
+    loadRendererPage(win, 'recorder').catch((err: unknown) => {
+      console.error('[asis] recorderWindow load failed', err);
     });
 
     return new Promise<RecorderResult>((resolve) => {

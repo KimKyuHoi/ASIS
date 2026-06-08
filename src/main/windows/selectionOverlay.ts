@@ -1,6 +1,6 @@
 import { BrowserWindow, globalShortcut, ipcMain, Notification, screen } from 'electron';
 import { is } from '@electron-toolkit/utils';
-import { preloadPath } from './common';
+import { loadRendererPage, preloadPath } from './common';
 import { spawn } from 'node:child_process';
 import { readFile, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -69,9 +69,8 @@ export class SelectionOverlayManager {
     this.prewarmed = win;
     this.prewarmedReady = false;
 
-    const overlayPath = join(__dirname, '../renderer/selection/index.html');
-    win.loadFile(overlayPath).catch((err: unknown) => {
-      console.error('[asis] selectionOverlay prewarm loadFile failed', err);
+    loadRendererPage(win, 'selection').catch((err: unknown) => {
+      console.error('[asis] selectionOverlay prewarm load failed', err);
     });
 
     ipcMain.once(CHANNEL_READY, () => {
@@ -134,10 +133,9 @@ export class SelectionOverlayManager {
       // pre-warm 이 완료되기 전에 단축키를 눌렀을 때 폴백 경로.
       win = createOverlayWindow();
       skipReadyWait = false;
-      const overlayPath = join(__dirname, '../renderer/selection/index.html');
-      if (is.dev) console.info(`[asis] selectionOverlay loadFile (cold): ${overlayPath}`);
-      win.loadFile(overlayPath).catch((err: unknown) => {
-        console.error('[asis] selectionOverlay loadFile failed', err);
+      if (is.dev) console.info('[asis] selectionOverlay load (cold)');
+      loadRendererPage(win, 'selection').catch((err: unknown) => {
+        console.error('[asis] selectionOverlay load failed', err);
       });
     }
 

@@ -12,6 +12,6 @@ export class HistoryWindowManager extends SingletonWindowManager {
     height: 520,
     title: '캡처 히스토리',
   };
-  protected readonly htmlPath = '../renderer/history/index.html';
+  protected readonly page = 'history';
   protected readonly logLabel = 'historyWindow';
 }

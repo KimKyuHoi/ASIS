@@ -1,8 +1,7 @@
 import { BrowserWindow, ipcMain, screen } from 'electron';
 import { is } from '@electron-toolkit/utils';
-import { join } from 'node:path';
 import { settingsStore } from '../settings';
-import { preloadPath } from './common';
+import { loadRendererPage, preloadPath } from './common';
 
 const CHANNEL_LOAD_IMAGE = 'pin:load-image';
 const CHANNEL_READY = 'pin:ready';
@@ -90,9 +89,8 @@ export class PinWindowManager {
     };
     ipcMain.on(CHANNEL_READY, onReady);
 
-    const pinPath = join(__dirname, '../renderer/pin/index.html');
-    win.loadFile(pinPath).catch((err: unknown) => {
-      console.error('[asis] pinWindow loadFile failed', err);
+    loadRendererPage(win, 'pin').catch((err: unknown) => {
+      console.error('[asis] pinWindow load failed', err);
     });
   }
 
