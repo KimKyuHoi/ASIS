@@ -4,6 +4,7 @@ import { Circle } from 'react-konva';
 import type Konva from 'konva';
 import { useEditorStore } from '../lib/store';
 import { clampXY } from '../lib/shape-transform';
+import { snapAngle45 } from '../lib/geometry';
 import type { ArrowShape, LineShape } from '../types/shapes';
 
 const HANDLE_FILL = '#ffffff';
@@ -49,6 +50,19 @@ export function EndpointHandles({
   const sw = 1.5 / stageScale;
   const hit = 16 / stageScale;
 
+  // Shift — 반대편 고정 끝점 기준으로 45° 단위 각도 스냅 (드로잉과 동일 동작).
+  const snapIfShift = (
+    e: Konva.KonvaEventObject<DragEvent>,
+    idx: 0 | 1,
+    px: number,
+    py: number,
+  ): { x: number; y: number } => {
+    if (!e.evt.shiftKey) return { x: px, y: py };
+    const ox = shape.points[(1 - idx) * 2];
+    const oy = shape.points[(1 - idx) * 2 + 1];
+    return snapAngle45(ox, oy, px, py);
+  };
+
   // 끄는 끝점(idx 0 or 1)의 현재 위치로 화살표 노드 points 를 갱신. store 미터치.
   const onMove = (e: Konva.KonvaEventObject<DragEvent>, idx: 0 | 1): void => {
     const node = e.target;
@@ -58,9 +72,12 @@ export function EndpointHandles({
     if (!lineNode) {
       throw new Error(`endpoint handle: 도형 노드 #${shape.id} 를 찾지 못했다`);
     }
+    const snapped = snapIfShift(e, idx, node.x(), node.y());
+    // 스냅 시 핸들 자체도 스냅 위치로 — 핸들과 선 끝이 분리돼 보이지 않게.
+    if (e.evt.shiftKey) node.position(snapped);
     const pts = shape.points.slice();
-    pts[idx * 2] = node.x();
-    pts[idx * 2 + 1] = node.y();
+    pts[idx * 2] = snapped.x;
+    pts[idx * 2 + 1] = snapped.y;
     lineNode.points(pts);
     lineNode.getLayer()?.batchDraw();
   };
@@ -68,7 +85,8 @@ export function EndpointHandles({
   const onEnd = (e: Konva.KonvaEventObject<DragEvent>, idx: 0 | 1): void => {
     draggingRef.current = false;
     const node = e.target;
-    const { x, y } = clampXY(node.x(), node.y());
+    const snapped = snapIfShift(e, idx, node.x(), node.y());
+    const { x, y } = clampXY(snapped.x, snapped.y);
     // clamp 결과가 직전 store 값과 우연히 같으면 prop 변화가 없어 react-konva 가
     // Circle 을 다시 옮기지 않는다 — 노드 위치도 직접 보정.
     node.position({ x, y });

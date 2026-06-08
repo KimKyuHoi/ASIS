@@ -13,7 +13,7 @@ import { useEditorStore } from '../lib/store';
 import type { LineShape, Shape as ShapeData, StepShape, TextShape } from '../types/shapes';
 import { cancelEditor, copyToClipboard, stageToDataUrl } from '../lib/editor-actions';
 import { addImageFromSource, clamp } from '../lib/image-utils';
-import { intersectsMarquee, shapeBBox } from '../lib/geometry';
+import { intersectsMarquee, shapeBBox, snapAngle45 } from '../lib/geometry';
 import { shapeDeltaPatch } from '../lib/shape-transform';
 import { useEditorImages } from '../hook/useEditorImages';
 import { useEditorKeyboard } from '../hook/useEditorKeyboard';
@@ -376,7 +376,9 @@ export default function Editor(): JSX.Element {
         case 'arrow':
         case 'line': {
           const [x1, y1] = shape.points;
-          return { ...shape, points: [x1, y1, x, y] };
+          // Shift — 끝점을 45° 단위로 스냅 (수평/수직/대각선 고정).
+          const end = e.evt.shiftKey ? snapAngle45(x1, y1, x, y) : { x, y };
+          return { ...shape, points: [x1, y1, end.x, end.y] };
         }
         case 'pen':
           return { ...shape, points: [...shape.points, x, y] };

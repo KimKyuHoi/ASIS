@@ -2,6 +2,25 @@ import type { Shape as ShapeData } from '../types/shapes';
 
 type Rect = { x: number; y: number; w: number; h: number };
 
+/**
+ * 시작점 기준으로 끝점을 45° 단위 각도에 스냅 — Shift 직선/화살표 드로잉용.
+ * 길이는 유지하고 방향만 가장 가까운 45° 배수로 돌린다 (수평/수직/대각선).
+ */
+export function snapAngle45(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+): { x: number; y: number } {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const len = Math.hypot(dx, dy);
+  if (len === 0) return { x: x2, y: y2 };
+  const step = Math.PI / 4;
+  const angle = Math.round(Math.atan2(dy, dx) / step) * step;
+  return { x: x1 + Math.cos(angle) * len, y: y1 + Math.sin(angle) * len };
+}
+
 /** Marquee 박스와 도형의 교차 판정 (PPT 식 — 조금만 닿아도 선택). */
 export function intersectsMarquee(shape: ShapeData, m: Rect): boolean {
   const bbox = shapeBBox(shape);
