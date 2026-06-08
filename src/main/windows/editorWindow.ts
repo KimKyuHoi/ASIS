@@ -9,7 +9,7 @@ import {
   screen,
 } from 'electron';
 import { is } from '@electron-toolkit/utils';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { loadRendererPage, preloadPath } from './common';
@@ -200,10 +200,25 @@ export class EditorWindowManager {
     win.setSize(Math.max(fixedW, 720), Math.max(fixedH, 520));
     win.center();
 
+    // 캡처 PNG 를 data URL 로 전달 — dev 에서 renderer 가 http(dev 서버) 페이지로
+    // 뜨면 Chromium 이 file:// 이미지를 차단하고, 커스텀 프로토콜은 cross-origin
+    // canvas taint 로 toDataURL(복사/저장)을 깨뜨린다. data: 는 어느 출처에서도
+    // 로드·export 안전. 원본 바이트 그대로 base64 (재인코딩 없음).
+    let imageDataUrl: string;
+    try {
+      imageDataUrl = `data:image/png;base64,${readFileSync(imagePath).toString('base64')}`;
+    } catch (err) {
+      // createFromPath 성공 직후라 정상적으론 불가능 — 파일이 그 사이 사라진 race.
+      this.active = false;
+      return Promise.reject(
+        new Error(`editor: capture read failed: ${err instanceof Error ? err.message : String(err)}`),
+      );
+    }
+
     const sendImage = (): void => {
       if (!win.isDestroyed()) {
         if (is.dev) console.info('[asis editor:main] image 전송');
-        win.webContents.send(CHANNEL_LOAD_IMAGE, imagePath, logW, logH);
+        win.webContents.send(CHANNEL_LOAD_IMAGE, imageDataUrl, logW, logH);
       }
     };
 

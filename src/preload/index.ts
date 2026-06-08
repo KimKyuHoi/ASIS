@@ -54,7 +54,7 @@ const selection = {
 
 /**
  * 어노테이션 에디터 IPC 브릿지.
- *  - onLoadImage(callback): main 이 mount 후 file://path + 크기 전송하면 콜백
+ *  - onLoadImage(callback): main 이 mount 후 PNG data URL + 크기 전송하면 콜백
  *  - copy(dataUrl): 합성 dataURL 을 main 으로 전달 → clipboard.writeImage
  *  - cancel(): ESC / ⌘W → main 이 윈도우 닫음
  *  - pin(dataUrl, w, h): 합성 dataURL 을 *떠있는 핀 윈도우* 로 띄움 (Snipaste 결)
