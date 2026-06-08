@@ -1,7 +1,6 @@
 import { app, clipboard, dialog, ipcMain, nativeImage, Notification, screen } from 'electron';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { spawn } from 'node:child_process';
 import { electronApp, is, optimizer } from '@electron-toolkit/utils';
 import log from 'electron-log/main';
 import devAppIconPath from '../../resources/icon.png?asset';
@@ -76,19 +75,22 @@ if (!gotInstanceLock) {
   app.quit();
 }
 
+// macOS 에서 알림 전달 실패(UNNotification 권한·등록 문제 등)는 기본적으로 조용히
+// 사라진다. failed/show 이벤트를 로그로 남겨 "알림이 안 뜬다" 이슈를 사후 진단한다.
+// https://www.electronjs.org/docs/latest/api/notification
+const notify = (title: string, body: string): void => {
+  const n = new Notification({ title, body });
+  n.on('failed', (_event, error) => log.error('[notify] failed', { title, body, error }));
+  n.on('show', () => log.info('[notify] shown', { title, body }));
+  n.show();
+};
+
 const notifyInfo = (body: string): void => {
-  new Notification({ title: 'ASIS', body }).show();
+  notify('ASIS', body);
 };
 
 const notifyError = (body: string): void => {
-  new Notification({ title: 'ASIS — 오류', body }).show();
-};
-
-/** 캡처 완료음 — 설정이 켜져 있고 macOS 일 때만 재생. */
-const playCaptureSound = (): void => {
-  if (loadMisc().captureSound && process.platform === 'darwin') {
-    spawn('afplay', ['/System/Library/Sounds/Tink.aiff']).on('error', () => {});
-  }
+  notify('ASIS — 오류', body);
 };
 
 /**
@@ -108,6 +110,8 @@ const runCapture = (
   capture().then(
     (result) => {
       if (result.kind !== 'success') return;
+      // 캡처 완료음은 screencapture 의 네이티브 셔터음이 캡처 시점에 재생한다
+      // (capture.ts soundArgs) — 여기서 별도 재생하지 않는다.
       // 에디터 자동 열기 OFF — 에디터를 띄우지 않고 바로 클립보드에 복사한다.
       if (!loadMisc().autoOpenEditor) {
         const image = nativeImage.createFromPath(result.path);
@@ -117,14 +121,12 @@ const runCapture = (
         }
         clipboard.writeImage(image);
         notifyInfo(`${label} — 클립보드에 복사되었습니다`);
-        playCaptureSound();
         return;
       }
       editorWindow.show(result.path).then(
         (editorResult) => {
           if (editorResult.kind === 'copied') {
             notifyInfo(`${label} — 클립보드에 복사되었습니다`);
-            playCaptureSound();
           }
         },
         (err: unknown) => {
@@ -266,7 +268,8 @@ ipcMain.handle('settings:pick-folder', async () => {
 ipcMain.handle('settings:get-misc', () => loadMisc());
 ipcMain.handle('settings:set-misc', (_event, misc: MiscConfig) => {
   settingsStore.set('misc', misc);
-  if (process.platform === 'darwin') {
+  // dev 에서는 Electron 바이너리가 로그인 항목으로 등록돼 버리므로 패키징 앱에서만.
+  if (process.platform === 'darwin' && app.isPackaged) {
     app.setLoginItemSettings({ openAtLogin: misc.openAtLogin });
   }
 });
@@ -307,6 +310,23 @@ app.whenReady().then(() => {
     notifyInfo(`ASIS ${current} 업데이트 완료!`);
   }
   settingsStore.set('lastLaunchedVersion', current);
+
+  // 로그인 항목 재단언 — 과거 dev 실행이나 옛 번들이 잘못된 경로(휴지통의 백업
+  // 번들 등)로 등록했거나 등록이 유실된 경우를 저장된 설정 기준으로 복구한다.
+  // status: not-registered | enabled | requires-approval | not-found (macOS 13+).
+  // https://www.electronjs.org/docs/latest/api/app (getLoginItemSettings)
+  if (process.platform === 'darwin' && app.isPackaged) {
+    const wanted = loadMisc().openAtLogin;
+    const loginItem = app.getLoginItemSettings();
+    log.info('[loginItem]', {
+      wanted,
+      registered: loginItem.openAtLogin,
+      status: loginItem.status,
+    });
+    if (loginItem.openAtLogin !== wanted) {
+      app.setLoginItemSettings({ openAtLogin: wanted });
+    }
+  }
 
   if (process.platform === 'darwin' && app.dock) {
     const prodPath = join(process.resourcesPath, 'icon.png');

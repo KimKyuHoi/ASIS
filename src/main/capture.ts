@@ -2,6 +2,7 @@ import { stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runProcess } from './runProcess';
+import { loadMisc } from './settings';
 
 /**
  * macOS `screencapture` 자식 프로세스 래퍼 — *임시 PNG 파일 path 반환*.
@@ -28,9 +29,20 @@ export type CaptureResult =
   | { kind: 'success'; path: string } |
   { kind: 'canceled' };
 
+/**
+ * 캡처 완료음 — 설정 ON 이면 macOS 네이티브 셔터음('찰칵')을 그대로 쓴다.
+ * `man screencapture`: "-x  Do not play sounds." → '-x' 를 생략하면 셔터음 재생.
+ * 셔터음은 시스템 사운드 이펙트 라우팅을 따르므로 기본 출력이 HDMI 모니터여도
+ * 사용자가 설정한 이펙트 장치(보통 내장 스피커)로 들린다.
+ * GIF 시퀀스 캡처(sequenceCapture.ts)는 자체 '-x' 호출이라 영향 없음.
+ */
+function soundArgs(): string[] {
+  return loadMisc().captureSound ? [] : ['-x'];
+}
+
 /** 전체화면 캡처 (메인 모니터만). 다중 모니터는 v2. */
 export function captureFullscreen(): Promise<CaptureResult> {
-  return captureToFile(['-x', '-m', '-t', 'png']);
+  return captureToFile([...soundArgs(), '-m', '-t', 'png']);
 }
 
 /**
@@ -38,7 +50,7 @@ export function captureFullscreen(): Promise<CaptureResult> {
  * 사용자가 ESC 로 취소하면 { kind: 'canceled' } 반환.
  */
 export function captureWindow(): Promise<CaptureResult> {
-  return captureToFile(['-x', '-w', '-t', 'png']);
+  return captureToFile([...soundArgs(), '-w', '-t', 'png']);
 }
 
 /**
@@ -46,7 +58,7 @@ export function captureWindow(): Promise<CaptureResult> {
  * `-o`: window capture mode 에서 shadow 를 PNG 에 포함하지 않는다.
  */
 export function captureWindowById(windowId: number): Promise<CaptureResult> {
-  return captureToFile(['-x', '-l', String(windowId), '-o', '-t', 'png']);
+  return captureToFile([...soundArgs(), '-l', String(windowId), '-o', '-t', 'png']);
 }
 
 /**
@@ -60,7 +72,7 @@ export function captureRegion(rect: {
   h: number;
 }): Promise<CaptureResult> {
   const region = `${rect.x},${rect.y},${rect.w},${rect.h}`;
-  return captureToFile(['-x', '-R', region, '-t', 'png']);
+  return captureToFile([...soundArgs(), '-R', region, '-t', 'png']);
 }
 
 function captureToFile(args: string[]): Promise<CaptureResult> {
