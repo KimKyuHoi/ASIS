@@ -454,7 +454,7 @@ body {
 .magnifier {
   position: fixed;
   width: 96px;
-  height: 122px; /* canvas 96 + color bar 26 */
+  height: auto; /* canvas 96 + 색상 바(값 길면 줄바꿈되어 늘어남) */
   pointer-events: none;
   z-index: 100;
   border-radius: 6px;
@@ -517,8 +517,8 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 26px;
-  padding: 0 8px;
+  min-height: 26px;
+  padding: 5px 8px;
   background: rgba(0, 0, 0, 0.42);
   font-family: 'SF Mono', 'JetBrains Mono', Menlo, monospace;
   font-size: 10px;
@@ -526,19 +526,12 @@ body {
   letter-spacing: 0.04em;
 }
 
-.magnifier__fmt {
-  font-size: 8px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  color: rgba(255, 255, 255, 0.45);
-  flex-shrink: 0;
-}
-
-.magnifier__hex {
+/* 값이 잘리지 않도록 줄바꿈 허용 — HEX 는 한 줄, 긴 RGB/HSL 은 여러 줄로 전부 표시. */
+.magnifier__value {
   flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .magnifier__swatch {

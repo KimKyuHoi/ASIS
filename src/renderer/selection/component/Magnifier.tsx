@@ -102,8 +102,7 @@ export function Magnifier({
       </div>
       <div className="magnifier__color">
         <span className="magnifier__swatch" style={{ background: hex }} aria-hidden="true" />
-        <span className="magnifier__fmt">{format.toUpperCase()}</span>
-        <span className="magnifier__hex">
+        <span className="magnifier__value">
           {copied ? '복사됨 ✓' : formatValue(format)}
         </span>
       </div>
