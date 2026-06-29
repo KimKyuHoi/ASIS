@@ -1,11 +1,5 @@
 import { motion } from 'framer-motion';
-
-declare global {
-  // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
-  interface Window {
-    gtag?: (...args: unknown[]) => void;
-  }
-}
+import { useDownloadCount } from '../hook/useDownloadCount';
 
 type DownloadProps = {
   armHref: string;
@@ -14,6 +8,8 @@ type DownloadProps = {
 };
 
 export function Download({ armHref, intelHref, version }: DownloadProps): React.JSX.Element {
+  const downloadCount = useDownloadCount();
+
   return (
     <section className="download" id="download">
       <motion.div
@@ -38,6 +34,13 @@ export function Download({ armHref, intelHref, version }: DownloadProps): React.
 
         <h2 className="download-title">지금 무료로 시작하세요</h2>
         <p className="download-sub">MIT 라이선스 · 무료 · 오픈소스</p>
+
+        {downloadCount !== null && downloadCount > 0 ? (
+          <div className="download-count">
+            지금까지 <span className="download-count-num">{downloadCount.toLocaleString()}</span>회
+            다운로드됨
+          </div>
+        ) : null}
 
         <div className="download-requirements">
           <div className="dl-req-item">
@@ -68,11 +71,7 @@ export function Download({ armHref, intelHref, version }: DownloadProps): React.
         </div>
 
         <div className="download-arch-buttons">
-          <a
-            className="download-arch-btn download-arch-btn--primary"
-            href={armHref}
-            onClick={() => window.gtag?.('event', 'download_click', { arch: 'arm64' })}
-          >
+          <a className="download-arch-btn download-arch-btn--primary" href={armHref}>
             <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
               <path d="M10 2v11M5 8.5l5 5 5-5M3 17h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
@@ -81,11 +80,7 @@ export function Download({ armHref, intelHref, version }: DownloadProps): React.
               <span className="download-arch-sub">{version ? `${version} · arm64` : 'arm64'}</span>
             </div>
           </a>
-          <a
-            className="download-arch-btn download-arch-btn--secondary"
-            href={intelHref}
-            onClick={() => window.gtag?.('event', 'download_click', { arch: 'x64' })}
-          >
+          <a className="download-arch-btn download-arch-btn--secondary" href={intelHref}>
             <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
               <path d="M10 2v11M5 8.5l5 5 5-5M3 17h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
             </svg>

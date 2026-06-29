@@ -1,0 +1,9 @@
+.giscus-mount {
+  margin-top: 8px;
+  min-height: 200px;
+}
+/* giscus 가 주입하는 iframe 폭을 컨테이너에 맞춘다. */
+.giscus-mount .giscus,
+.giscus-mount .giscus-frame {
+  width: 100%;
+}

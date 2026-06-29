@@ -1,7 +1,8 @@
 import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
+import { NAV_ITEMS, type Route } from '../types/route';
 
-export function Nav(): React.JSX.Element {
+export function Nav({ route }: { route: Route }): React.JSX.Element {
   const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
@@ -17,7 +18,7 @@ export function Nav(): React.JSX.Element {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, ease: [0.32, 0.72, 0, 1] }}
     >
-      <a href="#" className="nav-logo">
+      <a href="#/" className="nav-logo">
         <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
           <rect x="1" y="1" width="20" height="20" rx="5" stroke="var(--accent)" strokeWidth="2" />
           <rect x="5" y="5" width="5" height="5" rx="1" fill="var(--accent)" />
@@ -28,8 +29,16 @@ export function Nav(): React.JSX.Element {
         ASIS
       </a>
       <div className="nav-links">
-        <a href="#features">기능</a>
-        <a href="#download">다운로드</a>
+        {NAV_ITEMS.map((item) => (
+          <a
+            key={item.route}
+            href={item.hash}
+            className={`nav-tab${route === item.route ? ' nav-tab--active' : ''}`}
+            aria-current={route === item.route ? 'page' : undefined}
+          >
+            {item.label}
+          </a>
+        ))}
         <a
           href="https://github.com/KimKyuHoi/ASIS"
           target="_blank"
