@@ -351,6 +351,30 @@ button:disabled {
   border-radius: 50%;
 }
 
+/* ── 선 스타일 미리보기 버튼 ───────────────────────── */
+
+.dash {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 26px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text);
+  flex: none;
+}
+
+.dash:hover:not(.dash--active) {
+  background: var(--surface-2);
+}
+
+.dash--active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
 /* ── icon button ─────────────────────────────────── */
 
 .iconbtn {

@@ -1,5 +1,6 @@
 import type { JSX } from 'react';
-import type { TextAlign, Tool } from '../types/shapes';
+import type { DashStyle, TextAlign, Tool } from '../types/shapes';
+import { DASH_STYLES, dashPattern } from '../lib/dash';
 import {
   BLUR_RADII,
   FONT_FAMILIES,
@@ -45,11 +46,13 @@ export function Toolbar({
   const tool = useEditorStore((s) => s.tool);
   const color = useEditorStore((s) => s.color);
   const strokeWidth = useEditorStore((s) => s.strokeWidth);
+  const dash = useEditorStore((s) => s.dash);
   const blurRadius = useEditorStore((s) => s.blurRadius);
   const mosaicBlockSize = useEditorStore((s) => s.mosaicBlockSize);
   const setTool = useEditorStore((s) => s.setTool);
   const setColor = useEditorStore((s) => s.setColor);
   const setStrokeWidth = useEditorStore((s) => s.setStrokeWidth);
+  const setDash = useEditorStore((s) => s.setDash);
   const setBlurRadius = useEditorStore((s) => s.setBlurRadius);
   const setMosaicBlockSize = useEditorStore((s) => s.setMosaicBlockSize);
   const fontSize = useEditorStore((s) => s.fontSize);
@@ -92,7 +95,7 @@ export function Toolbar({
   const showTextFormatting = tool === 'text' || hasTextSelected;
 
   const isStroked = (k: string): boolean =>
-    k === 'rect' || k === 'ellipse' || k === 'arrow' || k === 'pen';
+    k === 'rect' || k === 'ellipse' || k === 'arrow' || k === 'line' || k === 'pen';
 
   // blur 강도 변경: 선택된 blur 도형 *전부* 에 적용. 없으면 default 만 변경.
   const handleBlurRadius = (r: number): void => {
@@ -165,6 +168,14 @@ export function Toolbar({
       .forEach((s) => updateShape(s.id, { strokeWidth: w }));
   };
 
+  // 선 스타일 변경: 선택된 stroked 도형 *모두* 에 적용.
+  const handleDash = (d: DashStyle): void => {
+    setDash(d);
+    selectedShapes
+      .filter((s) => isStroked(s.kind))
+      .forEach((s) => updateShape(s.id, { dash: d } as Partial<typeof s>));
+  };
+
   // 표시 값 — 단일 선택일 때만 그 값, 아니면 default.
   const displayFontSize = (firstSelected?.kind === 'text' || firstSelected?.kind === 'step') && selectedShapes.length === 1
     ? firstSelected.fontSize
@@ -188,14 +199,22 @@ export function Toolbar({
     if (
       selectedShapes.length === 1 &&
       firstSelected &&
-      (firstSelected.kind === 'rect' ||
-        firstSelected.kind === 'ellipse' ||
-        firstSelected.kind === 'arrow' ||
-        firstSelected.kind === 'pen')
+      isStroked(firstSelected.kind)
     ) {
-      return firstSelected.strokeWidth;
+      // isStroked 가 true 면 firstSelected 는 Stroked 도형 — strokeWidth 가 존재한다.
+      return (firstSelected as { strokeWidth: number }).strokeWidth;
     }
     return strokeWidth;
+  })();
+  const displayDash = ((): DashStyle => {
+    if (
+      selectedShapes.length === 1 &&
+      firstSelected &&
+      isStroked(firstSelected.kind)
+    ) {
+      return (firstSelected as { dash?: DashStyle }).dash ?? 'solid';
+    }
+    return dash;
   })();
 
   return (
@@ -350,26 +369,44 @@ export function Toolbar({
           )}
         </>
       ) : (
-        <div className="toolbar__group toolbar__group--strokes">
-          {STROKE_WIDTHS.map((w) => (
-            <button
-              key={w}
-              type="button"
-              className={`stroke ${displayStrokeWidth === w ? 'stroke--active' : ''}`}
-              onClick={(): void => handleStrokeWidth(w)}
-              aria-label={`두께 ${w}px`}
-              title={`${w}px`}
-            >
-              <span
-                className="stroke__dot"
-                style={{
-                  width: Math.min(w, 14),
-                  height: Math.min(w, 14),
-                }}
-              />
-            </button>
-          ))}
-        </div>
+        <>
+          <div className="toolbar__group toolbar__group--strokes">
+            {STROKE_WIDTHS.map((w) => (
+              <button
+                key={w}
+                type="button"
+                className={`stroke ${displayStrokeWidth === w ? 'stroke--active' : ''}`}
+                onClick={(): void => handleStrokeWidth(w)}
+                aria-label={`두께 ${w}px`}
+                title={`${w}px`}
+              >
+                <span
+                  className="stroke__dot"
+                  style={{
+                    width: Math.min(w, 14),
+                    height: Math.min(w, 14),
+                  }}
+                />
+              </button>
+            ))}
+          </div>
+          <div className="toolbar__divider" aria-hidden="true" />
+          <div className="toolbar__group toolbar__group--dashes">
+            <span className="slider-label">선</span>
+            {DASH_STYLES.map((d) => (
+              <button
+                key={d.value}
+                type="button"
+                className={`dash ${displayDash === d.value ? 'dash--active' : ''}`}
+                onClick={(): void => handleDash(d.value)}
+                aria-label={`선 스타일 ${d.label}`}
+                title={d.label}
+              >
+                <DashPreview style={d.value} />
+              </button>
+            ))}
+          </div>
+        </>
       ))}
 
       <div className="toolbar__divider" aria-hidden="true" />
@@ -503,6 +540,29 @@ function ToolButton({
       <span className="tool__label">{label}</span>
       <span className="tool__shortcut">{shortcut}</span>
     </button>
+  );
+}
+
+/**
+ * 선 스타일 미리보기 — 실제 dash 패턴을 가로선 SVG 로 그린다.
+ * 패턴은 `dashPattern` 을 그대로 재사용해 캔버스 렌더와 동일한 비율을 보장한다
+ * (미리보기 전용 stroke 폭 2 기준). solid 는 dash 없음.
+ */
+function DashPreview({ style }: { style: DashStyle }): JSX.Element {
+  const pattern = dashPattern(style, 2);
+  return (
+    <svg width="36" height="20" viewBox="0 0 36 20" aria-hidden="true">
+      <line
+        x1="3"
+        y1="10"
+        x2="33"
+        y2="10"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeDasharray={pattern ? pattern.join(' ') : undefined}
+      />
+    </svg>
   );
 }
 

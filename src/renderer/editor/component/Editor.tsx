@@ -80,6 +80,7 @@ export default function Editor(): JSX.Element {
   const tool = useEditorStore((s) => s.tool);
   const color = useEditorStore((s) => s.color);
   const strokeWidth = useEditorStore((s) => s.strokeWidth);
+  const dash = useEditorStore((s) => s.dash);
   const fontSize = useEditorStore((s) => s.fontSize);
   const fontFamily = useEditorStore((s) => s.fontFamily);
   const nextStepNum = useEditorStore((s) => s.nextStepNum);
@@ -106,6 +107,7 @@ export default function Editor(): JSX.Element {
   const setEditingId = useEditorStore((s) => s.setEditingId);
   const zoom = useEditorStore((s) => s.zoom);
   const setZoom = useEditorStore((s) => s.setZoom);
+  const setEffectiveZoom = useEditorStore((s) => s.setEffectiveZoom);
 
   // 사용자 줌 — fit 스케일 × zoom. 작은 캡처를 돋보기처럼 확대해서 어노테이션.
   // 캔버스 메모리 폭주 방지로 Stage 한 변이 MAX_STAGE_PX 를 넘지 않게 상한.
@@ -113,6 +115,13 @@ export default function Editor(): JSX.Element {
     fitScale * zoom,
     MAX_STAGE_PX / Math.max(imageWidth, imageHeight, 1),
   );
+  // 두께·점선 줌 보정의 기준 — 실제 적용된 배율(stageScale/fitScale).
+  // clamp 로 stageScale 이 상한에 걸려도 화면상 선 두께가 일정하게 유지된다.
+  useEffect(() => {
+    // 이미지 로드 전에는 fitScale 이 0 — 0 나누기 방지 (silent fallback 아님, 의도된 가드).
+    if (fitScale <= 0) return;
+    setEffectiveZoom(stageScale / fitScale);
+  }, [stageScale, fitScale, setEffectiveZoom]);
   // toDataURL pixelRatio 보정 — stageScale 과 무관하게 항상 원본 물리 픽셀
   // (devicePixelRatio × 논리 픽셀) 해상도로 export 한다 (줌 상태도 무관).
   const exportPixelRatio = window.devicePixelRatio / stageScale;
@@ -246,9 +255,9 @@ export default function Editor(): JSX.Element {
     const id = `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
     if (tool === 'rect') {
-      startDrawing({ kind: 'rect', id, x, y, w: 0, h: 0, stroke: color, strokeWidth });
+      startDrawing({ kind: 'rect', id, x, y, w: 0, h: 0, stroke: color, strokeWidth, dash });
     } else if (tool === 'ellipse') {
-      startDrawing({ kind: 'ellipse', id, cx: x, cy: y, rx: 0, ry: 0, stroke: color, strokeWidth });
+      startDrawing({ kind: 'ellipse', id, cx: x, cy: y, rx: 0, ry: 0, stroke: color, strokeWidth, dash });
     } else if (tool === 'arrow') {
       startDrawing({
         kind: 'arrow',
@@ -256,6 +265,7 @@ export default function Editor(): JSX.Element {
         points: [x, y, x, y],
         stroke: color,
         strokeWidth,
+        dash,
       });
     } else if (tool === 'line') {
       const newShape: LineShape = {
@@ -264,6 +274,7 @@ export default function Editor(): JSX.Element {
         points: [x, y, x, y],
         stroke: color,
         strokeWidth,
+        dash,
       };
       startDrawing(newShape);
     } else if (tool === 'pen') {
@@ -273,6 +284,7 @@ export default function Editor(): JSX.Element {
         points: [x, y],
         stroke: color,
         strokeWidth,
+        dash,
       });
     } else if (tool === 'highlight') {
       startDrawing({

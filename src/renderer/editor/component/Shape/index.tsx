@@ -9,6 +9,7 @@ import {
 } from 'react-konva';
 import type Konva from 'konva';
 import { useEditorStore } from '../../lib/store';
+import { dashPattern } from '../../lib/dash';
 import {
   clampXY,
   commitBoxDrag,
@@ -16,7 +17,7 @@ import {
   shiftPointsClamped,
   transformPoints,
 } from '../../lib/shape-transform';
-import type { Shape as ShapeData } from '../../types/shapes';
+import type { DashStyle, Shape as ShapeData } from '../../types/shapes';
 import { BlurShapeNode } from './BlurShapeNode';
 import { ImageShapeNode } from './ImageShapeNode';
 import { MosaicShapeNode } from './MosaicShapeNode';
@@ -50,13 +51,27 @@ export function Shape({
 }): JSX.Element | null {
   const updateShape = useEditorStore((s) => s.updateShape);
   const setEditingId = useEditorStore((s) => s.setEditingId);
-  const zoom = useEditorStore((s) => s.zoom);
+  // 실제 적용 배율(stageScale/fitScale) — zoom 이 아닌 이 값으로 보정해야
+  // 큰 이미지에서 stageScale 이 상한에 걸려도 화면 두께가 일정하다.
+  const effectiveZoom = useEditorStore((s) => s.effectiveZoom);
 
   // 줌 시각 보정 — 돋보기(줌)는 이미지를 들여다보는 용도라, 도형 선 두께는 줌과
   // 무관하게 화면상 일정해야 한다 (기존·신규 도형 동일). 데이터(strokeWidth)는
-  // 이미지 픽셀 단위 그대로 두고 *렌더만* 1/zoom 으로 나눈다. export 는
+  // 이미지 픽셀 단위 그대로 두고 *렌더만* 1/effectiveZoom 으로 나눈다. export 는
   // stageToDataUrl 이 baseStrokeWidth attr 로 원본 두께를 복원해 굽는다.
-  const vw = (w: number): number => w / zoom;
+  const vw = (w: number): number => w / effectiveZoom;
+
+  // 점선 props — 켜진 경우만 dash 배열을 화면 보정(vw)하고, export 복원용
+  // baseDash(원본 이미지 픽셀)를 함께 마킹한다. 실선이면 dashEnabled=false 로 끈다.
+  const dashProps = (s: { dash?: DashStyle; strokeWidth: number }): {
+    dashEnabled: boolean;
+    dash?: number[];
+    baseDash?: number[];
+  } => {
+    const base = dashPattern(s.dash ?? 'solid', s.strokeWidth);
+    if (!base) return { dashEnabled: false };
+    return { dashEnabled: true, dash: base.map(vw), baseDash: base };
+  };
 
   // 텍스트 박스 세로 리사이즈 여부 추적 — TransformEnd 에서 height 커밋 여부 결정.
   const textVertResizeRef = useRef(false);
@@ -86,6 +101,7 @@ export function Shape({
           strokeWidth={vw(shape.strokeWidth)}
           name="zoom-comp"
           baseStrokeWidth={shape.strokeWidth}
+          {...dashProps(shape)}
           // 시각상 투명 fill — 박스 안쪽 클릭으로도 hit 받아 drag 시작 가능 (PPT/Figma 결).
           fill="rgba(0,0,0,0.001)"
           draggable={draggable}
@@ -117,6 +133,7 @@ export function Shape({
           strokeWidth={vw(shape.strokeWidth)}
           name="zoom-comp"
           baseStrokeWidth={shape.strokeWidth}
+          {...dashProps(shape)}
           fill="rgba(0,0,0,0.001)"
           draggable={draggable}
           onClick={onSelect}
@@ -166,6 +183,7 @@ export function Shape({
           name="zoom-comp"
           baseStrokeWidth={shape.strokeWidth}
           basePointer={Math.max(8, shape.strokeWidth * 3)}
+          {...dashProps(shape)}
           // stroke 가 얇아도 hit 잡기 쉽도록 — 이거 없으면 marquee 후 drag 시
           // 사용자가 화살표 외곽선 정확히 안 누르면 hit 안 받아 그룹 drag 실패.
           hitStrokeWidth={vw(Math.max(20, shape.strokeWidth + 16))}
@@ -195,6 +213,7 @@ export function Shape({
           strokeWidth={vw(shape.strokeWidth)}
           name="zoom-comp"
           baseStrokeWidth={shape.strokeWidth}
+          {...dashProps(shape)}
           lineCap="round"
           lineJoin="round"
           hitStrokeWidth={vw(Math.max(20, shape.strokeWidth + 16))}
@@ -223,6 +242,7 @@ export function Shape({
           strokeWidth={vw(shape.strokeWidth)}
           name="zoom-comp"
           baseStrokeWidth={shape.strokeWidth}
+          {...dashProps(shape)}
           tension={0.4}
           lineCap="round"
           lineJoin="round"

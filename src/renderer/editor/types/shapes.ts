@@ -21,9 +21,17 @@ export type Tool =
 /** 자유 픽셀 단위 — 슬라이더/단계 모두 호환. */
 export type StrokeWidth = number;
 
+/** 선 스타일 — solid(실선) + 4종 점선/파선. lib/dash 가 두께 비례 패턴을 만든다. */
+export type DashStyle = 'solid' | 'dashed' | 'dotted' | 'long-dash' | 'dash-dot';
+
 type Stroked = {
   stroke: string;
   strokeWidth: number;
+  /**
+   * 선 스타일 — 미지정 시 'solid'(실선). rect·ellipse·arrow·line·pen 공통.
+   * 점선 패턴(간격)은 strokeWidth 에 비례해 렌더 시점에 계산한다 (lib/dash).
+   */
+  dash?: DashStyle;
 };
 
 /** 회전 가능 도형 공통 — Konva 의 rotation 은 도(degrees) 단위. */

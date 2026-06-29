@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Shape, StrokeWidth, TextAlign, Tool } from '../types/shapes';
+import type { DashStyle, Shape, StrokeWidth, TextAlign, Tool } from '../types/shapes';
 
 /**
  * 어노테이션 에디터 단일 zustand 스토어.
@@ -71,6 +71,8 @@ type EditorStore = {
   tool: Tool;
   color: string;
   strokeWidth: StrokeWidth;
+  /** 선 스타일 — 새로 그리는 stroked 도형의 기본값. 기본 'solid'(실선). */
+  dash: DashStyle;
   blurRadius: number;
   mosaicBlockSize: number;
   fontSize: number;
@@ -85,6 +87,14 @@ type EditorStore = {
   imageHeight: number;
   /** 사용자 줌 배율 — fit 스케일에 곱해 stageScale 이 된다. ZOOM_MIN~MAX clamp. */
   zoom: number;
+  /**
+   * 실제 화면에 적용된 배율 = stageScale / fitScale.
+   * 보통 zoom 과 같지만, 큰 이미지에서 stageScale 이 메모리 상한(MAX_STAGE_PX)에
+   * 걸리면 zoom 보다 작아진다. 선·점선 두께의 줌 보정은 이 값을 기준으로 해야
+   * 상한 clamp 상황에서도 화면상 두께가 일정하게 유지된다 (zoom 기준이면 어긋남).
+   * Editor 가 stageScale 변화에 맞춰 동기화한다.
+   */
+  effectiveZoom: number;
 
   // 도형
   shapes: Shape[];
@@ -104,6 +114,7 @@ type EditorStore = {
   setTool: (tool: Tool) => void;
   setColor: (color: string) => void;
   setStrokeWidth: (w: StrokeWidth) => void;
+  setDash: (d: DashStyle) => void;
   setBlurRadius: (r: number) => void;
   setMosaicBlockSize: (s: number) => void;
   setFontSize: (s: number) => void;
@@ -111,6 +122,7 @@ type EditorStore = {
   setTextAlign: (a: TextAlign) => void;
   setLineHeight: (h: number) => void;
   setZoom: (z: number) => void;
+  setEffectiveZoom: (z: number) => void;
   incrementStepNum: () => void;
 
   reorderShape: (id: string, dir: 'front' | 'forward' | 'backward' | 'back') => void;
@@ -148,6 +160,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   tool: 'select',
   color: PALETTE[0],
   strokeWidth: 4,
+  dash: 'solid',
   blurRadius: 16,
   mosaicBlockSize: 10,
   fontSize: 24,
@@ -160,6 +173,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   imageWidth: 0,
   imageHeight: 0,
   zoom: 1,
+  effectiveZoom: 1,
 
   shapes: [],
   drawing: null,
@@ -173,6 +187,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   setTool: (tool) => set({ tool, selectedIds: [], marquee: null }),
   setColor: (color) => set({ color }),
   setStrokeWidth: (w) => set({ strokeWidth: w }),
+  setDash: (d) => set({ dash: d }),
   setBlurRadius: (r) => set({ blurRadius: r }),
   setMosaicBlockSize: (s) => set({ mosaicBlockSize: s }),
   setFontSize: (s) => set({ fontSize: s }),
@@ -180,6 +195,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   setTextAlign: (a) => set({ textAlign: a }),
   setLineHeight: (h) => set({ lineHeight: h }),
   setZoom: (z) => set({ zoom: Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z)) }),
+  setEffectiveZoom: (z) => set({ effectiveZoom: z }),
   incrementStepNum: () => set((s) => ({ nextStepNum: s.nextStepNum + 1 })),
 
   reorderShape: (id, dir) => set((s) => {
