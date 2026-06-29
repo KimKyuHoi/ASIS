@@ -1085,7 +1085,25 @@ svg {
 .download-sub {
   font-size: 16px;
   color: var(--muted);
-  margin-bottom: 28px;
+  margin-bottom: 20px;
+}
+.download-count {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  margin: 0 auto 28px;
+  padding: 7px 16px;
+  border-radius: 100px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 13px;
+  color: var(--muted);
+}
+.download-count-num {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
 }
 .download-requirements {
   display: flex;
