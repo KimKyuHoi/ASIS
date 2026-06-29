@@ -472,6 +472,37 @@ svg {
   margin: 0 auto;
 }
 
+/* ─── Sub-page shell (해시 라우트 탭 공통) ──────────────────── */
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 140px 24px 120px;
+}
+.page-header {
+  text-align: center;
+  margin-bottom: 56px;
+}
+
+/* ─── Nav tabs ──────────────────────────────────────────────── */
+.nav-tab {
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted);
+  transition:
+    color 0.15s,
+    background 0.15s;
+}
+.nav-tab:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+.nav-tab--active {
+  color: var(--text);
+  background: var(--surface-2);
+}
+
 /* ─── Features ──────────────────────────────────────────────── */
 .features {
   padding: 140px 24px;
@@ -1305,10 +1336,19 @@ svg {
 }
 @media (max-width: 640px) {
   .nav {
-    padding: 0 20px;
+    padding: 0 14px;
   }
-  .nav-links a:not(.nav-github) {
-    display: none;
+  .nav-links {
+    gap: 0;
+  }
+  /* 탭은 핵심 네비게이션이라 모바일에서도 유지하되 작게. */
+  .nav-tab {
+    padding: 6px 8px;
+    font-size: 12px;
+  }
+  .nav-github span,
+  .nav-github {
+    font-size: 12px;
   }
   .hero-actions {
     flex-direction: column;

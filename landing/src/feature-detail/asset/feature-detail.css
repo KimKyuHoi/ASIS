@@ -1,0 +1,172 @@
+/* ─── Feature Detail ────────────────────────────────────────── */
+.fd-header {
+  text-align: center;
+  margin-bottom: 80px;
+}
+
+.fd-section {
+  margin-bottom: 96px;
+}
+.fd-section-title {
+  font-size: clamp(24px, 3vw, 32px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-bottom: 8px;
+}
+.fd-section-desc {
+  font-size: 16px;
+  color: var(--muted);
+  margin-bottom: 32px;
+  max-width: 560px;
+}
+
+.fd-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+.fd-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px 22px 18px;
+  transition:
+    border-color 0.2s var(--ease),
+    transform 0.2s var(--ease);
+}
+.fd-card:hover {
+  border-color: rgba(94, 162, 255, 0.3);
+  transform: translateY(-2px);
+}
+.fd-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.fd-card-icon {
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-size: 18px;
+}
+.fd-card-heading {
+  flex: 1;
+  min-width: 0;
+}
+.fd-card-name {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.fd-card-summary {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.fd-card-details {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.fd-card-details li {
+  position: relative;
+  padding-left: 16px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: rgba(232, 232, 240, 0.82);
+}
+.fd-card-details li::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 9px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0.7;
+}
+
+.fd-kbd {
+  flex-shrink: 0;
+  font-family: 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+
+/* ─── Shortcuts + Permissions split ─────────────────────────── */
+.fd-section--split {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 48px;
+  align-items: start;
+}
+.fd-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.fd-table tr {
+  border-bottom: 1px solid var(--border);
+}
+.fd-table tr:last-child {
+  border-bottom: none;
+}
+.fd-table-key {
+  padding: 11px 0;
+  width: 120px;
+}
+.fd-table-action {
+  font-size: 14px;
+  color: rgba(232, 232, 240, 0.85);
+}
+
+.fd-perm-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 28px;
+}
+.fd-perm-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+.fd-perm-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+.fd-perm-use {
+  font-size: 13px;
+  color: var(--muted);
+}
+.fd-cta {
+  width: fit-content;
+}
+
+@media (max-width: 760px) {
+  .fd-section--split {
+    grid-template-columns: 1fr;
+    gap: 56px;
+  }
+}

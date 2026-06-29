@@ -25,7 +25,7 @@ export function Footer(): React.JSX.Element {
           <span className="footer-sep">·</span>
           <a href="https://github.com/KimKyuHoi/ASIS/releases" target="_blank" rel="noopener noreferrer">릴리스</a>
           <span className="footer-sep">·</span>
-          <a href="https://github.com/KimKyuHoi/ASIS/issues" target="_blank" rel="noopener noreferrer">버그 제보</a>
+          <a href="#/bug">버그 제보</a>
           <span className="footer-sep">·</span>
           <span>MIT License</span>
         </div>
