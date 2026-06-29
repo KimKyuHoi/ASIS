@@ -6,6 +6,7 @@ import log from 'electron-log/main';
 import devAppIconPath from '../../resources/icon.png?asset';
 import { TrayManager } from './tray';
 import { ShortcutManager } from './shortcuts';
+import { installAppMenu } from './menu';
 import { settingsStore, loadHotkeys, loadMisc } from './settings';
 import type { HotkeyConfig, MiscConfig } from './settings';
 import {
@@ -301,6 +302,9 @@ setupAutoUpdater(stopAllManagers);
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.pinkfong.asis');
+
+  // 기본 메뉴의 zoom accelerator(Cmd +/-/0)가 에디터 줌 단축키를 가로채는 것을 막는다.
+  installAppMenu();
 
   // 업데이트 완료 감지 — lastLaunchedVersion 이 현재보다 낮으면 방금 업데이트된 것.
   const current = app.getVersion();
