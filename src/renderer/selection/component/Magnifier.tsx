@@ -64,8 +64,7 @@ export function Magnifier({
     return `hsl(${hsl[0]}, ${hsl[1]}%, ${hsl[2]}%)`;
   }
 
-  function handleCopy(): void {
-    const value = formatValue(format);
+  function copyValue(value: string): void {
     navigator.clipboard.writeText(value).catch((err: unknown) => {
       // 클립보드 쓰기 실패 — 포커스 없음/권한 등. 치명적이지 않으므로 로깅만.
       console.error('[asis magnifier] 클립보드 복사 실패', err);
@@ -73,8 +72,19 @@ export function Magnifier({
     setCopied(true);
     if (resetTimerRef.current !== null) clearTimeout(resetTimerRef.current);
     resetTimerRef.current = setTimeout(() => setCopied(false), 1000);
-    // 복사 후 다음 포맷으로 전환
+  }
+
+  // 좌클릭: 현재 포맷 값을 복사하고 다음 포맷(HEX → RGB → HSL)으로 전환.
+  function handleCopy(): void {
+    copyValue(formatValue(format));
     setFormat((prev) => FORMATS[(FORMATS.indexOf(prev) + 1) % FORMATS.length]);
+  }
+
+  // 우클릭: 포맷·전환과 무관하게 HEX 색상코드를 바로 복사(텍스트로 붙여넣기용).
+  function handleCopyHex(e: React.MouseEvent): void {
+    e.preventDefault();
+    e.stopPropagation();
+    copyValue(hex.toUpperCase());
   }
 
   const offset = 20;
@@ -90,10 +100,11 @@ export function Magnifier({
       style={{ left, top }}
       role="button"
       tabIndex={-1}
-      title="클릭해서 복사 (HEX → RGB → HSL)"
+      title="좌클릭: 복사 (HEX → RGB → HSL) · 우클릭: HEX 코드 복사"
       onPointerDown={(e) => e.stopPropagation()}
       onPointerUp={(e) => e.stopPropagation()}
       onClick={handleCopy}
+      onContextMenu={handleCopyHex}
     >
       <canvas ref={setSampleCanvas} className="magnifier__canvas" width={96} height={96} />
       <div className="magnifier__crosshair" aria-hidden="true">
