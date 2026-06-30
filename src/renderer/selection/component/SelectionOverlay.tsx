@@ -3,6 +3,7 @@ import type { CSSProperties, JSX } from 'react';
 import type { DragAction, DragState, Point, Rect } from '../types/selection';
 import { Magnifier } from './Magnifier';
 import { normalize, chipPlacement } from '../lib/rect-utils';
+import { rgbToHex } from '../lib/color-utils';
 
 /**
  * AX RoleDescription 중 사용자에게 정보 가치가 낮은 generic 이름들.
@@ -57,13 +58,26 @@ export default function SelectionOverlay(): JSX.Element {
   // useEffect deps 를 [windows] 로 고정해 리스너 teardown 레이스를 방지한다.
   const hoverElementRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
   const stateKindRef = useRef<string>('idle');
+  // 우클릭 색상 복사 — 이벤트 핸들러에서 최신 bgCanvas 를 읽기 위한 ref.
+  const bgCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  // 복사 성공 토스트(복사된 HEX 문자열). null 이면 미표시.
+  const [copyToast, setCopyToast] = useState<string | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 최신 값을 이벤트 핸들러가 읽을 수 있도록 렌더 직후 ref 갱신.
   // 렌더 중 ref.current 를 직접 쓰면 react-hooks/refs 룰 위반이므로 useEffect 로 처리.
   useEffect(() => {
     hoverElementRef.current = hoverElement;
     stateKindRef.current = state.kind;
+    bgCanvasRef.current = bgCanvas;
   });
+
+  // 언마운트 시 대기 중인 복사 토스트 타이머 정리.
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current !== null) clearTimeout(toastTimerRef.current);
+    };
+  }, []);
 
   // main → renderer: visible 윈도우 list. 권한 없으면 빈 배열.
   // onWindows listener 를 attach 한 직후 ready() 호출 — main 이 그 신호를 받은 후
@@ -113,7 +127,29 @@ export default function SelectionOverlay(): JSX.Element {
   useEffect(() => {
     const onPointerDown = (e: PointerEvent): void => {
       if (e.button === 2) {
-        cancel();
+        // 우클릭 = 커서 아래 픽셀의 HEX 색상코드 복사(+토스트). 캡처 취소는 ESC.
+        const canvas = bgCanvasRef.current;
+        const ctx = canvas?.getContext('2d') ?? null;
+        if (ctx) {
+          const dpr = window.devicePixelRatio || 1;
+          const px = ctx.getImageData(
+            Math.round(e.clientX * dpr),
+            Math.round(e.clientY * dpr),
+            1,
+            1,
+          ).data;
+          const hex = rgbToHex(px[0], px[1], px[2]).toUpperCase();
+          window.selection
+            .copyText(hex)
+            .then(() => {
+              setCopyToast(hex);
+              if (toastTimerRef.current !== null) clearTimeout(toastTimerRef.current);
+              toastTimerRef.current = setTimeout(() => setCopyToast(null), 1400);
+            })
+            .catch((err: unknown) => {
+              console.error('[asis overlay] 색상 복사 실패', err);
+            });
+        }
         return;
       }
       if (e.button !== 0) return;
@@ -319,6 +355,19 @@ export default function SelectionOverlay(): JSX.Element {
       {bgReady && pointer && bgCanvas && state.kind !== 'committed' ? (
         <Magnifier pointer={pointer} bgCanvas={bgCanvas} />
       ) : null}
+
+      {copyToast ? (
+        <div className="magnifier-toast" role="status" aria-live="polite">
+          <span
+            className="magnifier-toast__swatch"
+            style={{ background: copyToast }}
+            aria-hidden="true"
+          />
+          <span>
+            <strong>{copyToast}</strong> 복사됨
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -437,6 +486,8 @@ function Hint({ visible }: { visible: boolean }): JSX.Element {
       <span className="hint__label">취소</span>
       <span className="hint__divider" aria-hidden="true" />
       <span className="hint__instruction">드래그하여 영역을 선택하세요</span>
+      <span className="hint__divider" aria-hidden="true" />
+      <span className="hint__instruction">우클릭으로 색상 복사</span>
     </div>
   );
 }
