@@ -22,7 +22,8 @@
 
 .fd-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  /* min(100%, 300px) — 컨테이너가 300px 보다 좁아도 트랙이 넘치지 않게. */
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
   gap: 16px;
 }
 

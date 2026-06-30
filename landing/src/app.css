@@ -490,6 +490,8 @@ svg {
   font-size: 14px;
   font-weight: 500;
   color: var(--muted);
+  white-space: nowrap;
+  flex-shrink: 0;
   transition:
     color 0.15s,
     background 0.15s;
@@ -1354,19 +1356,36 @@ svg {
 }
 @media (max-width: 640px) {
   .nav {
-    padding: 0 14px;
+    padding: 0 12px;
+    gap: 6px;
   }
+  /* 탭이 많아 폭을 넘기면 잘리지 않게 가로 스크롤(스크롤바 숨김). */
   .nav-links {
-    gap: 0;
+    gap: 2px;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
   }
-  /* 탭은 핵심 네비게이션이라 모바일에서도 유지하되 작게. */
+  .nav-links::-webkit-scrollbar {
+    display: none;
+  }
+  /* 탭은 핵심 네비게이션이라 모바일에서도 유지하되 작게. 라벨 줄바꿈 금지. */
   .nav-tab {
-    padding: 6px 8px;
+    padding: 6px 7px;
     font-size: 12px;
   }
-  .nav-github span,
+  /* GitHub 는 아이콘만 — 폭 확보. */
+  .nav-github-label {
+    display: none;
+  }
   .nav-github {
-    font-size: 12px;
+    padding: 6px 6px;
+    flex-shrink: 0;
+  }
+  /* 서브페이지 상단 여백 축소(고정 nav 60px 만 피하면 됨). */
+  .page {
+    padding: 96px 18px 72px;
   }
   .hero-actions {
     flex-direction: column;
@@ -1385,5 +1404,15 @@ svg {
   .footer-links {
     flex-wrap: wrap;
     justify-content: center;
+  }
+}
+/* 아주 좁은 화면 — 로고는 아이콘만 남겨 탭 4개 + GitHub 가 한 줄에 들어가게. */
+@media (max-width: 400px) {
+  .nav-logo-text {
+    display: none;
+  }
+  .nav-tab {
+    padding: 6px 6px;
+    font-size: 11px;
   }
 }
