@@ -21,6 +21,7 @@ type SelectionAPI = {
     x: number,
     y: number,
   ) => Promise<{ x: number; y: number; w: number; h: number; name?: string } | null>;
+  copyText: (text: string) => Promise<void>;
 };
 
 type EditorAPI = {

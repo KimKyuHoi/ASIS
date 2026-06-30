@@ -1,15 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { JSX } from 'react';
 import type { Point } from '../types/selection';
-import { rgbToHex, rgbToHsl } from '../lib/color-utils';
-
-type ColorFormat = 'hex' | 'rgb' | 'hsl';
-const FORMATS: ColorFormat[] = ['hex', 'rgb', 'hsl'];
+import { rgbToHex } from '../lib/color-utils';
 
 /**
- * Magnifier — 마우스 포인터 주변 픽셀 확대 + 중앙 픽셀의 색상 표시.
- * 하단 색상 바 클릭 시 HEX → RGB → HSL 순으로 포맷 전환 + 클립보드 복사.
+ * Magnifier — 마우스 포인터 주변 픽셀 확대 + 중앙 픽셀의 HEX 색상 표시.
  * 화면 가장자리/방향에 따라 자동 위치 (포인터 우하단·좌하단 등).
+ *
+ * 표시 전용이다(pointer-events: none). 돋보기는 커서에서 떨어져 따라다니므로
+ * 직접 클릭이 불가능 — 색상 복사는 오버레이의 우클릭이 담당한다(SelectionOverlay).
  */
 export function Magnifier({
   pointer,
@@ -20,9 +19,6 @@ export function Magnifier({
 }): JSX.Element | null {
   const [rgb, setRgb] = useState<[number, number, number]>([0, 0, 0]);
   const [sampleCanvas, setSampleCanvas] = useState<HTMLCanvasElement | null>(null);
-  const [format, setFormat] = useState<ColorFormat>('hex');
-  const [copied, setCopied] = useState(false);
-  const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!sampleCanvas) return undefined;
@@ -48,34 +44,7 @@ export function Magnifier({
     };
   }, [pointer, bgCanvas, sampleCanvas]);
 
-  // 언마운트 시 대기 중인 "복사됨" 리셋 타이머 정리 — 사라진 컴포넌트에 setState 방지.
-  useEffect(() => {
-    return () => {
-      if (resetTimerRef.current !== null) clearTimeout(resetTimerRef.current);
-    };
-  }, []);
-
-  const hex = rgbToHex(rgb[0], rgb[1], rgb[2]);
-  const hsl = rgbToHsl(rgb[0], rgb[1], rgb[2]);
-
-  function formatValue(fmt: ColorFormat): string {
-    if (fmt === 'hex') return hex.toUpperCase();
-    if (fmt === 'rgb') return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
-    return `hsl(${hsl[0]}, ${hsl[1]}%, ${hsl[2]}%)`;
-  }
-
-  function handleCopy(): void {
-    const value = formatValue(format);
-    navigator.clipboard.writeText(value).catch((err: unknown) => {
-      // 클립보드 쓰기 실패 — 포커스 없음/권한 등. 치명적이지 않으므로 로깅만.
-      console.error('[asis magnifier] 클립보드 복사 실패', err);
-    });
-    setCopied(true);
-    if (resetTimerRef.current !== null) clearTimeout(resetTimerRef.current);
-    resetTimerRef.current = setTimeout(() => setCopied(false), 1000);
-    // 복사 후 다음 포맷으로 전환
-    setFormat((prev) => FORMATS[(FORMATS.indexOf(prev) + 1) % FORMATS.length]);
-  }
+  const hex = rgbToHex(rgb[0], rgb[1], rgb[2]).toUpperCase();
 
   const offset = 20;
   const size = 96;
@@ -85,16 +54,7 @@ export function Magnifier({
   const top = placeBelow ? pointer.y + offset : pointer.y - offset - size - 38;
 
   return (
-    <div
-      className="magnifier magnifier--clickable"
-      style={{ left, top }}
-      role="button"
-      tabIndex={-1}
-      title="클릭해서 복사 (HEX → RGB → HSL)"
-      onPointerDown={(e) => e.stopPropagation()}
-      onPointerUp={(e) => e.stopPropagation()}
-      onClick={handleCopy}
-    >
+    <div className="magnifier" style={{ left, top }}>
       <canvas ref={setSampleCanvas} className="magnifier__canvas" width={96} height={96} />
       <div className="magnifier__crosshair" aria-hidden="true">
         <span className="magnifier__cross magnifier__cross--h" />
@@ -102,9 +62,7 @@ export function Magnifier({
       </div>
       <div className="magnifier__color">
         <span className="magnifier__swatch" style={{ background: hex }} aria-hidden="true" />
-        <span className="magnifier__value">
-          {copied ? '복사됨 ✓' : formatValue(format)}
-        </span>
+        <span className="magnifier__value">{hex}</span>
       </div>
     </div>
   );

@@ -541,3 +541,46 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.18);
   flex-shrink: 0;
 }
+
+/* 복사 성공 토스트 — 화면 하단 중앙. 색상 스와치 + 복사된 값. */
+.magnifier-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 56px;
+  transform: translateX(-50%);
+  z-index: 101;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 18px;
+  border-radius: 12px;
+  background: rgba(20, 20, 22, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+  color: rgba(255, 255, 255, 0.96);
+  font-family: 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  animation: magnifierToastIn 140ms var(--ease-mac);
+}
+.magnifier-toast strong {
+  font-weight: 700;
+}
+.magnifier-toast__swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  flex-shrink: 0;
+}
+@keyframes magnifierToastIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
