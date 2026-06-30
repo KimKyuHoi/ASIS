@@ -7,9 +7,8 @@ const EASE: [number, number, number, number] = [0.32, 0.72, 0, 1];
 
 const REPORT_CHECKLIST = [
   { label: '재현 방법', hint: '버그가 나타나기까지의 단계를 순서대로' },
-  { label: '기대한 동작 / 실제 동작', hint: '무엇을 예상했고 실제로 무엇이 일어났는지' },
+  { label: 'AS-IS / TO-BE', hint: '무엇을 예상했고 실제로 무엇이 일어났는지' },
   { label: '환경', hint: 'macOS 버전, Apple Silicon / Intel, ASIS 버전' },
-  { label: '스크린샷 · GIF', hint: '가능하면 화면 첨부 (ASIS로 바로 캡처!)' },
 ];
 
 export function BugReport(): React.JSX.Element {
