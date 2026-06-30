@@ -285,6 +285,13 @@ ipcMain.handle('history:pin', (_event, dataUrl: string, w: number, h: number) =>
   pinWindow.pin(dataUrl, w, h);
 });
 
+// 텍스트 클립보드 복사 — color picker 의 HEX/RGB/HSL 등.
+// renderer 의 navigator.clipboard.writeText 는 창 포커스·우클릭(user activation 미부여)
+// 상황에서 거부될 수 있어, main 의 clipboard.writeText 로 우회한다(포커스 무관).
+ipcMain.handle('clipboard:write-text', (_event, text: string) => {
+  clipboard.writeText(text);
+});
+
 // fullscreen Space 호환성 — macOS 의 regular 앱은 자체 Space 컨텍스트를 가져서
 // `makeKeyAndOrderFront:` → NSApp 활성화 → macOS 가 ASIS Space 로 강제 전환된다.
 // accessory 앱은 Space 컨텍스트가 없어 이 전환이 원천 차단된다.

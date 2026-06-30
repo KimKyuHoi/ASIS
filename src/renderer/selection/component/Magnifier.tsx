@@ -22,6 +22,7 @@ export function Magnifier({
   const [sampleCanvas, setSampleCanvas] = useState<HTMLCanvasElement | null>(null);
   const [format, setFormat] = useState<ColorFormat>('hex');
   const [copied, setCopied] = useState(false);
+  const [copiedText, setCopiedText] = useState('');
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -65,13 +66,19 @@ export function Magnifier({
   }
 
   function copyValue(value: string): void {
-    navigator.clipboard.writeText(value).catch((err: unknown) => {
-      // 클립보드 쓰기 실패 — 포커스 없음/권한 등. 치명적이지 않으므로 로깅만.
-      console.error('[asis magnifier] 클립보드 복사 실패', err);
-    });
-    setCopied(true);
-    if (resetTimerRef.current !== null) clearTimeout(resetTimerRef.current);
-    resetTimerRef.current = setTimeout(() => setCopied(false), 1000);
+    // main 의 clipboard.writeText 로 복사(overlay 가 비포커스/우클릭이어도 성공).
+    // 성공했을 때만 "복사됨" 표시 + 토스트를 띄운다 — 실패를 성공처럼 보이지 않게.
+    window.selection
+      .copyText(value)
+      .then(() => {
+        setCopied(true);
+        setCopiedText(value);
+        if (resetTimerRef.current !== null) clearTimeout(resetTimerRef.current);
+        resetTimerRef.current = setTimeout(() => setCopied(false), 1200);
+      })
+      .catch((err: unknown) => {
+        console.error('[asis magnifier] 클립보드 복사 실패', err);
+      });
   }
 
   // 좌클릭: 현재 포맷 값을 복사하고 다음 포맷(HEX → RGB → HSL)으로 전환.
@@ -95,28 +102,42 @@ export function Magnifier({
   const top = placeBelow ? pointer.y + offset : pointer.y - offset - size - 38;
 
   return (
-    <div
-      className="magnifier magnifier--clickable"
-      style={{ left, top }}
-      role="button"
-      tabIndex={-1}
-      title="좌클릭: 복사 (HEX → RGB → HSL) · 우클릭: HEX 코드 복사"
-      onPointerDown={(e) => e.stopPropagation()}
-      onPointerUp={(e) => e.stopPropagation()}
-      onClick={handleCopy}
-      onContextMenu={handleCopyHex}
-    >
-      <canvas ref={setSampleCanvas} className="magnifier__canvas" width={96} height={96} />
-      <div className="magnifier__crosshair" aria-hidden="true">
-        <span className="magnifier__cross magnifier__cross--h" />
-        <span className="magnifier__cross magnifier__cross--v" />
+    <>
+      <div
+        className="magnifier magnifier--clickable"
+        style={{ left, top }}
+        role="button"
+        tabIndex={-1}
+        title="좌클릭: 복사 (HEX → RGB → HSL) · 우클릭: HEX 코드 복사"
+        onPointerDown={(e) => e.stopPropagation()}
+        onPointerUp={(e) => e.stopPropagation()}
+        onClick={handleCopy}
+        onContextMenu={handleCopyHex}
+      >
+        <canvas ref={setSampleCanvas} className="magnifier__canvas" width={96} height={96} />
+        <div className="magnifier__crosshair" aria-hidden="true">
+          <span className="magnifier__cross magnifier__cross--h" />
+          <span className="magnifier__cross magnifier__cross--v" />
+        </div>
+        <div className="magnifier__color">
+          <span className="magnifier__swatch" style={{ background: hex }} aria-hidden="true" />
+          <span className="magnifier__value">
+            {copied ? '복사됨 ✓' : formatValue(format)}
+          </span>
+        </div>
       </div>
-      <div className="magnifier__color">
-        <span className="magnifier__swatch" style={{ background: hex }} aria-hidden="true" />
-        <span className="magnifier__value">
-          {copied ? '복사됨 ✓' : formatValue(format)}
+      {copied ? (
+      <div className="magnifier-toast" role="status" aria-live="polite">
+        <span
+          className="magnifier-toast__swatch"
+          style={{ background: copiedText }}
+          aria-hidden="true"
+        />
+        <span>
+          <strong>{copiedText}</strong> 복사됨
         </span>
       </div>
-    </div>
+    ) : null}
+    </>
   );
 }

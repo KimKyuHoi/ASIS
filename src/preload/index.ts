@@ -50,6 +50,8 @@ const selection = {
     y: number,
   ): Promise<{ x: number; y: number; w: number; h: number; name?: string } | null> =>
     ipcRenderer.invoke('capture:element-at', x, y),
+  /** 색상코드 등 텍스트 클립보드 복사 — main 의 clipboard.writeText 사용(포커스 무관). */
+  copyText: (text: string): Promise<void> => ipcRenderer.invoke('clipboard:write-text', text),
 };
 
 /**
