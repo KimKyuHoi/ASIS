@@ -10,7 +10,14 @@ type HotkeyConfig = {
   delayedRegion: string;
   disableClickThrough: string;
   gif: string;
+  video: string;
+  ocr: string;
   clipboardPin: string;
+  ruler: string;
+  timeMachineToggle: string;
+  timeMachineSave: string;
+  stepGuide: string;
+  scrollCapture: string;
 };
 
 type MiscConfig = {
@@ -20,6 +27,8 @@ type MiscConfig = {
   pinDefaultOpacity: number;
   delayedCaptureSeconds: number;
   autoOpenEditor: boolean;
+  timeMachineBufferSeconds: number;
+  drmDetectEnabled: boolean;
 };
 
 // 기본값은 src/main/settings.ts 의 DEFAULT_MISC 와 동일하게 유지한다.
@@ -30,6 +39,8 @@ const DEFAULT_MISC: MiscConfig = {
   pinDefaultOpacity: 1.0,
   delayedCaptureSeconds: 3,
   autoOpenEditor: true,
+  timeMachineBufferSeconds: 30,
+  drmDetectEnabled: true,
 };
 
 const DEFAULT: HotkeyConfig = {
@@ -40,7 +51,14 @@ const DEFAULT: HotkeyConfig = {
   delayedRegion: 'CommandOrControl+Shift+Alt+D',
   disableClickThrough: 'CommandOrControl+Shift+X',
   gif: 'CommandOrControl+Shift+G',
+  video: 'CommandOrControl+Shift+E',
+  ocr: 'CommandOrControl+Shift+O',
   clipboardPin: 'CommandOrControl+Shift+V',
+  ruler: 'CommandOrControl+Shift+L',
+  timeMachineToggle: 'CommandOrControl+Shift+T',
+  timeMachineSave: 'CommandOrControl+Shift+S',
+  stepGuide: 'CommandOrControl+Shift+U',
+  scrollCapture: 'CommandOrControl+Shift+J',
 };
 
 const LABELS: Record<keyof HotkeyConfig, string> = {
@@ -51,7 +69,14 @@ const LABELS: Record<keyof HotkeyConfig, string> = {
   delayedRegion: '지연 영역 캡처 (3초)',
   disableClickThrough: '클릭 통과 해제',
   gif: 'GIF 녹화',
+  video: '화면 녹화',
+  ocr: '텍스트 추출 (OCR)',
   clipboardPin: '클립보드 핀',
+  ruler: '화면 자 / 간격 측정',
+  timeMachineToggle: '타임머신 시작/정지',
+  timeMachineSave: '타임머신 최근 구간 저장',
+  stepGuide: '스텝 가이드 녹화',
+  scrollCapture: '스크롤 캡처',
 };
 
 const HOTKEY_FIELDS: Array<keyof HotkeyConfig> = [
@@ -62,7 +87,14 @@ const HOTKEY_FIELDS: Array<keyof HotkeyConfig> = [
   'delayedRegion',
   'disableClickThrough',
   'gif',
+  'video',
+  'ocr',
   'clipboardPin',
+  'ruler',
+  'timeMachineToggle',
+  'timeMachineSave',
+  'stepGuide',
+  'scrollCapture',
 ];
 
 export default function Settings(): JSX.Element {

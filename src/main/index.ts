@@ -1,5 +1,6 @@
 import { app, clipboard, dialog, ipcMain, nativeImage, Notification, screen } from 'electron';
 import { existsSync } from 'node:fs';
+import { copyFile, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { electronApp, is, optimizer } from '@electron-toolkit/utils';
 import log from 'electron-log/main';
@@ -19,9 +20,18 @@ import { SelectionOverlayManager } from './windows/selectionOverlay';
 import { EditorWindowManager } from './windows/editorWindow';
 import { PinWindowManager } from './windows/pinWindow';
 import { RecorderWindowManager } from './windows/recorderWindow';
+import { VideoRecorderWindowManager } from './windows/videoRecorderWindow';
+import { recognizeText } from './ocr';
 import { SettingsWindowManager } from './windows/settingsWindow';
 import { HistoryWindowManager } from './windows/historyWindow';
+import { PatchHistoryWindowManager } from './windows/patchHistoryWindow';
+import { RulerOverlayManager } from './windows/rulerOverlay';
+import { StepGuideWindowManager } from './windows/stepGuideWindow';
+import { ScrollCaptureWindowManager } from './windows/scrollCaptureWindow';
 import { getEntries } from './captureHistory';
+import { fetchPatchNotes } from './patchNotes';
+import { TimeMachineManager } from './timeMachine';
+import { probeProtectedContent } from './drmDetect';
 import { checkPermissionsOnLaunch, guardCapture, openPermissionSettings } from './permissions';
 import {
   isNewer,
@@ -49,8 +59,14 @@ const selectionOverlay = new SelectionOverlayManager();
 const editorWindow = new EditorWindowManager();
 const pinWindow = new PinWindowManager();
 const recorderWindow = new RecorderWindowManager();
+const videoRecorderWindow = new VideoRecorderWindowManager();
 const settingsWindow = new SettingsWindowManager();
 const historyWindow = new HistoryWindowManager();
+const patchHistoryWindow = new PatchHistoryWindowManager();
+const rulerOverlay = new RulerOverlayManager();
+const timeMachine = new TimeMachineManager();
+const stepGuideWindow = new StepGuideWindowManager();
+const scrollCaptureWindow = new ScrollCaptureWindowManager();
 const countdownWindow = new CountdownWindow();
 editorWindow.setPinHandler((dataUrl, w, h) => pinWindow.pin(dataUrl, w, h));
 
@@ -66,8 +82,14 @@ const stopAllManagers = (): void => {
   editorWindow.stop();
   pinWindow.closeAll();
   recorderWindow.stop();
+  videoRecorderWindow.stop();
   settingsWindow.stop();
   historyWindow.stop();
+  patchHistoryWindow.stop();
+  rulerOverlay.stop();
+  timeMachine.dispose();
+  stepGuideWindow.stop();
+  scrollCaptureWindow.stop();
 };
 
 // 단일 인스턴스 보장.
@@ -243,6 +265,149 @@ const handleGif = (): void => {
   });
 };
 
+const handleVideo = (): void => {
+  // 녹화 중이면 정지 (toggle) — 알약 hidden 케이스의 유일한 회수 경로.
+  if (videoRecorderWindow.isActive()) {
+    notifyInfo('화면 녹화 정지 중…');
+    videoRecorderWindow.triggerStop();
+    return;
+  }
+  // 영역/창 선택 → 녹화 → .mov 저장.
+  guardCapture().then((ok) => {
+    if (!ok) return;
+    selectionOverlay.show().then(
+      (selResult) => {
+        if (selResult.kind !== 'selected') return;
+        // 창을 선택해도 Phase 1 은 그 창의 rect 를 -R 로 녹화한다(창 이동 미추적).
+        const r = selResult.rect;
+        const rect = { x: r.x, y: r.y, w: r.w, h: r.h };
+        const showPromise = videoRecorderWindow.show(rect);
+        if (videoRecorderWindow.isHidden()) {
+          notifyInfo('화면 녹화 중 — 단축키로 정지');
+        }
+        showPromise.then(
+          (recResult) => {
+            if (recResult.kind === 'saved') {
+              notifyInfo(`화면 녹화 저장 — ${recResult.path}`);
+            } else if (recResult.kind === 'failed') {
+              notifyError(`화면 녹화 실패: ${recResult.error.message}`);
+            }
+          },
+          (err: unknown) => {
+            const message = err instanceof Error ? err.message : String(err);
+            console.error('[asis] video recorder failed', err);
+            notifyError(`화면 녹화 실패: ${message}`);
+          },
+        );
+      },
+      (err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error('[asis] 화면 녹화 영역 선택 실패', err);
+        notifyError(`화면 녹화 시작 실패: ${message}`);
+      },
+    );
+  });
+};
+
+const handleOcr = (): void => {
+  guardCapture().then((ok) => {
+    if (!ok) return;
+    selectionOverlay.show().then(
+      (result) => {
+        if (result.kind !== 'selected') return;
+        // OCR 은 창/영역 구분 없이 그 영역만 인식하면 되므로 rect 로 캡처한다.
+        const r = result.rect;
+        const rect = { x: r.x, y: r.y, w: r.w, h: r.h };
+        setTimeout(() => {
+          captureRegion(rect).then(
+            (cap) => {
+              if (cap.kind !== 'success') return;
+              const cleanup = (): void => {
+                unlink(cap.path).catch((e: unknown) =>
+                  console.warn('[asis] OCR tmp cleanup failed', e),
+                );
+              };
+              recognizeText(cap.path).then(
+                (text) => {
+                  cleanup();
+                  const trimmed = text.trim();
+                  if (!trimmed) {
+                    notifyInfo('텍스트를 찾지 못했습니다');
+                    return;
+                  }
+                  clipboard.writeText(trimmed);
+                  notifyInfo('텍스트를 클립보드에 복사했습니다');
+                },
+                (err: unknown) => {
+                  cleanup();
+                  const message =
+                    err instanceof Error ? err.message : String(err);
+                  console.error('[asis] OCR 실패', err);
+                  notifyError(`텍스트 추출 실패: ${message}`);
+                },
+              );
+            },
+            (err: unknown) => {
+              const message = err instanceof Error ? err.message : String(err);
+              console.error('[asis] OCR 캡처 실패', err);
+              notifyError(`텍스트 추출 실패: ${message}`);
+            },
+          );
+        }, OVERLAY_CLOSE_DELAY_MS);
+      },
+      (err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error('[asis] OCR 영역 선택 실패', err);
+        notifyError(`텍스트 추출 실패: ${message}`);
+      },
+    );
+  });
+};
+
+const handleScrollCapture = (): void => {
+  // 녹화 중이면 정지 (toggle).
+  if (scrollCaptureWindow.isActive()) {
+    notifyInfo('스크롤 캡처 정지 중…');
+    scrollCaptureWindow.triggerStop();
+    return;
+  }
+  guardCapture().then((ok) => {
+    if (!ok) return;
+    selectionOverlay.show().then(
+      (selResult) => {
+        if (selResult.kind !== 'selected') return;
+        const r = selResult.rect;
+        const rect = { x: r.x, y: r.y, w: r.w, h: r.h };
+        const showPromise = scrollCaptureWindow.show(rect);
+        if (scrollCaptureWindow.isHidden()) {
+          notifyInfo('스크롤 캡처 중 — 천천히 스크롤 후 단축키로 정지');
+        }
+        showPromise.then(
+          (res) => {
+            if (res.kind === 'saved') {
+              notifyInfo(`스크롤 캡처 저장 — ${res.path}`);
+            } else if (res.kind === 'copied') {
+              notifyInfo('스크롤 캡처 — 클립보드에 복사되었습니다');
+            } else if (res.kind === 'failed') {
+              notifyError(`스크롤 캡처 실패: ${res.error.message}`);
+            }
+          },
+          (err: unknown) => {
+            const message = err instanceof Error ? err.message : String(err);
+            console.error('[asis] scroll capture failed', err);
+            notifyError(`스크롤 캡처 실패: ${message}`);
+          },
+        );
+      },
+      (err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error('[asis] 스크롤 캡처 영역 선택 실패', err);
+        notifyError(`스크롤 캡처 시작 실패: ${message}`);
+      },
+    );
+  });
+};
+
 // 환경설정 IPC — 앱 전체 lifecycle 동안 유효.
 ipcMain.handle('settings:get', () => loadHotkeys());
 ipcMain.handle('settings:set', (_event, hotkeys: HotkeyConfig) => {
@@ -284,6 +449,9 @@ ipcMain.handle('history:copy', (_event, dataUrl: string) => {
 ipcMain.handle('history:pin', (_event, dataUrl: string, w: number, h: number) => {
   pinWindow.pin(dataUrl, w, h);
 });
+
+// 변경 이력 IPC — GitHub Releases 조회.
+ipcMain.handle('patch-history:list', () => fetchPatchNotes());
 
 // 텍스트 클립보드 복사 — color picker 의 HEX/RGB/HSL 등.
 // renderer 의 navigator.clipboard.writeText 는 창 포커스·우클릭(user activation 미부여)
@@ -433,6 +601,12 @@ app.whenReady().then(() => {
   const onGif = (): void => {
     handleGif();
   };
+  const onVideo = (): void => {
+    handleVideo();
+  };
+  const onOcr = (): void => {
+    handleOcr();
+  };
   const onClipboardPin = (): void => {
     handleClipboardPin();
   };
@@ -441,6 +615,107 @@ app.whenReady().then(() => {
   };
   const onHistory = (): void => {
     historyWindow.show();
+  };
+  const onPatchHistory = (): void => {
+    patchHistoryWindow.show();
+  };
+  const onRuler = (): void => {
+    rulerOverlay.open();
+  };
+  const onScrollCapture = (): void => {
+    handleScrollCapture();
+  };
+  const onStepGuide = (): void => {
+    // toggle — 녹화 중이면 기본(HTML)으로 종료.
+    if (stepGuideWindow.isActive()) {
+      stepGuideWindow.triggerStop('html');
+      return;
+    }
+    stepGuideWindow.show({
+      info: notifyInfo,
+      error: notifyError,
+      needsAccessibility: () => {
+        notifyError('스텝 가이드: 손쉬운 사용 권한이 필요합니다');
+        openPermissionSettings();
+      },
+    });
+  };
+  const onTimeMachineToggle = (): void => {
+    if (timeMachine.isRunning()) {
+      timeMachine.stop().then(
+        () => notifyInfo('타임머신 녹화를 정지했습니다'),
+        (err: unknown) =>
+          notifyError(
+            `타임머신 정지 실패: ${err instanceof Error ? err.message : String(err)}`,
+          ),
+      );
+      return;
+    }
+    guardCapture().then((ok) => {
+      if (!ok) return;
+      const buf = loadMisc().timeMachineBufferSeconds;
+      // rect 미지정 = 커서가 있는 디스플레이 전체를 상시 녹화.
+      timeMachine.start(undefined, buf).then(
+        () => notifyInfo(`타임머신 시작 — 최근 ${buf}초 유지 중 (⌘⇧S로 저장)`),
+        (err: unknown) =>
+          notifyError(
+            `타임머신 시작 실패: ${err instanceof Error ? err.message : String(err)}`,
+          ),
+      );
+    });
+  };
+  const onTimeMachineSave = (): void => {
+    if (!timeMachine.isRunning()) {
+      notifyInfo('타임머신이 실행 중이 아닙니다 (⌘⇧T로 시작)');
+      return;
+    }
+    timeMachine.save().then(
+      async (result) => {
+        if (result.kind === 'empty') {
+          notifyInfo('아직 저장할 구간이 없습니다 (조금 더 기다려 주세요)');
+          return;
+        }
+        // DRM 감지 — 저장 구간이 near-black 이면 경고(휴리스틱, 오탐 가능). 저장은 막지 않는다.
+        if (loadMisc().drmDetectEnabled) {
+          const probe = await probeProtectedContent(result.path).catch(
+            (err: unknown) => {
+              console.warn('[asis] DRM 감지 실패(무시하고 저장 진행)', err);
+              return null;
+            },
+          );
+          if (probe && probe.kind === 'protected') {
+            notifyError(
+              `저장된 화면이 검게 녹화되었습니다 — DRM/HDCP 보호 콘텐츠일 수 있습니다 (YMAX=${probe.ymax})`,
+            );
+          }
+        }
+        const dest = join(
+          app.getPath('videos'),
+          `ASIS-TimeMachine-${Date.now()}.mp4`,
+        );
+        const saved = await dialog.showSaveDialog({
+          defaultPath: dest,
+          filters: [{ name: 'MP4 Video', extensions: ['mp4'] }],
+        });
+        if (saved.canceled || !saved.filePath) {
+          await unlink(result.path).catch((e: unknown) => {
+            console.warn('[asis] timemachine tmp cleanup failed', e);
+          });
+          return;
+        }
+        await copyFile(result.path, saved.filePath);
+        await unlink(result.path).catch((e: unknown) => {
+          console.warn('[asis] timemachine tmp cleanup failed', e);
+        });
+        notifyInfo(
+          `타임머신 저장 — 최근 약 ${result.approxSeconds}초 (${saved.filePath})`,
+        );
+      },
+      (err: unknown) =>
+        notifyError(
+          `타임머신 저장 실패: ${err instanceof Error ? err.message : String(err)}`,
+        ),
+    );
   };
   const onOpenPermissions = (): void => {
     openPermissionSettings();
@@ -455,9 +730,17 @@ app.whenReady().then(() => {
     onDisableClickThrough,
     onCloseAllPins,
     onGif,
+    onVideo,
+    onOcr,
     onClipboardPin,
     onSettings,
     onHistory,
+    onPatchHistory,
+    onRuler,
+    onScrollCapture,
+    onStepGuide,
+    onTimeMachineToggle,
+    onTimeMachineSave,
     onOpenPermissions,
   };
   trayManager.start(handlers);

@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import { electronAPI } from '@electron-toolkit/preload';
 import type { HotkeyConfig, MiscConfig } from '../main/settings';
+import type { PatchNote } from '../main/patchNotes';
 
 type Rect = {
   x: number;
@@ -155,6 +156,30 @@ const recorder = {
 };
 
 /**
+ * 화면 영상 녹화 컨트롤 IPC 브릿지.
+ *  - stop(): 녹화 정지 → .mov 저장 다이얼로그
+ *  - cancel(): 폐기
+ *  - onTriggerStop/onTriggerCancel(cb): main 이 외부(단축키/트레이) 로 정지·취소 요청
+ * GIF recorder 와 달리 프레임 개념·인코딩 단계가 없다. onXxx 는 cleanup 반환.
+ */
+const videoRecorder = {
+  stop: (): void => ipcRenderer.send('video-recorder:stop'),
+  cancel: (): void => ipcRenderer.send('video-recorder:cancel'),
+  onTriggerStop: (callback: () => void): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on('video-recorder:trigger-stop', handler);
+    return () =>
+      ipcRenderer.removeListener('video-recorder:trigger-stop', handler);
+  },
+  onTriggerCancel: (callback: () => void): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on('video-recorder:trigger-cancel', handler);
+    return () =>
+      ipcRenderer.removeListener('video-recorder:trigger-cancel', handler);
+  },
+};
+
+/**
  * 환경설정 IPC 브릿지.
  *  - get(): 현재 핫키 설정 반환
  *  - set(hotkeys): 저장 + ShortcutManager 재등록
@@ -193,6 +218,56 @@ const captureHistory = {
     ipcRenderer.invoke('history:pin', dataUrl, w, h),
 };
 
+/**
+ * 변경 이력 IPC 브릿지 — GitHub Releases 조회(main 이 fetch).
+ */
+const patchHistory = {
+  list: (): Promise<PatchNote[]> => ipcRenderer.invoke('patch-history:list'),
+};
+
+/**
+ * 스텝 가이드 IPC 브릿지 — 클릭마다 스텝 누적, 종료 시 형식 지정 export.
+ */
+const stepGuide = {
+  onStepCount: (callback: (count: number) => void): (() => void) => {
+    const handler = (_event: IpcRendererEvent, count: number): void => {
+      callback(count);
+    };
+    ipcRenderer.on('step-guide:step-count', handler);
+    return () => ipcRenderer.removeListener('step-guide:step-count', handler);
+  },
+  stop: (format: 'markdown' | 'html'): void =>
+    ipcRenderer.send('step-guide:stop', format),
+};
+
+/**
+ * 스크롤 캡처 IPC 브릿지 — 주기 캡처 → 세로 스티칭.
+ */
+const scrollCapture = {
+  stop: (): void => ipcRenderer.send('scroll-capture:stop'),
+  cancel: (): void => ipcRenderer.send('scroll-capture:cancel'),
+  getFrameCount: (): Promise<number> =>
+    ipcRenderer.invoke('scroll-capture:get-frame-count'),
+  onStitching: (callback: () => void): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on('scroll-capture:stitching', handler);
+    return () =>
+      ipcRenderer.removeListener('scroll-capture:stitching', handler);
+  },
+  onTriggerStop: (callback: () => void): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on('scroll-capture:trigger-stop', handler);
+    return () =>
+      ipcRenderer.removeListener('scroll-capture:trigger-stop', handler);
+  },
+  onTriggerCancel: (callback: () => void): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on('scroll-capture:trigger-cancel', handler);
+    return () =>
+      ipcRenderer.removeListener('scroll-capture:trigger-cancel', handler);
+  },
+};
+
 if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('electron', electronAPI);
@@ -200,8 +275,12 @@ if (process.contextIsolated) {
     contextBridge.exposeInMainWorld('editor', editor);
     contextBridge.exposeInMainWorld('pin', pin);
     contextBridge.exposeInMainWorld('recorder', recorder);
+    contextBridge.exposeInMainWorld('videoRecorder', videoRecorder);
     contextBridge.exposeInMainWorld('settings', settings);
     contextBridge.exposeInMainWorld('captureHistory', captureHistory);
+    contextBridge.exposeInMainWorld('patchHistory', patchHistory);
+    contextBridge.exposeInMainWorld('stepGuide', stepGuide);
+    contextBridge.exposeInMainWorld('scrollCapture', scrollCapture);
   } catch (err) {
     console.error('preload: contextBridge expose failed', err);
   }

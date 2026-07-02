@@ -8,7 +8,14 @@ export type HotkeyConfig = {
   delayedRegion: string;
   disableClickThrough: string;
   gif: string;
+  video: string;
+  ocr: string;
   clipboardPin: string;
+  ruler: string;
+  timeMachineToggle: string;
+  timeMachineSave: string;
+  stepGuide: string;
+  scrollCapture: string;
 };
 
 export type MiscConfig = {
@@ -24,6 +31,10 @@ export type MiscConfig = {
   delayedCaptureSeconds: number;
   /** 캡처 후 에디터 자동 열기. false 면 에디터를 띄우지 않고 바로 클립보드에 복사. */
   autoOpenEditor: boolean;
+  /** 타임머신 버퍼 유지 길이(초). 10~120. */
+  timeMachineBufferSeconds: number;
+  /** DRM 보호영역(검은 화면) 감지 시 알림. */
+  drmDetectEnabled: boolean;
 };
 
 export type Settings = {
@@ -43,7 +54,14 @@ export const DEFAULT_HOTKEYS: HotkeyConfig = {
   delayedRegion: 'CommandOrControl+Shift+Alt+D',
   disableClickThrough: 'CommandOrControl+Shift+X',
   gif: 'CommandOrControl+Shift+G',
+  video: 'CommandOrControl+Shift+E',
+  ocr: 'CommandOrControl+Shift+O',
   clipboardPin: 'CommandOrControl+Shift+V',
+  ruler: 'CommandOrControl+Shift+L',
+  timeMachineToggle: 'CommandOrControl+Shift+T',
+  timeMachineSave: 'CommandOrControl+Shift+S',
+  stepGuide: 'CommandOrControl+Shift+U',
+  scrollCapture: 'CommandOrControl+Shift+J',
 };
 
 export const DEFAULT_MISC: MiscConfig = {
@@ -53,6 +71,8 @@ export const DEFAULT_MISC: MiscConfig = {
   pinDefaultOpacity: 1.0,
   delayedCaptureSeconds: 3,
   autoOpenEditor: true,
+  timeMachineBufferSeconds: 30,
+  drmDetectEnabled: true,
 };
 
 export const settingsStore = new ElectronStore<Settings>({

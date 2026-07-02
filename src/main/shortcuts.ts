@@ -14,8 +14,22 @@ export type ShortcutHandlers = {
   onDisableClickThrough: () => void;
   /** GIF 녹화 시작 — 영역 선택 → 일정 간격 캡처 → GIF. */
   onGif: () => void;
+  /** 화면 영상 녹화 시작/정지 — 영역 선택 → screencapture -v → .mov. */
+  onVideo: () => void;
+  /** 영역 선택 → 캡처 → OCR(Vision) → 텍스트 클립보드 복사. */
+  onOcr: () => void;
   /** 클립보드 이미지를 바로 Pin window 로 (Snipaste F3 결). */
   onClipboardPin: () => void;
+  /** 화면 자 / 간격 측정 오버레이. */
+  onRuler: () => void;
+  /** 타임머신 상시 녹화 토글(시작/정지). */
+  onTimeMachineToggle: () => void;
+  /** 타임머신 최근 구간 즉시 저장. */
+  onTimeMachineSave: () => void;
+  /** 스텝바이스텝 가이드 녹화 토글. */
+  onStepGuide: () => void;
+  /** 스크롤 캡처 시작/정지. */
+  onScrollCapture: () => void;
 };
 
 /**
@@ -63,7 +77,14 @@ export class ShortcutManager {
       [hotkeys.delayedRegion, handlers.onDelayedRegion],
       [hotkeys.disableClickThrough, handlers.onDisableClickThrough],
       [hotkeys.gif, handlers.onGif],
+      [hotkeys.video, handlers.onVideo],
+      [hotkeys.ocr, handlers.onOcr],
       [hotkeys.clipboardPin, handlers.onClipboardPin],
+      [hotkeys.ruler, handlers.onRuler],
+      [hotkeys.timeMachineToggle, handlers.onTimeMachineToggle],
+      [hotkeys.timeMachineSave, handlers.onTimeMachineSave],
+      [hotkeys.stepGuide, handlers.onStepGuide],
+      [hotkeys.scrollCapture, handlers.onScrollCapture],
     ];
 
     for (const [accelerator, callback] of bindings) {

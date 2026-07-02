@@ -13,4 +13,7 @@ package-lock.json
 
 # TypeScript 증분 빌드 캐시 — 머신별로 다르므로 추적 불필요
 *.tsbuildinfo
+
+# OCR 헬퍼 빌드 산출물 — pnpm build:ocr 로 생성 (Swift 소스만 추적)
+resources/bin/
 .claude/scheduled_tasks.lock

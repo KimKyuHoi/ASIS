@@ -6,13 +6,15 @@
   "author": "KimKyuHoi",
   "homepage": "https://kimkyuhoi.github.io/ASIS",
   "scripts": {
-    "dev": "docker compose up -d && concurrently -n hermes,app -c blue,green \"docker compose logs -f\" \"electron-vite dev\"",
-    "dev:app": "electron-vite dev",
+    "dev": "pnpm build:ocr && pnpm build:clickmon && docker compose up -d && concurrently -n hermes,app -c blue,green \"docker compose logs -f\" \"electron-vite dev\"",
+    "dev:app": "pnpm build:ocr && pnpm build:clickmon && electron-vite dev",
     "dev:hermes": "docker compose up -d && docker compose logs -f",
     "start": "electron-vite preview",
     "build": "pnpm typecheck && pnpm lint && electron-vite build",
     "build:unpack": "pnpm build && electron-builder --dir",
-    "build:mac": "electron-vite build && electron-builder --mac",
+    "build:mac": "pnpm build:ocr && pnpm build:clickmon && electron-vite build && electron-builder --mac",
+    "build:ocr": "bash scripts/build-ocr.sh",
+    "build:clickmon": "bash scripts/build-clickmon.sh",
     "build:win": "pnpm build && electron-builder --win",
     "build:linux": "electron-vite build && electron-builder --linux",
     "lint": "eslint --cache .",
@@ -79,6 +81,14 @@
       {
         "from": "resources/trayTemplate@2x.png",
         "to": "trayTemplate@2x.png"
+      },
+      {
+        "from": "resources/bin/asis-ocr",
+        "to": "asis-ocr"
+      },
+      {
+        "from": "resources/bin/asis-clickmon",
+        "to": "asis-clickmon"
       }
     ],
     "mac": {

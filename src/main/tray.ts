@@ -24,9 +24,17 @@ export type TrayMenuHandlers = {
   onDisableClickThrough: () => void;
   onCloseAllPins: () => void;
   onGif: () => void;
+  onVideo: () => void;
+  onOcr: () => void;
+  onRuler: () => void;
+  onScrollCapture: () => void;
+  onStepGuide: () => void;
+  onTimeMachineToggle: () => void;
+  onTimeMachineSave: () => void;
   onClipboardPin: () => void;
   onSettings: () => void;
   onHistory: () => void;
+  onPatchHistory: () => void;
   onOpenPermissions: () => void;
 };
 
@@ -96,13 +104,48 @@ export class TrayManager {
         accelerator: 'CommandOrControl+Shift+Alt+D',
         click: handlers.onDelayedRegion,
       },
+      {
+        label: '텍스트 추출 (OCR)…',
+        accelerator: 'CommandOrControl+Shift+O',
+        click: handlers.onOcr,
+      },
+      {
+        label: '화면 자 / 간격 측정…',
+        accelerator: 'CommandOrControl+Shift+L',
+        click: handlers.onRuler,
+      },
+      {
+        label: '스크롤 캡처…',
+        accelerator: 'CommandOrControl+Shift+J',
+        click: handlers.onScrollCapture,
+      },
 
       { type: 'separator' },
 
       {
+        label: '화면 녹화…',
+        accelerator: 'CommandOrControl+Shift+E',
+        click: handlers.onVideo,
+      },
+      {
         label: 'GIF 녹화…',
         accelerator: 'CommandOrControl+Shift+G',
         click: handlers.onGif,
+      },
+      {
+        label: '스텝 가이드 녹화…',
+        accelerator: 'CommandOrControl+Shift+U',
+        click: handlers.onStepGuide,
+      },
+      {
+        label: '타임머신 녹화 시작/정지',
+        accelerator: 'CommandOrControl+Shift+T',
+        click: handlers.onTimeMachineToggle,
+      },
+      {
+        label: '타임머신 최근 구간 저장',
+        accelerator: 'CommandOrControl+Shift+S',
+        click: handlers.onTimeMachineSave,
       },
       // 클립보드 이미지 → 바로 Pin (Snipaste F3 결).
       {
@@ -128,6 +171,7 @@ export class TrayManager {
       { type: 'separator' },
 
       { label: '캡처 히스토리', click: handlers.onHistory },
+      { label: '변경 이력…', click: handlers.onPatchHistory },
       { label: '환경설정…', click: handlers.onSettings },
       { label: '권한 설정…', click: handlers.onOpenPermissions },
 

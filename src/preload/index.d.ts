@@ -55,6 +55,13 @@ type RecorderAPI = {
   onTriggerCancel: (callback: () => void) => () => void;
 };
 
+type VideoRecorderAPI = {
+  stop: () => void;
+  cancel: () => void;
+  onTriggerStop: (callback: () => void) => () => void;
+  onTriggerCancel: (callback: () => void) => () => void;
+};
+
 type SettingsAPI = {
   get: () => Promise<HotkeyConfig>;
   set: (hotkeys: HotkeyConfig) => Promise<void>;
@@ -79,6 +86,31 @@ type HistoryAPI = {
   pin: (dataUrl: string, w: number, h: number) => Promise<void>;
 };
 
+type PatchNote = {
+  version: string;
+  name: string;
+  body: string;
+  date: string;
+};
+
+type PatchHistoryAPI = {
+  list: () => Promise<PatchNote[]>;
+};
+
+type StepGuideAPI = {
+  onStepCount: (callback: (count: number) => void) => () => void;
+  stop: (format: 'markdown' | 'html') => void;
+};
+
+type ScrollCaptureAPI = {
+  stop: () => void;
+  cancel: () => void;
+  getFrameCount: () => Promise<number>;
+  onStitching: (callback: () => void) => () => void;
+  onTriggerStop: (callback: () => void) => () => void;
+  onTriggerCancel: (callback: () => void) => () => void;
+};
+
 declare global {
   // eslint: .d.ts 는 consistent-type-definitions 룰 예외 (interface 필요 — Window augment).
   interface Window {
@@ -87,7 +119,11 @@ declare global {
     editor: EditorAPI;
     pin: PinAPI;
     recorder: RecorderAPI;
+    videoRecorder: VideoRecorderAPI;
     settings: SettingsAPI;
     captureHistory: HistoryAPI;
+    patchHistory: PatchHistoryAPI;
+    stepGuide: StepGuideAPI;
+    scrollCapture: ScrollCaptureAPI;
   }
 }

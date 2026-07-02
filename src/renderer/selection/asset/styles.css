@@ -584,3 +584,166 @@ body {
     transform: translate(-50%, 0);
   }
 }
+
+/* ── 화면 자 / 간격 측정 (ruler mode) ─────────────────────
+   측정 전용 오버레이. 캡처 selection 과 구분되도록 accent(파랑) 배색을 쓴다. */
+
+:root {
+  --ruler-line: rgba(94, 162, 255, 0.9);
+  --ruler-edge: rgba(94, 162, 255, 0.55);
+  --ruler-tick: rgba(255, 255, 255, 0.55);
+  --ruler-tick-major: rgba(255, 255, 255, 0.92);
+  --ruler-dim: rgba(0, 0, 0, 0.28);
+}
+
+/* 측정 모드는 전체를 은은하게 dim — 화면 대비 눈금·거리선이 잘 보이도록. */
+.overlay--ruler {
+  background: var(--ruler-dim);
+  animation: dimAppear var(--duration-mid) var(--ease-mac);
+}
+
+/* 가장자리 거리선 — 사각형 중심에서 화면 끝까지 dashed line. */
+.ruler-edge {
+  position: fixed;
+  pointer-events: none;
+  z-index: 45;
+}
+
+.ruler-edge--v {
+  width: 0;
+  border-left: 1px dashed var(--ruler-edge);
+}
+
+.ruler-edge--h {
+  height: 0;
+  border-top: 1px dashed var(--ruler-edge);
+}
+
+.ruler-edge__label {
+  position: fixed;
+  transform: translate(-50%, -50%);
+  padding: 2px 6px;
+  background: rgba(20, 20, 22, 0.9);
+  border: 1px solid rgba(94, 162, 255, 0.35);
+  border-radius: 5px;
+  color: rgba(255, 255, 255, 0.96);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 60;
+}
+
+/* 눈금 컨테이너 — 측정 사각형 상단(가로)·좌측(세로)에 붙는다. */
+.ruler-scale {
+  position: fixed;
+  pointer-events: none;
+  z-index: 55;
+}
+
+.ruler-scale--top {
+  height: 0;
+}
+
+.ruler-scale--left {
+  width: 0;
+}
+
+/* 개별 눈금 — 짧은 선. major 는 더 길고 라벨을 단다. */
+.ruler-tick {
+  position: absolute;
+  background: var(--ruler-tick);
+}
+
+.ruler-tick--x {
+  top: 0;
+  width: 1px;
+  height: 6px;
+}
+
+.ruler-tick--x.ruler-tick--major {
+  height: 11px;
+  background: var(--ruler-tick-major);
+}
+
+.ruler-tick--y {
+  left: 0;
+  height: 1px;
+  width: 6px;
+}
+
+.ruler-tick--y.ruler-tick--major {
+  width: 11px;
+  background: var(--ruler-tick-major);
+}
+
+.ruler-tick__num {
+  position: absolute;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.72);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 가로 눈금의 숫자는 눈금 아래쪽에, 세로 눈금의 숫자는 눈금 오른쪽에. */
+.ruler-tick--x .ruler-tick__num {
+  top: 13px;
+  left: 2px;
+}
+
+.ruler-tick--y .ruler-tick__num {
+  left: 13px;
+  top: -4px;
+}
+
+/* 측정 박스 — accent 실선 + 옅은 채움. 캡처 selection(흰 hairline)과 시각 구분. */
+.measure-box {
+  position: fixed;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  border: 1px solid var(--ruler-line);
+  background: rgba(94, 162, 255, 0.08);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.28),
+    0 0 18px rgba(94, 162, 255, 0.28);
+  animation: selectionAppear var(--duration-fast) var(--ease-mac);
+  z-index: 50;
+}
+
+/* 측정 박스 중앙의 w×h 라벨. */
+.measure-label {
+  position: fixed;
+  transform: translate(-50%, -50%);
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 5px 11px;
+  background: var(--chip-bg);
+  border: 1px solid rgba(94, 162, 255, 0.3);
+  border-radius: 7px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 8px 24px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 70;
+}
+
+.measure-label__dim {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--chip-text);
+}
+
+.measure-label__x {
+  font-size: 11px;
+  color: var(--chip-secondary);
+}
