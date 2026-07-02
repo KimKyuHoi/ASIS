@@ -2,7 +2,7 @@ import { mkdir, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ffmpegPath from 'ffmpeg-static';
-import { runProcess } from './runProcess';
+import { runProcess } from '../runProcess';
 
 /**
  * GIF 인코더 — frame PNG 들의 폴더를 받아 ffmpeg palette 2-pass 로 GIF 생성.

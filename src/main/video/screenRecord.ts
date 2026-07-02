@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { screen } from 'electron';
 import ffmpegPath from 'ffmpeg-static';
-import { runProcess } from './runProcess';
+import { runProcess } from '../runProcess';
 
 if (!ffmpegPath) {
   throw new Error('ffmpeg-static path 가 null — 설치 안 됐거나 platform 미지원');

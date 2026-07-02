@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { screen } from 'electron';
 import ffmpegPath from 'ffmpeg-static';
-import { runProcess } from './runProcess';
+import { runProcess } from '../runProcess';
 
 /**
  * 타임머신(섀도우) 녹화 — ffmpeg avfoundation 으로 화면을 *상시 연속 녹화* 하며

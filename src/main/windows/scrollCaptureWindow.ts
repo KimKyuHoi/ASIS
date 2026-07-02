@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadRendererPage, preloadPath } from './common';
 import { pickRecorderPlacement } from './recorderPlacement';
-import { ScrollCaptureManager } from '../scrollCapture';
+import { ScrollCaptureManager } from '../scroll-capture/scrollCapture';
 
 const CHANNEL_STOP = 'scroll-capture:stop';
 const CHANNEL_CANCEL = 'scroll-capture:cancel';

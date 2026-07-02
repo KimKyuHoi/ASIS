@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadRendererPage, preloadPath } from './common';
 import { pickRecorderPlacement } from './recorderPlacement';
-import { SequenceCaptureManager } from '../sequenceCapture';
+import { SequenceCaptureManager } from '../capture/sequenceCapture';
 import { settingsStore } from '../settings';
 
 const CHANNEL_STOP = 'recorder:stop';

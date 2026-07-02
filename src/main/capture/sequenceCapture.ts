@@ -1,5 +1,5 @@
 import { GifManager } from './gif';
-import { runProcess } from './runProcess';
+import { runProcess } from '../runProcess';
 
 const SCREENCAPTURE_BIN = '/usr/sbin/screencapture';
 

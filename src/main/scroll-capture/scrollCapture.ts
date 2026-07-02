@@ -1,7 +1,7 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { runProcess } from './runProcess';
+import { runProcess } from '../runProcess';
 import { stitchFrames, type StitchOptions, type StitchReport } from './scrollStitch';
 
 const SCREENCAPTURE_BIN = '/usr/sbin/screencapture';

@@ -1,8 +1,8 @@
 import { stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { runProcess } from './runProcess';
-import { loadMisc } from './settings';
+import { runProcess } from '../runProcess';
+import { loadMisc } from '../settings';
 
 /**
  * macOS `screencapture` 자식 프로세스 래퍼 — *임시 PNG 파일 path 반환*.

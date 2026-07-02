@@ -1,7 +1,7 @@
 import { BrowserWindow, ipcMain, screen } from 'electron';
 import { is } from '@electron-toolkit/utils';
 import { loadRendererPage, preloadPath } from './common';
-import { StepGuideManager, type StepGuideState } from '../stepGuide';
+import { StepGuideManager, type StepGuideState } from '../step-guide/stepGuide';
 
 const CHANNEL_STOP = 'step-guide:stop';
 

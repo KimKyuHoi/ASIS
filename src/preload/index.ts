@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import { electronAPI } from '@electron-toolkit/preload';
 import type { HotkeyConfig, MiscConfig } from '../main/settings';
-import type { PatchNote } from '../main/patchNotes';
+import type { PatchNote } from '../main/patch-notes/patchNotes';
 
 type Rect = {
   x: number;

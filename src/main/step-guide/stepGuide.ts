@@ -1,8 +1,8 @@
 import { writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { app, dialog, nativeImage, screen } from 'electron';
-import { captureRegion } from './capture';
-import { getElementBoundsAtPoint } from './windowsInfo';
+import { captureRegion } from '../capture/capture';
+import { getElementBoundsAtPoint } from '../windowsInfo';
 import {
   ClickMonitorManager,
   type ClickPoint,

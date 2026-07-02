@@ -93,8 +93,22 @@ src/renderer/dashboard/
 - 신규로 추가하는 도메인 폴더부터 강제.
 - 기존 폴더(`src/renderer/editor`, `selection`, `recorder` 등) 는 점진 마이그
   레이션. 새 파일을 추가할 때 이 구조에 맞춰 자리를 만든다.
-- `src/main/` (Electron main process) 는 도메인이 아닌 인프라 계층이라 본
-  규칙의 직접 적용 대상이 아니다. main 측은 기존대로 모듈 단위 구성.
+- `src/main/` (Electron main process) 는 renderer 의 5종 규칙(component/hook/
+  lib/types/asset) 대상이 아니다 — UI 가 없는 인프라 계층이라 그 분류가 안
+  맞는다. 대신 **기능(feature) 단위로 폴더를 나눈다**:
+  - 여러 파일로 구성되거나 독립적으로 찾아볼 일이 있는 기능은 kebab-case
+    폴더로 묶는다 (예: `capture/`, `scroll-capture/`, `step-guide/`,
+    `time-machine/`, `video/`, `ocr/`, `patch-notes/`).
+  - 앱 전역에서 공유되는 코어 인프라(`index.ts`, `settings.ts`,
+    `shortcuts.ts`, `tray.ts`, `menu.ts`, `permissions.ts`,
+    `captureHistory.ts`, `updateChecker.ts`, `runProcess.ts`,
+    `windowsInfo.ts` 등)와 모든 `BrowserWindow` lifecycle 매니저를 모으는
+    `windows/` 는 최상위에 그대로 둔다 — 이들은 특정 기능에 속하지 않거나
+    (`runProcess`, `windowsInfo`), 이미 "윈도우 매니저" 라는 자체 그룹으로
+    묶여 있어(`windows/`) 기능별로 재분산하면 오히려 찾기 어려워진다.
+  - 폴더 안 파일 네이밍은 renderer 의 kebab-case 강제를 따르지 않는다 —
+    main 은 클래스/함수 파일이 대부분이라 기존처럼 camelCase 유지
+    (예: `step-guide/stepGuide.ts`, `time-machine/timeMachine.ts`).
 
 ## 자동 적용
 

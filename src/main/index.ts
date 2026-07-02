@@ -15,13 +15,13 @@ import {
   captureWindow,
   captureWindowById,
   type CaptureResult,
-} from './capture';
+} from './capture/capture';
 import { SelectionOverlayManager } from './windows/selectionOverlay';
 import { EditorWindowManager } from './windows/editorWindow';
 import { PinWindowManager } from './windows/pinWindow';
 import { RecorderWindowManager } from './windows/recorderWindow';
 import { VideoRecorderWindowManager } from './windows/videoRecorderWindow';
-import { recognizeText } from './ocr';
+import { recognizeText } from './ocr/ocr';
 import { SettingsWindowManager } from './windows/settingsWindow';
 import { HistoryWindowManager } from './windows/historyWindow';
 import { PatchHistoryWindowManager } from './windows/patchHistoryWindow';
@@ -29,9 +29,9 @@ import { RulerOverlayManager } from './windows/rulerOverlay';
 import { StepGuideWindowManager } from './windows/stepGuideWindow';
 import { ScrollCaptureWindowManager } from './windows/scrollCaptureWindow';
 import { getEntries } from './captureHistory';
-import { fetchPatchNotes } from './patchNotes';
-import { TimeMachineManager } from './timeMachine';
-import { probeProtectedContent } from './drmDetect';
+import { fetchPatchNotes } from './patch-notes/patchNotes';
+import { TimeMachineManager } from './time-machine/timeMachine';
+import { probeProtectedContent } from './time-machine/drmDetect';
 import { checkPermissionsOnLaunch, guardCapture, openPermissionSettings } from './permissions';
 import {
   isNewer,

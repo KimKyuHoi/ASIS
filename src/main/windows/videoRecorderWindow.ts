@@ -11,7 +11,7 @@ import { copyFile, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { loadRendererPage, preloadPath } from './common';
 import { pickRecorderPlacement } from './recorderPlacement';
-import { ScreenRecordManager } from '../screenRecord';
+import { ScreenRecordManager } from '../video/screenRecord';
 
 const CHANNEL_STOP = 'video-recorder:stop';
 const CHANNEL_CANCEL = 'video-recorder:cancel';
