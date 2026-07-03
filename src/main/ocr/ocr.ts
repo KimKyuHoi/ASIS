@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { app } from 'electron';
 
 /**
- * OCR 헬퍼(Swift + Vision) 바이너리 경로.
+ * Vision 헬퍼(Swift) 바이너리 경로.
  *   - prod: extraResources 로 앱 번들 Resources/asis-ocr.
  *   - dev : 프로젝트 resources/bin/asis-ocr (pnpm build:ocr 산출물).
  */
@@ -15,23 +15,23 @@ function ocrBinaryPath(): string {
 }
 
 /**
- * 이미지 파일에서 텍스트를 인식해 반환 (macOS Vision, 한국어+영어).
+ * asis-ocr 헬퍼를 spawn 해 stdout 을 모아 반환.
  *
- * runProcess(one-shot, stderr 만 수집) 를 쓰지 않는 이유: OCR 결과가 stdout 이라
+ * runProcess(one-shot, stderr 만 수집) 를 쓰지 않는 이유: 결과가 stdout 이라
  * 직접 spawn 해서 stdout 을 모은다. 바이너리 부재/비정상 종료는 명시 reject.
  */
-export function recognizeText(imagePath: string): Promise<string> {
+function runVision(args: string[], label: string): Promise<string> {
   const bin = ocrBinaryPath();
   if (!existsSync(bin)) {
     // null-safety — 조용히 빈 문자열 반환하지 않고 원인을 드러낸다.
     return Promise.reject(
       new Error(
-        `OCR 바이너리를 찾을 수 없습니다: ${bin} — 'pnpm build:ocr' 를 실행하세요`,
+        `${label} 바이너리를 찾을 수 없습니다: ${bin} — 'pnpm build:ocr' 를 실행하세요`,
       ),
     );
   }
   return new Promise<string>((resolve, reject) => {
-    const child = spawn(bin, [imagePath]);
+    const child = spawn(bin, args);
     const outChunks: Buffer[] = [];
     const errChunks: Buffer[] = [];
     let settled = false;
@@ -42,7 +42,7 @@ export function recognizeText(imagePath: string): Promise<string> {
     child.on('error', (err) => {
       if (settled) return;
       settled = true;
-      reject(new Error(`OCR spawn 실패: ${err.message}`));
+      reject(new Error(`${label} spawn 실패: ${err.message}`));
     });
 
     child.on('close', (code) => {
@@ -53,7 +53,17 @@ export function recognizeText(imagePath: string): Promise<string> {
         return;
       }
       const stderr = Buffer.concat(errChunks).toString('utf8').trim();
-      reject(new Error(`OCR 실패 (exit ${code ?? 'null'}): ${stderr}`));
+      reject(new Error(`${label} 실패 (exit ${code ?? 'null'}): ${stderr}`));
     });
   });
+}
+
+/** 이미지에서 텍스트를 인식해 반환 (macOS Vision, 한국어+영어). */
+export function recognizeText(imagePath: string): Promise<string> {
+  return runVision([imagePath], 'OCR');
+}
+
+/** 이미지에서 QR/바코드 payload 를 인식해 반환 (macOS Vision). */
+export function recognizeBarcode(imagePath: string): Promise<string> {
+  return runVision(['--barcode', imagePath], '바코드 인식');
 }

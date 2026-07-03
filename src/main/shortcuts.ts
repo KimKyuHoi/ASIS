@@ -30,6 +30,8 @@ export type ShortcutHandlers = {
   onStepGuide: () => void;
   /** 스크롤 캡처 시작/정지. */
   onScrollCapture: () => void;
+  /** QR·바코드 스캔 — 영역 선택 → 캡처 → Vision 바코드 인식 → 클립보드. */
+  onQr: () => void;
 };
 
 /**
@@ -85,6 +87,7 @@ export class ShortcutManager {
       [hotkeys.timeMachineSave, handlers.onTimeMachineSave],
       [hotkeys.stepGuide, handlers.onStepGuide],
       [hotkeys.scrollCapture, handlers.onScrollCapture],
+      [hotkeys.qr, handlers.onQr],
     ];
 
     for (const [accelerator, callback] of bindings) {

@@ -1,6 +1,7 @@
 import { app, clipboard, dialog, ipcMain, nativeImage, Notification, screen } from 'electron';
 import { existsSync } from 'node:fs';
 import { copyFile, unlink } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { electronApp, is, optimizer } from '@electron-toolkit/utils';
 import log from 'electron-log/main';
@@ -21,7 +22,17 @@ import { EditorWindowManager } from './windows/editorWindow';
 import { PinWindowManager } from './windows/pinWindow';
 import { RecorderWindowManager } from './windows/recorderWindow';
 import { VideoRecorderWindowManager } from './windows/videoRecorderWindow';
-import { recognizeText } from './ocr/ocr';
+import { recognizeText, recognizeBarcode } from './ocr/ocr';
+import {
+  extractPalette,
+  paletteToClipboardText,
+} from './color-palette/colorPalette';
+import { generateQrPng } from './qr-gen/qrGen';
+import {
+  removeBackground,
+  isBackgroundRemoveSupported,
+} from './background-remove/backgroundRemove';
+import { runImageConvert } from './image-convert/imageConvertFlow';
 import { SettingsWindowManager } from './windows/settingsWindow';
 import { HistoryWindowManager } from './windows/historyWindow';
 import { PatchHistoryWindowManager } from './windows/patchHistoryWindow';
@@ -364,6 +375,215 @@ const handleOcr = (): void => {
   });
 };
 
+const handleQr = (): void => {
+  guardCapture().then((ok) => {
+    if (!ok) return;
+    selectionOverlay.show().then(
+      (result) => {
+        if (result.kind !== 'selected') return;
+        const r = result.rect;
+        const rect = { x: r.x, y: r.y, w: r.w, h: r.h };
+        setTimeout(() => {
+          captureRegion(rect).then(
+            (cap) => {
+              if (cap.kind !== 'success') return;
+              const cleanup = (): void => {
+                unlink(cap.path).catch((e: unknown) =>
+                  console.warn('[asis] QR tmp cleanup failed', e),
+                );
+              };
+              recognizeBarcode(cap.path).then(
+                (text) => {
+                  cleanup();
+                  const trimmed = text.trim();
+                  if (!trimmed) {
+                    notifyInfo('QR·바코드를 찾지 못했습니다');
+                    return;
+                  }
+                  clipboard.writeText(trimmed);
+                  notifyInfo(`QR·바코드 복사됨 — ${trimmed}`);
+                },
+                (err: unknown) => {
+                  cleanup();
+                  const message =
+                    err instanceof Error ? err.message : String(err);
+                  console.error('[asis] QR 실패', err);
+                  notifyError(`QR·바코드 스캔 실패: ${message}`);
+                },
+              );
+            },
+            (err: unknown) => {
+              const message = err instanceof Error ? err.message : String(err);
+              console.error('[asis] QR 캡처 실패', err);
+              notifyError(`QR·바코드 스캔 실패: ${message}`);
+            },
+          );
+        }, OVERLAY_CLOSE_DELAY_MS);
+      },
+      (err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error('[asis] QR 영역 선택 실패', err);
+        notifyError(`QR·바코드 스캔 실패: ${message}`);
+      },
+    );
+  });
+};
+
+const handleColorPalette = (): void => {
+  guardCapture().then((ok) => {
+    if (!ok) return;
+    selectionOverlay.show().then(
+      (result) => {
+        if (result.kind !== 'selected') return;
+        const r = result.rect;
+        const rect = { x: r.x, y: r.y, w: r.w, h: r.h };
+        setTimeout(() => {
+          captureRegion(rect).then(
+            (cap) => {
+              if (cap.kind !== 'success') return;
+              const cleanup = (): void => {
+                unlink(cap.path).catch((e: unknown) =>
+                  console.warn('[asis] color-palette tmp cleanup failed', e),
+                );
+              };
+              try {
+                // extractPalette 는 동기(순수 계산) — spawn 이 아니라 try/catch.
+                const palette = extractPalette(cap.path, { colorCount: 6 });
+                cleanup();
+                clipboard.writeText(paletteToClipboardText(palette));
+                notifyInfo(`대표색 ${palette.length}개를 클립보드에 복사했습니다`);
+              } catch (err) {
+                cleanup();
+                const message =
+                  err instanceof Error ? err.message : String(err);
+                console.error('[asis] 색상 팔레트 추출 실패', err);
+                notifyError(`색상 팔레트 추출 실패: ${message}`);
+              }
+            },
+            (err: unknown) => {
+              const message = err instanceof Error ? err.message : String(err);
+              console.error('[asis] 색상 팔레트 캡처 실패', err);
+              notifyError(`색상 팔레트 추출 실패: ${message}`);
+            },
+          );
+        }, OVERLAY_CLOSE_DELAY_MS);
+      },
+      (err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error('[asis] 색상 팔레트 영역 선택 실패', err);
+        notifyError(`색상 팔레트 추출 실패: ${message}`);
+      },
+    );
+  });
+};
+
+const handleClipboardQr = (): void => {
+  const text = clipboard.readText().trim();
+  if (!text) {
+    notifyInfo('클립보드에 텍스트가 없습니다');
+    return;
+  }
+  generateQrPng(text).then(
+    (pngPath) => {
+      const cleanup = (): void => {
+        unlink(pngPath).catch((e: unknown) =>
+          console.warn('[asis] QR gen tmp cleanup failed', e),
+        );
+      };
+      const image = nativeImage.createFromPath(pngPath);
+      if (image.isEmpty()) {
+        cleanup();
+        notifyError('QR 이미지를 읽지 못했습니다');
+        return;
+      }
+      const { width, height } = image.getSize();
+      const dataUrl = image.toDataURL();
+      cleanup();
+      pinWindow.pin(dataUrl, width, height);
+    },
+    (err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('[asis] QR 생성 실패', err);
+      notifyError(`QR 생성 실패: ${message}`);
+    },
+  );
+};
+
+const handleBackgroundRemove = (): void => {
+  // macOS 14 미만 게이팅 — 기능 비활성 + 안내.
+  if (!isBackgroundRemoveSupported()) {
+    notifyError('배경 제거는 macOS 14(Sonoma) 이상에서만 지원됩니다');
+    return;
+  }
+  guardCapture().then((ok) => {
+    if (!ok) return;
+    selectionOverlay.show().then(
+      (result) => {
+        if (result.kind !== 'selected') return;
+        const r = result.rect;
+        const rect = { x: r.x, y: r.y, w: r.w, h: r.h };
+        setTimeout(() => {
+          captureRegion(rect).then(
+            (cap) => {
+              if (cap.kind !== 'success') return;
+              const outPath = join(
+                tmpdir(),
+                `asis-bgremoved-${Date.now()}-${process.pid}.png`,
+              );
+              const cleanup = (): void => {
+                unlink(cap.path).catch((e: unknown) =>
+                  console.warn('[asis] bgremove input cleanup failed', e),
+                );
+              };
+              removeBackground(cap.path, outPath).then(
+                (res) => {
+                  cleanup();
+                  if (res.kind === 'no-subject') {
+                    notifyInfo('피사체를 찾지 못했습니다 (배경 제거 대상 없음)');
+                    return;
+                  }
+                  const image = nativeImage.createFromPath(res.path);
+                  const dropOutput = (): void => {
+                    unlink(res.path).catch((e: unknown) =>
+                      console.warn('[asis] bgremove output cleanup failed', e),
+                    );
+                  };
+                  if (image.isEmpty()) {
+                    notifyError('배경 제거 결과 이미지를 읽지 못했습니다');
+                    dropOutput();
+                    return;
+                  }
+                  const { width, height } = image.getSize();
+                  pinWindow.pin(image.toDataURL(), width, height);
+                  notifyInfo('배경을 제거했습니다');
+                  dropOutput();
+                },
+                (err: unknown) => {
+                  cleanup();
+                  const message =
+                    err instanceof Error ? err.message : String(err);
+                  console.error('[asis] 배경 제거 실패', err);
+                  notifyError(`배경 제거 실패: ${message}`);
+                },
+              );
+            },
+            (err: unknown) => {
+              const message = err instanceof Error ? err.message : String(err);
+              console.error('[asis] 배경 제거 캡처 실패', err);
+              notifyError(`배경 제거 실패: ${message}`);
+            },
+          );
+        }, OVERLAY_CLOSE_DELAY_MS);
+      },
+      (err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error('[asis] 배경 제거 영역 선택 실패', err);
+        notifyError(`배경 제거 실패: ${message}`);
+      },
+    );
+  });
+};
+
 const handleScrollCapture = (): void => {
   // 녹화 중이면 정지 (toggle).
   if (scrollCaptureWindow.isActive()) {
@@ -625,6 +845,31 @@ app.whenReady().then(() => {
   const onScrollCapture = (): void => {
     handleScrollCapture();
   };
+  const onQr = (): void => {
+    handleQr();
+  };
+  const onColorPalette = (): void => {
+    handleColorPalette();
+  };
+  const onClipboardQr = (): void => {
+    handleClipboardQr();
+  };
+  const onBackgroundRemove = (): void => {
+    handleBackgroundRemove();
+  };
+  const onImageConvert = (): void => {
+    runImageConvert(
+      {
+        guardCapture,
+        showSelectionOverlay: () => selectionOverlay.show(),
+        captureRegion,
+        notifyInfo,
+        notifyError,
+        overlayCloseDelayMs: OVERLAY_CLOSE_DELAY_MS,
+      },
+      { format: 'jpeg' },
+    );
+  };
   const onStepGuide = (): void => {
     // toggle — 녹화 중이면 기본(HTML)으로 종료.
     if (stepGuideWindow.isActive()) {
@@ -738,6 +983,11 @@ app.whenReady().then(() => {
     onPatchHistory,
     onRuler,
     onScrollCapture,
+    onQr,
+    onColorPalette,
+    onBackgroundRemove,
+    onImageConvert,
+    onClipboardQr,
     onStepGuide,
     onTimeMachineToggle,
     onTimeMachineSave,
