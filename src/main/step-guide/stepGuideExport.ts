@@ -11,18 +11,30 @@ import { basename } from 'node:path';
  *   - HTML: 이미지를 data URL 로 임베드해 단일 .html 파일로 자체 완결(공유 편함).
  */
 
+/**
+ * 스텝 이미지의 종류.
+ *   - 'image': 그 시점의 정지 PNG (첫 스텝, 그리고 GIF 구간이 완성 못 된 경우의 fallback).
+ *   - 'gif'  : 직전 클릭 ~ 현재 클릭 사이 구간을 기록한 애니메이션 GIF.
+ * kind 에 따라 파일 확장자·마커 표시 여부가 갈린다(gif 는 애니메이션이라 마커 없음).
+ */
+export type StepKind =
+  | 'image' |
+  'gif';
+
 /** 가이드의 스텝 하나. 좌표는 캡처 이미지의 픽셀 기준(포인터 표시용). */
 export type GuideStep = {
   /** 1-based 순번. */
   order: number;
-  /** 캡처 PNG 파일의 절대 경로. */
+  /** 이미지 종류 — 파일 확장자(png/gif)·포인터 마커 표시 여부를 가른다. */
+  kind: StepKind;
+  /** 캡처 결과 파일(PNG 또는 GIF)의 절대 경로. */
   imagePath: string;
-  /** 이 스텝 이미지의 data URL(HTML 임베드용). */
+  /** 이 스텝 이미지의 data URL(HTML 임베드용). image=PNG, gif=GIF base64. */
   imageDataUrl: string;
   /** 이미지 픽셀 크기. */
   width: number;
   height: number;
-  /** 클릭 위치 — 이미지 좌상단 기준 픽셀 좌표(포인터 마커 위치). */
+  /** 클릭 위치 — 이미지 좌상단 기준 픽셀 좌표(포인터 마커 위치). gif 는 마커 미표시. */
   clickX: number;
   clickY: number;
   /** 스텝 시각(epoch ms). */
@@ -51,12 +63,16 @@ function formatDate(ms: number): string {
   );
 }
 
-/** 한 스텝의 사람용 설명 텍스트 — 라벨이 있으면 "N. '버튼' 클릭", 없으면 좌표. */
+/**
+ * 한 스텝의 사람용 설명 텍스트 — 라벨이 있으면 "N. '버튼' 클릭", 없으면 좌표.
+ * gif 스텝은 "직전 → 이번 클릭까지의 동작" 을 담으므로 접미사로 (동작)을 붙인다.
+ */
 function stepCaption(step: GuideStep): string {
+  const suffix = step.kind === 'gif' ? ' (동작)' : '';
   if (step.label) {
-    return `${step.order}. "${step.label}" 클릭`;
+    return `${step.order}. "${step.label}" 클릭${suffix}`;
   }
-  return `${step.order}. (${step.clickX}, ${step.clickY}) 위치 클릭`;
+  return `${step.order}. (${step.clickX}, ${step.clickY}) 위치 클릭${suffix}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -168,12 +184,25 @@ ${stepsHtml}
 }
 
 function renderStepHtml(step: GuideStep): string {
-  // 마커를 이미지 크기 대비 퍼센트로 배치 — 이미지가 축소돼도 위치 유지.
+  const caption = escapeHtml(stepCaption(step));
+  const alt = escapeHtml(`단계 ${step.order}`);
+
+  // gif 스텝은 "직전 → 이번 클릭까지의 동작" 을 애니메이션으로 이미 담고 있어
+  // 정지 포인터 마커가 의미 없다(클릭 지점이 애니메이션 마지막 프레임에서 자연히 드러남).
+  // 마커를 얹으면 오히려 오해를 부르므로 gif 는 마커 없이 이미지만 렌더한다.
+  if (step.kind === 'gif') {
+    return `<section class="step">
+  <h2>${caption}</h2>
+  <div class="shot">
+    <img src="${step.imageDataUrl}" alt="${alt}" width="${step.width}" height="${step.height}" />
+  </div>
+</section>`;
+  }
+
+  // image 스텝(정지 PNG) — 클릭 위치에 포인터 마커를 퍼센트로 오버레이(반응형).
   // width/height 가 0 이면(비정상) 50% 로 fallback 하되, 이는 캡처 검증에서 걸러진다.
   const leftPct = step.width > 0 ? (step.clickX / step.width) * 100 : 50;
   const topPct = step.height > 0 ? (step.clickY / step.height) * 100 : 50;
-  const caption = escapeHtml(stepCaption(step));
-  const alt = escapeHtml(`단계 ${step.order}`);
   return `<section class="step">
   <h2>${caption}</h2>
   <div class="shot">
@@ -186,9 +215,13 @@ function renderStepHtml(step: GuideStep): string {
 // ---------------------------------------------------------------------------
 // 파일명 헬퍼
 // ---------------------------------------------------------------------------
-/** 스텝 이미지 파일명 규칙 — step-01.png 형태(순번 zero-pad). */
-export function stepImageFileName(order: number): string {
-  return `step-${String(order).padStart(2, '0')}.png`;
+/**
+ * 스텝 이미지 파일명 규칙 — step-01.png / step-02.gif 형태(순번 zero-pad).
+ * kind 에 따라 확장자를 가른다: image→png, gif→gif.
+ */
+export function stepImageFileName(order: number, kind: StepKind): string {
+  const ext = kind === 'gif' ? 'gif' : 'png';
+  return `step-${String(order).padStart(2, '0')}.${ext}`;
 }
 
 /** 원본 임시 캡처 경로에서 확장자만 확인(png 전제). 진단용. */
