@@ -245,6 +245,30 @@ export default function Settings(): JSX.Element {
             로그인 시 자동 시작
           </label>
         </div>
+        <div className="misc-row">
+          <label className="misc-row__label" htmlFor="tmBuffer">
+            타임머신 버퍼 (최근)
+          </label>
+          <input
+            id="tmBuffer"
+            type="range"
+            className="misc-row__range"
+            min={10}
+            max={120}
+            step={5}
+            value={misc.timeMachineBufferSeconds}
+            onChange={(e): void => {
+              setMisc((prev) => ({
+                ...prev,
+                timeMachineBufferSeconds: Number(e.target.value),
+              }));
+              setSaved(false);
+            }}
+          />
+          <span className="misc-row__value">
+            {misc.timeMachineBufferSeconds}초
+          </span>
+        </div>
       </section>
 
       <section className="settings__section">
