@@ -28,7 +28,6 @@ export type TrayMenuHandlers = {
   onOcr: () => void;
   onRuler: () => void;
   onScrollCapture: () => void;
-  onColorPalette: () => void;
   onStepGuide: () => void;
   onTimeMachineToggle: () => void;
   onTimeMachineSave: () => void;
@@ -120,7 +119,6 @@ export class TrayManager {
         accelerator: 'CommandOrControl+Shift+J',
         click: handlers.onScrollCapture,
       },
-      { label: '색상 팔레트 추출…', click: handlers.onColorPalette },
 
       { type: 'separator' },
 

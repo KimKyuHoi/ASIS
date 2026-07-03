@@ -22,10 +22,6 @@ import { PinWindowManager } from './windows/pinWindow';
 import { RecorderWindowManager } from './windows/recorderWindow';
 import { VideoRecorderWindowManager } from './windows/videoRecorderWindow';
 import { recognizeText } from './ocr/ocr';
-import {
-  extractPalette,
-  paletteToClipboardText,
-} from './color-palette/colorPalette';
 import { SettingsWindowManager } from './windows/settingsWindow';
 import { HistoryWindowManager } from './windows/historyWindow';
 import { PatchHistoryWindowManager } from './windows/patchHistoryWindow';
@@ -368,54 +364,6 @@ const handleOcr = (): void => {
   });
 };
 
-const handleColorPalette = (): void => {
-  guardCapture().then((ok) => {
-    if (!ok) return;
-    selectionOverlay.show().then(
-      (result) => {
-        if (result.kind !== 'selected') return;
-        const r = result.rect;
-        const rect = { x: r.x, y: r.y, w: r.w, h: r.h };
-        setTimeout(() => {
-          captureRegion(rect).then(
-            (cap) => {
-              if (cap.kind !== 'success') return;
-              const cleanup = (): void => {
-                unlink(cap.path).catch((e: unknown) =>
-                  console.warn('[asis] color-palette tmp cleanup failed', e),
-                );
-              };
-              try {
-                // extractPalette 는 동기(순수 계산) — spawn 이 아니라 try/catch.
-                const palette = extractPalette(cap.path, { colorCount: 6 });
-                cleanup();
-                clipboard.writeText(paletteToClipboardText(palette));
-                notifyInfo(`대표색 ${palette.length}개를 클립보드에 복사했습니다`);
-              } catch (err) {
-                cleanup();
-                const message =
-                  err instanceof Error ? err.message : String(err);
-                console.error('[asis] 색상 팔레트 추출 실패', err);
-                notifyError(`색상 팔레트 추출 실패: ${message}`);
-              }
-            },
-            (err: unknown) => {
-              const message = err instanceof Error ? err.message : String(err);
-              console.error('[asis] 색상 팔레트 캡처 실패', err);
-              notifyError(`색상 팔레트 추출 실패: ${message}`);
-            },
-          );
-        }, OVERLAY_CLOSE_DELAY_MS);
-      },
-      (err: unknown) => {
-        const message = err instanceof Error ? err.message : String(err);
-        console.error('[asis] 색상 팔레트 영역 선택 실패', err);
-        notifyError(`색상 팔레트 추출 실패: ${message}`);
-      },
-    );
-  });
-};
-
 const handleScrollCapture = (): void => {
   // 녹화 중이면 정지 (toggle).
   if (scrollCaptureWindow.isActive()) {
@@ -680,9 +628,6 @@ app.whenReady().then(() => {
   const onScrollCapture = (): void => {
     handleScrollCapture();
   };
-  const onColorPalette = (): void => {
-    handleColorPalette();
-  };
   const onStepGuide = (): void => {
     // toggle — 녹화 중이면 기본(HTML)으로 종료.
     if (stepGuideWindow.isActive()) {
@@ -796,7 +741,6 @@ app.whenReady().then(() => {
     onPatchHistory,
     onRuler,
     onScrollCapture,
-    onColorPalette,
     onStepGuide,
     onTimeMachineToggle,
     onTimeMachineSave,
