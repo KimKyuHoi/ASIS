@@ -1,4 +1,4 @@
-import { app, clipboard, dialog, ipcMain, nativeImage, Notification, screen } from 'electron';
+import { app, clipboard, dialog, ipcMain, nativeImage, Notification, screen, shell } from 'electron';
 import { existsSync } from 'node:fs';
 import { copyFile, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -672,6 +672,9 @@ ipcMain.handle('history:pin', (_event, dataUrl: string, w: number, h: number) =>
 
 // 변경 이력 IPC — GitHub Releases 조회.
 ipcMain.handle('patch-history:list', () => fetchPatchNotes());
+ipcMain.handle('patch-history:open-url', (_event, url: string) =>
+  shell.openExternal(url),
+);
 
 // 텍스트 클립보드 복사 — color picker 의 HEX/RGB/HSL 등.
 // renderer 의 navigator.clipboard.writeText 는 창 포커스·우클릭(user activation 미부여)

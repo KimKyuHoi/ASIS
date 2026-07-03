@@ -91,10 +91,12 @@ type PatchNote = {
   name: string;
   body: string;
   date: string;
+  url: string;
 };
 
 type PatchHistoryAPI = {
   list: () => Promise<PatchNote[]>;
+  openUrl: (url: string) => Promise<void>;
 };
 
 type StepGuideAPI = {

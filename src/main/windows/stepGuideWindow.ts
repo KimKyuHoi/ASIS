@@ -105,7 +105,14 @@ export class StepGuideWindowManager {
       },
       onExported: (result) => {
         if (result.kind === 'saved') {
-          notifiers.info(`가이드 저장 — ${result.path}`);
+          // Markdown 은 이미지를 상대경로 별도 파일(step-*.png)로 참조하므로 md 만
+          // 옮기면 이미지가 깨진다 — 같은 폴더 유지를 안내한다. HTML 은 단일 파일.
+          const isMarkdown = result.path.toLowerCase().endsWith('.md');
+          notifiers.info(
+            isMarkdown
+              ? `가이드 저장 — ${result.path}\n(이미지는 같은 폴더의 step-*.png — md만 옮기면 이미지가 안 보입니다)`
+              : `가이드 저장 — ${result.path}`,
+          );
         }
         // canceled 는 조용히 — 사용자가 저장 다이얼로그를 취소한 것.
       },

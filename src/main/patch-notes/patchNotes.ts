@@ -5,6 +5,8 @@ export type PatchNote = {
   body: string;
   /** ISO 8601 게시일. */
   date: string;
+  /** GitHub 릴리스 페이지 URL — 클릭 시 브라우저로 이동. */
+  url: string;
 };
 
 // package.json build.publish 와 동일한 repo.
@@ -28,6 +30,7 @@ export async function fetchPatchNotes(): Promise<PatchNote[]> {
     name: string | null;
     body: string | null;
     published_at: string;
+    html_url: string;
     draft: boolean;
   }>;
   return data
@@ -37,5 +40,6 @@ export async function fetchPatchNotes(): Promise<PatchNote[]> {
       name: r.name && r.name.trim() ? r.name : r.tag_name,
       body: r.body ?? '',
       date: r.published_at,
+      url: r.html_url,
     }));
 }

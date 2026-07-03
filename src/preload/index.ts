@@ -223,6 +223,8 @@ const captureHistory = {
  */
 const patchHistory = {
   list: (): Promise<PatchNote[]> => ipcRenderer.invoke('patch-history:list'),
+  openUrl: (url: string): Promise<void> =>
+    ipcRenderer.invoke('patch-history:open-url', url),
 };
 
 /**

@@ -5,4 +5,6 @@ export type PatchNote = {
   body: string;
   /** ISO 8601 게시일. */
   date: string;
+  /** GitHub 릴리스 페이지 URL. */
+  url: string;
 };

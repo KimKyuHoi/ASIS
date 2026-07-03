@@ -69,7 +69,18 @@ export default function PatchHistory(): JSX.Element {
         <section className="ph__item" key={n.version}>
           <header className="ph__head">
             <h2 className="ph__ver">{n.name}</h2>
-            <time className="ph__date">{formatDate(n.date)}</time>
+            <div className="ph__meta">
+              <time className="ph__date">{formatDate(n.date)}</time>
+              <button
+                type="button"
+                className="ph__link"
+                onClick={() => {
+                  window.patchHistory.openUrl(n.url);
+                }}
+              >
+                GitHub에서 보기 ↗
+              </button>
+            </div>
           </header>
           <pre className="ph__body">{n.body.trim() || '(내용 없음)'}</pre>
         </section>
