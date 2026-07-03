@@ -223,7 +223,7 @@ export class StepGuideManager {
     this.emitRecording();
 
     this.seq
-      .start({ rect: { x: b.x, y: b.y, w: b.width, h: b.height }, fps: GIF_FPS })
+      .start({ rect: { x: b.x, y: b.y, w: b.width, h: b.height }, fps: GIF_FPS, cursor: true })
       .then(
         () => {
           // start 진행 중 stopGif/stop/재시작이 있었으면(canceled·phase 교체·세션 변경)

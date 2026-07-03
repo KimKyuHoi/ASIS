@@ -18,6 +18,9 @@ export type SequenceOptions = {
   intervalMs?: number;
   /** 결과 GIF 의 fps. 기본 10. 실제 캡처 fps 와 비슷하게 잡는 게 자연스러움. */
   fps?: number;
+  /** 커서를 프레임에 포함할지(screencapture -C, 비대화형 -R 에서만 허용).
+   *  기본 false. 스텝 가이드 GIF 처럼 "동작 시연" 은 커서가 보여야 유용해 켠다. */
+  cursor?: boolean;
 };
 
 export class SequenceCaptureManager {
@@ -25,6 +28,7 @@ export class SequenceCaptureManager {
   private rect: SequenceOptions['rect'] | null = null;
   private intervalMs = 100;
   private fps = 10;
+  private cursor = false;
   /** 연속 캡처 루프 active 여부. setTimeout id 또는 'stopping' 으로 표현. */
   private active = false;
   private nextTimer: NodeJS.Timeout | null = null;
@@ -41,6 +45,7 @@ export class SequenceCaptureManager {
     this.rect = options.rect;
     this.intervalMs = options.intervalMs ?? 100;
     this.fps = options.fps ?? 10;
+    this.cursor = options.cursor ?? false;
     await this.gif.start();
     this.active = true;
     this.scheduleNext(0);
@@ -99,18 +104,23 @@ export class SequenceCaptureManager {
     const r = this.rect;
     if (!r) return;
     const framePath = this.gif.nextFramePath();
-    await runScreencaptureRegion(r, framePath);
+    await runScreencaptureRegion(r, framePath, this.cursor);
   }
 }
 
 async function runScreencaptureRegion(
   rect: { x: number; y: number; w: number; h: number },
   outputPath: string,
+  cursor: boolean,
 ): Promise<void> {
   const region = `${rect.x},${rect.y},${rect.w},${rect.h}`;
+  // -C: 커서 포함(비대화형 -R 에서만 허용, man screencapture). 기본 캡처엔 안 넣고
+  // 스텝 가이드 GIF 처럼 동작 시연이 필요한 곳만 cursor=true 로 켠다.
+  const args = ['-x', '-R', region, '-t', 'png', outputPath];
+  if (cursor) args.splice(1, 0, '-C');
   const { code, stderr } = await runProcess(
     SCREENCAPTURE_BIN,
-    ['-x', '-R', region, '-t', 'png', outputPath],
+    args,
     'screencapture',
   );
   if (code !== 0) {
