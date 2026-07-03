@@ -16,7 +16,6 @@ export type HotkeyConfig = {
   timeMachineSave: string;
   stepGuide: string;
   scrollCapture: string;
-  qr: string;
 };
 
 export type MiscConfig = {
@@ -63,7 +62,6 @@ export const DEFAULT_HOTKEYS: HotkeyConfig = {
   timeMachineSave: 'CommandOrControl+Shift+S',
   stepGuide: 'CommandOrControl+Shift+U',
   scrollCapture: 'CommandOrControl+Shift+J',
-  qr: 'CommandOrControl+Shift+B',
 };
 
 export const DEFAULT_MISC: MiscConfig = {

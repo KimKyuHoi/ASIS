@@ -28,11 +28,7 @@ export type TrayMenuHandlers = {
   onOcr: () => void;
   onRuler: () => void;
   onScrollCapture: () => void;
-  onQr: () => void;
   onColorPalette: () => void;
-  onBackgroundRemove: () => void;
-  onImageConvert: () => void;
-  onClipboardQr: () => void;
   onStepGuide: () => void;
   onTimeMachineToggle: () => void;
   onTimeMachineSave: () => void;
@@ -124,14 +120,7 @@ export class TrayManager {
         accelerator: 'CommandOrControl+Shift+J',
         click: handlers.onScrollCapture,
       },
-      {
-        label: 'QR·바코드 스캔…',
-        accelerator: 'CommandOrControl+Shift+B',
-        click: handlers.onQr,
-      },
       { label: '색상 팔레트 추출…', click: handlers.onColorPalette },
-      { label: '배경 제거…', click: handlers.onBackgroundRemove },
-      { label: '이미지 포맷 변환…', click: handlers.onImageConvert },
 
       { type: 'separator' },
 
@@ -166,7 +155,6 @@ export class TrayManager {
         accelerator: 'CommandOrControl+Shift+V',
         click: handlers.onClipboardPin,
       },
-      { label: '클립보드 텍스트를 QR로', click: handlers.onClipboardQr },
 
       { type: 'separator' },
 

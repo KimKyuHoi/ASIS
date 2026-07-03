@@ -18,7 +18,6 @@ type HotkeyConfig = {
   timeMachineSave: string;
   stepGuide: string;
   scrollCapture: string;
-  qr: string;
 };
 
 type MiscConfig = {
@@ -60,7 +59,6 @@ const DEFAULT: HotkeyConfig = {
   timeMachineSave: 'CommandOrControl+Shift+S',
   stepGuide: 'CommandOrControl+Shift+U',
   scrollCapture: 'CommandOrControl+Shift+J',
-  qr: 'CommandOrControl+Shift+B',
 };
 
 const LABELS: Record<keyof HotkeyConfig, string> = {
@@ -79,7 +77,6 @@ const LABELS: Record<keyof HotkeyConfig, string> = {
   timeMachineSave: '타임머신 최근 구간 저장',
   stepGuide: '스텝 가이드 녹화',
   scrollCapture: '스크롤 캡처',
-  qr: 'QR·바코드 스캔',
 };
 
 const HOTKEY_FIELDS: Array<keyof HotkeyConfig> = [
@@ -98,7 +95,6 @@ const HOTKEY_FIELDS: Array<keyof HotkeyConfig> = [
   'timeMachineSave',
   'stepGuide',
   'scrollCapture',
-  'qr',
 ];
 
 export default function Settings(): JSX.Element {

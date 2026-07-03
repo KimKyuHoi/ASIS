@@ -62,8 +62,3 @@ function runVision(args: string[], label: string): Promise<string> {
 export function recognizeText(imagePath: string): Promise<string> {
   return runVision([imagePath], 'OCR');
 }
-
-/** 이미지에서 QR/바코드 payload 를 인식해 반환 (macOS Vision). */
-export function recognizeBarcode(imagePath: string): Promise<string> {
-  return runVision(['--barcode', imagePath], '바코드 인식');
-}
