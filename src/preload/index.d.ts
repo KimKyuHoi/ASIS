@@ -99,8 +99,15 @@ type PatchHistoryAPI = {
   openUrl: (url: string) => Promise<void>;
 };
 
+type StepGuideState = {
+  stepCount: number;
+  gifRecording: boolean;
+};
+
 type StepGuideAPI = {
-  onStepCount: (callback: (count: number) => void) => () => void;
+  onState: (callback: (state: StepGuideState) => void) => () => void;
+  startGif: () => void;
+  stopGif: () => void;
   stop: (format: 'markdown' | 'html') => void;
 };
 

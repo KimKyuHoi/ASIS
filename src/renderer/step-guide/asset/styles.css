@@ -74,6 +74,17 @@ body,
   white-space: nowrap;
 }
 
+/* GIF 녹화 중 표시 — 카운터 자리를 대체한다(같은 폭 확보용 nowrap). */
+.sg__gifstatus {
+  font-family: 'SF Mono', 'JetBrains Mono', Menlo, ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  color: rgb(255, 90, 90);
+  animation: sg-pulse 1s ease-in-out infinite;
+}
+
 .sg__btn {
   -webkit-app-region: no-drag;
   app-region: no-drag;
@@ -110,8 +121,19 @@ body,
   background: rgba(120, 180, 255, 0.95);
 }
 
+/* GIF 녹화 중 — [GIF 정지] 버튼을 빨간색으로 강조. */
+.sg__btn--rec {
+  background: rgba(255, 60, 60, 0.9);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.sg__btn--rec:hover {
+  background: rgba(255, 90, 90, 0.95);
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .sg__dot {
+  .sg__dot,
+  .sg__gifstatus {
     animation: none;
   }
 }

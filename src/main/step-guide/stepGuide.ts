@@ -4,7 +4,6 @@ import { dirname, join } from 'node:path';
 import { app, dialog, nativeImage, screen } from 'electron';
 import { captureRegion } from '../capture/capture';
 import { SequenceCaptureManager } from '../capture/sequenceCapture';
-import { loadMisc } from '../settings';
 import { getElementBoundsAtPoint } from '../windowsInfo';
 import {
   ClickMonitorManager,
@@ -20,36 +19,43 @@ import {
 } from './stepGuideExport';
 
 /**
- * 스텝바이스텝 가이드 생성기 오케스트레이터.
+ * 스텝바이스텝 가이드 생성기 오케스트레이터 — 수동 이미지/GIF 모드.
  *
- * 흐름 (자동 GIF):
- *   1. start() — ClickMonitorManager 로 전역 클릭 감지 시작.
- *   2. 첫 클릭  → 그 시점 커서 디스플레이 전체의 *정지 PNG* 를 캡처(+ AX 라벨) →
- *      image 스텝 누적. 그 직후 SequenceCaptureManager 로 *다음 구간* GIF 녹화 시작.
- *   3. 이후 클릭 → 진행 중이던 구간을 GIF 로 인코딩(seq.stop)해 *직전 클릭 ~ 이번 클릭*
- *      동작을 담은 gif 스텝으로 누적. 그 직후 다시 seq.start 로 다음 구간 녹화 시작.
- *      (즉 "N-1 → N 으로 이동하는 동작" 이 스텝 N 의 GIF.)
- *   4. 마지막 클릭 이후 ~ 정지 사이 구간은 다음 클릭이 없어 완성되지 못하므로 버린다.
- *   5. stop() — 감지 중지 + 진행 중 구간 cancel 후 Markdown/HTML 문서로 export.
+ * 흐름 (수동):
+ *   1. start() — ClickMonitorManager 로 전역 클릭 감지 시작. 기본은 *이미지 모드*.
+ *   2. 이미지 모드에서 전역 클릭 → 그 시점 커서 디스플레이 전체의 *정지 PNG* 를
+ *      캡처(+ AX 라벨) → image 스텝 누적.
+ *   3. HUD 에서 [GIF 시작] → startGif(): 그 시점부터 *연속 GIF* 녹화 시작.
+ *      이 동안 들어온 전역 클릭은 개별 스텝을 만들지 않고 GIF 안에 그대로 담긴다.
+ *   4. HUD 에서 [GIF 정지] → stopGif(): seq.stop 으로 하나의 GIF 로 인코딩 →
+ *      *하나의* gif 스텝 누적. 이후 다시 이미지 모드.
+ *   5. stop() — 감지 중지 + (녹화 중이면) GIF cancel 후 Markdown/HTML 로 export.
  *
  * side-effects.md Rule 3 — 전역 클릭 탭 + 캡처/GIF 파이프라인은 React 무관 lifecycle →
  * 모듈 스코프 Class. ClickMonitorManager·SequenceCaptureManager 를 소유하고 켜고 끈다.
  *
  * null-safety.md — 캡처 실패/빈 이미지/권한 없음/GIF 0프레임을 명시 분기, skip 하되 로그.
  *
- * 타이밍(정직한 한계): seq.stop() 은 ffmpeg GIF 인코딩이라 수십~수백 ms 걸린다.
- *   인코딩이 끝나기 전 다음 클릭이 오면 seq.start() 내부의 GifManager.start() 가
- *   "이미 녹화 중" 으로 throw 한다(실측 확인 — gif.ts stop() 은 finally 에서야
- *   framesDir 을 null 로 만든다). 이를 막기 위해 클릭 처리 전체를 한 트랜잭션으로
- *   직렬화(busy 플래그)하고, 처리 중 들어온 클릭은 최신 1건만 pending 으로 보관해
- *   현재 트랜잭션 종료 후 이어서 처리한다. 더 오래된 pending 은 드롭하고 로그.
- *
  * 상태 변화를 외부(트레이/HUD)에 알리기 위해 onStateChange 콜백을 받는다.
  */
 
+/** 스텝 가이드 GIF 인코딩 fps — 느리게 재생되도록 5 고정.
+ *  misc.gifFps(GIF 녹화 전용 15)는 여기서 재사용하지 않는다: 스텝 가이드 GIF 는
+ *  "동작을 천천히 보여주는" 용도라 느린 편이 낫다. (실측: 5fps → 프레임당 200ms delay.) */
+const GIF_FPS = 5;
+
+/** GIF 캡처 영역 — [GIF 시작] 시점 커서 디스플레이 bounds(DIP) + scaleFactor. */
+type GifRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  scaleFactor: number;
+};
+
 export type StepGuideState =
   | { kind: 'idle' } |
-  { kind: 'recording'; stepCount: number };
+  { kind: 'recording'; stepCount: number; gifRecording: boolean };
 
 export type StepGuideCallbacks = {
   /** 상태 변화 — HUD/트레이 갱신용. */
@@ -69,7 +75,7 @@ export type StepGuideCallbacks = {
 /** 캡처된 스텝의 raw 데이터(export 전 중간 표현). */
 type RawStep = {
   order: number;
-  /** 'image'=정지 PNG(첫 스텝/실패 fallback), 'gif'=직전~현재 구간 애니메이션. */
+  /** 'image'=클릭 시점 정지 PNG, 'gif'=[GIF 시작]~[GIF 정지] 구간 연속 애니메이션. */
   kind: StepKind;
   imagePath: string;
   imageDataUrl: string;
@@ -83,39 +89,30 @@ type RawStep = {
 
 export class StepGuideManager {
   private monitor = new ClickMonitorManager();
-  /** 구간 GIF 녹화기 — 첫 클릭 직후 start, 이후 클릭마다 stop→start 로 구간을 이어붙인다. */
+  /** 연속 GIF 녹화기 — [GIF 시작]에서 start, [GIF 정지]에서 stop 으로 하나의 GIF 를 만든다. */
   private seq = new SequenceCaptureManager();
   private steps: RawStep[] = [];
   /**
-   * 클릭 처리 트랜잭션 진행 중 플래그. 한 클릭의 (캡처 or seq.stop 인코딩 + gif 스텝
-   * 누적 + seq.start) 전체가 끝날 때까지 true. 이 동안 온 클릭은 pendingClick 으로
-   * 미뤄 seq.start/stop 이 겹치지 않게 직렬화한다(GifManager 이중 start throw 방지).
+   * GIF 녹화 상태 머신 — [GIF 시작]/[GIF 정지] 는 seq.start/stop 이 비동기(각각 수백 ms)라
+   * 연타/중복 IPC 에 취약하다. phase 를 *동기적으로* 먼저 전이시켜 이중 start·start↔stop
+   * 겹침을 막는다.
+   *   - idle      : 이미지 모드(전역 클릭 = image 스텝).
+   *   - starting  : seq.start() in-flight. 이 동안 재-startGif 무시, stopGif 는 시작 취소.
+   *   - recording : 녹화 중. 전역 클릭은 GIF 에 담기고 개별 스텝 안 만듦.
+   *   - stopping  : seq.stop()(인코딩) in-flight. 이 동안 startGif/stopGif 모두 무시.
+   * rect 는 recording/stopping 에서만 의미 있음([GIF 시작] 디스플레이 bounds, DIP).
    */
-  private busy = false;
-  /**
-   * busy 중 도착한 최신 클릭 1건. 트랜잭션 종료 시 이어서 처리한다.
-   * 2건 이상 밀리면 최신만 남기고 이전 것은 드롭(로그) — 인코딩보다 빠른 연타는
-   * 어차피 사람이 구분하기 어려운 중간 상태라 최신 클릭 기준 구간이 가장 유용하다.
-   */
-  private pendingClick: ClickPoint | null = null;
-  /**
-   * 현재 진행 중인 구간 GIF 의 캡처 영역(구간을 시작한 클릭의 디스플레이 bounds, DIP).
-   * 다음 클릭이 이 구간을 GIF 로 마감할 때:
-   *   - GIF width/height = (width,height) × scaleFactor (screencapture 는 physical px).
-   *   - 마감 클릭의 이미지 내 좌표 = (clickDip - (x,y)) × scaleFactor.
-   * seq 가 녹화 중이 아니면 null.
-   */
-  private segmentRect:
-    | { x: number; y: number; width: number; height: number; scaleFactor: number } |
-    null = null;
+  private gifPhase:
+    | { kind: 'idle' } |
+    { kind: 'starting'; canceled: boolean } |
+    { kind: 'recording'; rect: GifRect } |
+    { kind: 'stopping' } = { kind: 'idle' };
   private callbacks: StepGuideCallbacks | null = null;
   /**
    * 세션 세대 카운터 — start() 마다 +1. 캡처/인코딩은 비동기라, 정지/새 세션 시작 후에
    * 늦게 resolve 된 결과가 새 세션의 steps 를 오염시키지 않도록 세대를 대조한다.
    */
   private sessionId = 0;
-  /** 결과 GIF 의 fps. recorder 와 동일하게 misc.gifFps 사용(start 시 로드). */
-  private gifFps = 10;
 
   isActive(): boolean {
     return this.monitor.isRunning();
@@ -128,9 +125,7 @@ export class StepGuideManager {
     }
     this.callbacks = callbacks;
     this.steps = [];
-    this.busy = false;
-    this.pendingClick = null;
-    this.gifFps = loadMisc().gifFps;
+    this.gifPhase = { kind: 'idle' };
     this.sessionId += 1;
 
     this.monitor.start({
@@ -148,7 +143,7 @@ export class StepGuideManager {
       },
     });
 
-    callbacks.onStateChange({ kind: 'recording', stepCount: 0 });
+    this.emitRecording();
   }
 
   /**
@@ -161,12 +156,12 @@ export class StepGuideManager {
     if (!callbacks) throw new Error('StepGuideManager.stop — callbacks 미설정');
 
     this.monitor.stop();
-    // 세대 증가 — 이 시점 이후 resolve 되는 in-flight 캡처/인코딩은 handleClick 에서 폐기된다.
+    // 세대 증가 — 이 시점 이후 resolve 되는 in-flight 캡처/인코딩은 세대 대조로 폐기된다.
     this.sessionId += 1;
-    // 마지막 클릭 이후 진행 중이던 구간은 다음 클릭이 없어 완성 못 됨 → 버린다.
+    // 진행 중이던 GIF 는 [GIF 정지]를 안 눌렀으므로 미완성 → 버린다.
     // cancel 은 비동기(tmp 폴더 정리)지만 export 를 막을 이유가 없어 fire-and-forget.
     this.cancelSequenceIfRecording();
-    this.pendingClick = null;
+    this.gifPhase = { kind: 'idle' };
     callbacks.onStateChange({ kind: 'idle' });
 
     const collected = this.steps;
@@ -194,111 +189,136 @@ export class StepGuideManager {
     if (!this.monitor.isRunning()) return;
     this.monitor.stop();
     this.sessionId += 1; // in-flight 캡처/인코딩 폐기.
-    this.cancelSequenceIfRecording(); // 진행 중 GIF 구간 폐기(tmp 폴더 정리).
-    this.pendingClick = null;
+    this.cancelSequenceIfRecording(); // 진행 중 GIF 폐기(tmp 폴더 정리).
+    this.gifPhase = { kind: 'idle' };
     this.steps = [];
     this.callbacks?.onStateChange({ kind: 'idle' });
   }
 
-  /** 진행 중인 구간 GIF 녹화를 취소(tmp 프레임 폐기). 녹화 중 아니면 no-op. */
+  /**
+   * GIF 녹화 시작 — [GIF 시작] 버튼.
+   * idle 이 아니면(비활성·이미 starting/recording/stopping) 무시 — 연타/중복 IPC 방어.
+   * phase 를 *동기적으로* starting 으로 먼저 올린 뒤 seq.start(비동기)를 호출해
+   * 이중 start 를 막는다. 시작 성공 시 recording 으로, 실패 시 idle 로 되돌린다.
+   */
+  startGif(): void {
+    if (!this.monitor.isRunning()) return;
+    if (this.gifPhase.kind !== 'idle') return;
+
+    // 커서가 속한 디스플레이를 대상으로 — 다중 모니터 안전.
+    const cursor = screen.getCursorScreenPoint();
+    const display = screen.getDisplayNearestPoint(cursor);
+    const b = display.bounds;
+    const rect: GifRect = {
+      x: b.x,
+      y: b.y,
+      width: b.width,
+      height: b.height,
+      scaleFactor: display.scaleFactor || 1,
+    };
+
+    // 동기 전이 — 이 시점 이후 재-startGif 는 위 guard 에서 걸린다.
+    const phase = { kind: 'starting' as const, canceled: false };
+    this.gifPhase = phase;
+    this.emitRecording();
+
+    this.seq
+      .start({ rect: { x: b.x, y: b.y, w: b.width, h: b.height }, fps: GIF_FPS })
+      .then(
+        () => {
+          // start 진행 중 stopGif/stop/재시작이 있었으면(canceled·phase 교체·세션 변경)
+          // 이 녹화는 버린다.
+          if (phase.canceled || this.gifPhase !== phase || !this.monitor.isRunning()) {
+            this.cancelSequenceIfRecording();
+            // stopGif 로 취소된 게 아니라 phase 가 그대로 starting 인데 세션만 죽은 경우
+            // idle 로 되돌린다(정지 경로에선 이미 idle 로 세팅됨).
+            if (this.gifPhase === phase) this.gifPhase = { kind: 'idle' };
+            return;
+          }
+          this.gifPhase = { kind: 'recording', rect };
+          this.emitRecording();
+        },
+        (err: unknown) => {
+          // 시작 실패 — 이미지 모드로 되돌린다(단, 그 사이 정지/재시작됐으면 건드리지 않음).
+          console.error('[asis] stepGuide: GIF 시작 실패', err);
+          if (this.gifPhase === phase) {
+            this.gifPhase = { kind: 'idle' };
+            this.emitRecording();
+          }
+        },
+      );
+  }
+
+  /**
+   * GIF 녹화 정지 — [GIF 정지] 버튼.
+   *   - recording: 인코딩(stopping)으로 전이 → seq.stop → gif 스텝 하나 누적.
+   *   - starting : seq.start 가 아직 in-flight → canceled 표시만 하고 그 resolve 에서 취소.
+   *   - idle/stopping: 무시(연타/중복 방어).
+   * 0프레임/인코딩 실패면 스텝 미기록·로그.
+   */
+  stopGif(): void {
+    if (!this.monitor.isRunning()) return;
+    const phase = this.gifPhase;
+
+    if (phase.kind === 'starting') {
+      // 아직 seq.start 진행 중 — 시작 콜백이 취소를 처리하도록 표시하고 이미지 모드로.
+      phase.canceled = true;
+      this.gifPhase = { kind: 'idle' };
+      this.emitRecording();
+      return;
+    }
+    if (phase.kind !== 'recording') return; // idle/stopping 무시.
+
+    const rect = phase.rect;
+    const session = this.sessionId;
+    // 동기 전이 — 인코딩(수백 ms) 중 startGif 재진입·중복 stopGif 를 guard 로 막는다.
+    this.gifPhase = { kind: 'stopping' };
+    this.emitRecording();
+
+    this.finalizeGifStep(rect, session).catch((err: unknown) => {
+      console.error('[asis] stepGuide: GIF 스텝 마감 실패', err);
+    });
+  }
+
+  /** 진행 중인 GIF 녹화를 취소(tmp 프레임 폐기). 녹화 중 아니면 no-op. */
   private cancelSequenceIfRecording(): void {
     if (!this.seq.isRecording()) return;
     // cancel 은 비동기(rm) 지만 종료 흐름을 막지 않도록 fire-and-forget + 에러 로깅.
     this.seq.cancel().catch((err: unknown) => {
-      console.warn('[asis] stepGuide: 구간 GIF cancel 실패', err);
+      console.warn('[asis] stepGuide: GIF cancel 실패', err);
     });
   }
 
   /**
-   * 클릭 한 번 처리 — 트랜잭션 직렬화 진입점.
-   *
-   * busy(=한 클릭의 캡처/인코딩/구간 재시작 전체) 중 도착한 클릭은 최신 1건만
-   * pendingClick 으로 보관하고 즉시 반환한다. 현재 트랜잭션이 끝나면(runClickTx 의
-   * finally) pendingClick 을 이어서 처리한다. 이렇게 seq.start/stop 을 겹치지 않게
-   * 직렬화해 GifManager 이중 start throw(실측 확인)를 막는다.
+   * 전역 클릭 한 번 처리.
+   *   - GIF phase 가 idle 이 아니면(starting/recording/stopping) 무시 — 그 클릭은
+   *     GIF 프레임에 담기거나 GIF 시작/정지 전이 중이므로 개별 image 스텝을 안 만든다.
+   *   - idle 이면 정지 PNG 를 image 스텝으로 캡처해 누적.
+   * 캡처는 비동기지만 클릭마다 독립적이라(트랜잭션 직렬화 불필요) 바로 실행한다.
+   * phase 판정은 *클릭 시점*(동기 진입)에 한다 — 캡처 도중 [GIF 시작]이 눌려도
+   * 이 클릭은 GIF 시작 전의 것이므로 image 스텝으로 남기는 게 맞다.
    */
   private handleClick(point: ClickPoint): void {
-    if (this.busy) {
-      if (this.pendingClick) {
-        // 인코딩보다 빠른 연타 — 최신 클릭만 남기고 이전 pending 은 드롭.
-        console.warn('[asis] stepGuide: 인코딩 중 클릭 다중 도착 — 이전 pending 드롭');
-      }
-      this.pendingClick = point;
-      return;
-    }
-    this.busy = true;
-    // 이 트랜잭션이 속한 세션 — 완료 시점에 세션이 바뀌었으면 결과를 버린다.
-    const session = this.sessionId;
+    if (this.gifPhase.kind !== 'idle') return;
 
-    this.runClickTx(point, session).then(
-      () => {
-        this.busy = false;
-        this.drainPending(session);
+    const session = this.sessionId;
+    this.captureImageStep(point).then(
+      (step) => {
+        // 캡처 도중 정지·재시작됐으면 결과 폐기(steps 오염 방지).
+        if (session !== this.sessionId) return;
+        if (!step) return;
+        this.steps.push(step);
+        this.emitRecording();
       },
       (err: unknown) => {
-        this.busy = false;
         // 한 클릭 처리 실패가 전체 녹화를 죽이지 않게 — 로깅 후 계속.
         console.error('[asis] stepGuide: 클릭 처리 실패', err);
-        this.drainPending(session);
       },
     );
   }
 
-  /** 트랜잭션 종료 후 대기 중이던 클릭을 이어서 처리. */
-  private drainPending(session: number): void {
-    // 세션이 바뀌었으면(정지/재시작) 대기 클릭은 폐기.
-    if (session !== this.sessionId) {
-      this.pendingClick = null;
-      return;
-    }
-    const next = this.pendingClick;
-    if (!next) return;
-    this.pendingClick = null;
-    this.handleClick(next);
-  }
-
   /**
-   * 클릭 한 건의 전체 트랜잭션.
-   *   - 첫 클릭  : 정지 PNG image 스텝 캡처 → 누적 → 다음 구간 GIF 녹화 start.
-   *   - 이후 클릭: 진행 중 구간을 GIF 로 stop(인코딩) → gif 스텝 누적 → 다음 구간 start.
-   * 세션 대조로 정지 후 늦게 끝난 결과의 steps 오염을 막는다.
-   */
-  private async runClickTx(point: ClickPoint, session: number): Promise<void> {
-    const isFirst = this.steps.length === 0;
-    const step = isFirst
-      ? await this.captureImageStep(point)
-      : await this.finalizeGifStep(point);
-
-    // 캡처/인코딩 도중 정지·재시작됐으면 결과 폐기(steps 오염 방지).
-    if (session !== this.sessionId) {
-      // 이미 파일까지 만든 gif 스텝이 버려지면 tmp GIF 가 고아가 되므로 여기서 정리.
-      // (image 스텝의 tmp PNG 는 기존 코드처럼 OS tmp 정리에 맡긴다.)
-      if (step?.kind === 'gif') {
-        unlink(step.imagePath).catch((err: unknown) => {
-          if (!isEnoent(err)) {
-            console.warn('[asis] stepGuide: 고아 tmp GIF 정리 실패', step.imagePath, err);
-          }
-        });
-      }
-      return;
-    }
-
-    if (step) {
-      this.steps.push(step);
-      this.callbacks?.onStateChange({
-        kind: 'recording',
-        stepCount: this.steps.length,
-      });
-    }
-
-    // 다음 구간 GIF 녹화 시작. 세션이 유효할 때만(정지 후 새 구간 생성 방지).
-    // seq 가 이미 녹화 중이면(finalizeGifStep 이 stop 안 했거나 예외 상황) 먼저 정리.
-    if (session !== this.sessionId) return;
-    await this.startNextSegment(point);
-  }
-
-  /**
-   * 첫 클릭 — 커서 디스플레이 전체의 정지 PNG 를 image 스텝으로 캡처.
+   * 정지 이미지 스텝 캡처 — point 가 속한 디스플레이 전체의 정지 PNG 를 image 스텝으로.
    *   - 클릭의 이미지 내 픽셀 좌표 = (clickDip - displayOrigin) * scaleFactor.
    *   - AX 요소 이름 조회(권한 있으면). 실패 시 라벨 없이 진행.
    * 캡처 취소/빈 이미지면 null 반환(스텝 미기록).
@@ -349,114 +369,88 @@ export class StepGuideManager {
   }
 
   /**
-   * 이후 클릭 — 진행 중이던 구간을 GIF 로 마감한다.
-   *   1) AX 라벨은 (화면이 바뀌기 전) *현재 클릭 기준* 으로 먼저 조회.
-   *   2) seq.stop(tmpGif) 로 인코딩 → GIF 경로. (0프레임 등 실패 시 null 반환·로그.)
-   *   3) GIF 파일을 base64 로 읽어 dataURL 생성(HTML 임베드용 — 애니메이션 유지).
-   * width/height 는 구간 시작 시 저장한 segmentRect(× scaleFactor)로 계산한다.
-   * clickX/clickY/label 은 현재 클릭 기준.
+   * [GIF 정지] — 진행 중이던 연속 GIF 를 하나의 gif 스텝으로 마감한다.
+   *   1) seq.stop(tmpGif) 로 인코딩 → GIF 경로. (0프레임 등 실패 시 스텝 미기록·로그.)
+   *   2) GIF 파일을 base64 로 읽어 dataURL 생성(HTML 임베드용 — 애니메이션 유지).
+   * width/height 는 [GIF 시작] 시 저장한 rect(× scaleFactor)로 계산한다.
+   * clickX/clickY 는 gif 가 마커를 그리지 않으므로 0(마커 미표시). label 은 없음.
    */
-  private async finalizeGifStep(point: ClickPoint): Promise<RawStep | null> {
-    // seq 가 녹화 중이 아니면(이전 구간 시작 실패 등) GIF 로 마감할 게 없다.
-    // 이 경우 정지 이미지로 폴백해 스텝을 잃지 않는다.
-    if (!this.seq.isRecording() || !this.segmentRect) {
-      console.warn('[asis] stepGuide: 진행 중 구간 없음 — 정지 이미지로 폴백');
-      return this.captureImageStep(point);
-    }
-    const seg = this.segmentRect;
-
-    // 라벨은 인코딩(수백 ms) *전에* 조회 — 인코딩 후엔 화면이 바뀌었을 수 있음.
-    const element = getElementBoundsAtPoint(point.x, point.y);
-    const label = element?.name;
-
-    const tmpGif = this.tmpGifPath();
-    let gifPath: string;
+  private async finalizeGifStep(rect: GifRect, session: number): Promise<void> {
     try {
-      gifPath = await this.seq.stop(tmpGif);
-    } catch (err) {
-      // 인코딩 실패(0프레임/ffmpeg 오류 등) — 이 구간은 잃지만 녹화는 계속.
-      // segmentRect 를 비워 다음 startNextSegment 가 새로 시작하게 한다.
-      this.segmentRect = null;
-      console.error('[asis] stepGuide: 구간 GIF 인코딩 실패', err);
-      return null;
-    }
-    // stop 성공 시 seq 는 idle. 이 구간은 소비됐으므로 rect 도 비운다.
-    this.segmentRect = null;
+      const tmpGif = this.tmpGifPath();
+      let gifPath: string;
+      try {
+        gifPath = await this.seq.stop(tmpGif);
+      } catch (err) {
+        // 인코딩 실패(0프레임/ffmpeg 오류 등) — 이 GIF 는 잃지만 녹화는 계속.
+        console.error('[asis] stepGuide: GIF 인코딩 실패', err);
+        return;
+      }
 
-    const buf = await readFile(gifPath);
-    if (buf.length === 0) {
-      console.warn('[asis] stepGuide: GIF 파일이 비어 있음', gifPath);
-      return null;
-    }
-    // GIF 는 nativeImage.toDataURL 이 첫 프레임만 담을 수 있어(애니메이션 소실),
-    // 파일 바이트를 직접 base64 dataURL 로 만든다(실측: HTML <img> 에서 애니메이션 유지).
-    const imageDataUrl = `data:image/gif;base64,${buf.toString('base64')}`;
+      // 인코딩 도중 정지·재시작됐으면 결과 폐기(steps 오염 방지) + tmp GIF 정리.
+      if (session !== this.sessionId) {
+        unlink(gifPath).catch((err: unknown) => {
+          if (!isEnoent(err)) {
+            console.warn('[asis] stepGuide: 고아 tmp GIF 정리 실패', gifPath, err);
+          }
+        });
+        return;
+      }
 
-    // GIF 픽셀 크기 = 구간 시작 디스플레이 bounds × scaleFactor(screencapture 는 physical px).
-    const width = Math.round(seg.width * seg.scaleFactor);
-    const height = Math.round(seg.height * seg.scaleFactor);
-    // 마감 클릭의 이미지 내 좌표 — 구간 시작 디스플레이 원점 기준으로 환산.
-    // (gif 는 마커를 안 그리지만, AX 라벨이 없을 때 caption 좌표 표기에 쓰인다.)
-    const clickX = Math.round((point.x - seg.x) * seg.scaleFactor);
-    const clickY = Math.round((point.y - seg.y) * seg.scaleFactor);
+      const buf = await readFile(gifPath);
+      if (buf.length === 0) {
+        console.warn('[asis] stepGuide: GIF 파일이 비어 있음', gifPath);
+        return;
+      }
+      // GIF 는 nativeImage.toDataURL 이 첫 프레임만 담을 수 있어(애니메이션 소실),
+      // 파일 바이트를 직접 base64 dataURL 로 만든다(실측: HTML <img> 에서 애니메이션 유지).
+      const imageDataUrl = `data:image/gif;base64,${buf.toString('base64')}`;
 
-    const order = this.steps.length + 1;
-    return {
-      order,
-      kind: 'gif',
-      imagePath: gifPath,
-      imageDataUrl,
-      width,
-      height,
-      clickX,
-      clickY,
-      timestamp: Date.now(),
-      label,
-    };
-  }
+      // GIF 픽셀 크기 = [GIF 시작] 디스플레이 bounds × scaleFactor(screencapture 는 physical px).
+      const width = Math.round(rect.width * rect.scaleFactor);
+      const height = Math.round(rect.height * rect.scaleFactor);
 
-  /**
-   * 다음 구간 GIF 녹화를 시작한다 — point 가 속한 디스플레이 전체를 대상으로.
-   * 시작 실패 시 segmentRect 를 비우고 로그(다음 클릭은 정지 이미지로 폴백).
-   * 방어적으로: 혹시 seq 가 아직 녹화 중이면(선행 stop 누락) 먼저 cancel.
-   */
-  private async startNextSegment(point: ClickPoint): Promise<void> {
-    const display = screen.getDisplayNearestPoint({ x: point.x, y: point.y });
-    const b = display.bounds;
-    const sf = display.scaleFactor || 1;
-
-    if (this.seq.isRecording()) {
-      // 정상 흐름에선 도달 안 함(finalizeGifStep 이 stop 했음). 방어적 정리.
-      await this.seq.cancel().catch((err: unknown) => {
-        console.warn('[asis] stepGuide: startNextSegment 선행 cancel 실패', err);
+      const order = this.steps.length + 1;
+      this.steps.push({
+        order,
+        kind: 'gif',
+        imagePath: gifPath,
+        imageDataUrl,
+        width,
+        height,
+        // gif 는 마커를 그리지 않으므로 클릭 좌표는 0(export 에서 gif 는 마커 미표시).
+        clickX: 0,
+        clickY: 0,
+        timestamp: Date.now(),
       });
-    }
-
-    try {
-      await this.seq.start({
-        rect: { x: b.x, y: b.y, w: b.width, h: b.height },
-        fps: this.gifFps,
-      });
-      // 시작 성공 후에만 rect 저장 — 다음 클릭이 이 값으로 GIF 크기/좌표를 계산.
-      this.segmentRect = {
-        x: b.x,
-        y: b.y,
-        width: b.width,
-        height: b.height,
-        scaleFactor: sf,
-      };
-    } catch (err) {
-      this.segmentRect = null;
-      console.error('[asis] stepGuide: 구간 GIF 시작 실패', err);
+    } finally {
+      // 인코딩 성공/실패/폐기 어느 경로든 stopping 을 풀어 이미지 모드로 되돌린다.
+      // 단, 그 사이 stop()/stopSilently()/재시작이 phase 를 이미 바꿨으면 건드리지 않는다.
+      if (session === this.sessionId && this.gifPhase.kind === 'stopping') {
+        this.gifPhase = { kind: 'idle' };
+        this.emitRecording();
+      }
     }
   }
 
-  /** 구간 GIF 임시 파일 경로 — 클릭마다 생성되므로 pid+시각+세대로 충돌 방지. */
+  /** GIF 임시 파일 경로 — 세션당 여러 개 가능하므로 pid+시각+세대로 충돌 방지. */
   private tmpGifPath(): string {
     return join(
       tmpdir(),
       `asis-stepguide-${process.pid}-${Date.now()}-${this.sessionId}.gif`,
     );
+  }
+
+  /** 현재 녹화 상태를 HUD/트레이로 push. */
+  private emitRecording(): void {
+    // GIF 가 활성(시작 중/녹화 중/인코딩 중)이면 HUD 는 "GIF 녹화 중"으로 표시한다 —
+    // 전이 중에도 버튼이 [GIF 정지] 로 유지돼 이중 트리거를 막는다(idle 에서만 [GIF 시작]).
+    const gifRecording = this.gifPhase.kind !== 'idle';
+    this.callbacks?.onStateChange({
+      kind: 'recording',
+      stepCount: this.steps.length,
+      gifRecording,
+    });
   }
 
   /** 누적 스텝을 문서로 저장. */

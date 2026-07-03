@@ -4,14 +4,23 @@ import { loadRendererPage, preloadPath } from './common';
 import { StepGuideManager, type StepGuideState } from '../step-guide/stepGuide';
 
 const CHANNEL_STOP = 'step-guide:stop';
+const CHANNEL_START_GIF = 'step-guide:start-gif';
+const CHANNEL_STOP_GIF = 'step-guide:stop-gif';
+
+/** HUD 로 push 하는 녹화 상태 payload — 스텝 수 + GIF 녹화 중 여부.
+ *  renderer 쪽 동일 형태는 preload/index.d.ts 의 StepGuideState / hook 의 StepGuideHudState. */
+type StepGuideHudState = {
+  stepCount: number;
+  gifRecording: boolean;
+};
 
 /**
  * 스텝 가이드 녹화 HUD(floating bar) + StepGuideManager lifecycle 관리.
  *
  * video-recorder HUD 와 형태는 같으나(작은 알약·always-on-top·contentProtection),
  * 종료가 Promise settle 이 아니라 StepGuideManager 로 위임된다:
- *   - HUD 는 상태 표시 + 종료 형식(md/html) 선택만.
- *   - StepGuideManager 가 전역 클릭 탭·캡처·export 를 소유.
+ *   - HUD 는 상태 표시 + 명령(GIF 시작/정지, 종료 형식 md/html 선택)만.
+ *   - StepGuideManager 가 전역 클릭 탭·캡처·GIF 인코딩·export 를 소유.
  *
  * side-effects.md Rule 3 — 창 lifecycle + 전역 탭 소유는 Class.
  * null-safety.md — 알림은 콜백으로 위임(main/index 가 Notification 표시).
@@ -43,7 +52,8 @@ export class StepGuideWindowManager {
     const cursor = screen.getCursorScreenPoint();
     const display = screen.getDisplayNearestPoint(cursor);
     const { x: dx, y: dy, width } = display.bounds;
-    const winW = 300;
+    // 버튼 3개(GIF 시작/MD 저장/HTML 저장) + REC + 카운터 — 300 은 좁아 380 으로 넓힘.
+    const winW = 380;
     const winH = 38;
 
     const win = new BrowserWindow({
@@ -90,6 +100,17 @@ export class StepGuideWindowManager {
     };
     ipcMain.on(CHANNEL_STOP, onStop);
 
+    // renderer → main: [GIF 시작] / [GIF 정지]. StepGuideManager 가 무시/멱등 처리하므로
+    // 중복 클릭에도 안전. onStop 과 동일하게 창 close 시 removeListener 로 해제한다.
+    const onStartGif = (): void => {
+      this.guide.startGif();
+    };
+    const onStopGif = (): void => {
+      this.guide.stopGif();
+    };
+    ipcMain.on(CHANNEL_START_GIF, onStartGif);
+    ipcMain.on(CHANNEL_STOP_GIF, onStopGif);
+
     // StepGuideManager 시작 — 상태 변화를 HUD 로 push, 알림은 notifiers 로.
     this.guide.start({
       onStateChange: (state) => {
@@ -126,6 +147,8 @@ export class StepGuideWindowManager {
 
     win.on('closed', () => {
       ipcMain.removeListener(CHANNEL_STOP, onStop);
+      ipcMain.removeListener(CHANNEL_START_GIF, onStartGif);
+      ipcMain.removeListener(CHANNEL_STOP_GIF, onStopGif);
       this.win = null;
       // 창이 (사용자 강제 종료 등으로) 닫혔는데 아직 녹화 중이면 export 없이 폐기.
       // 명시적 저장 버튼을 안 눌렀으므로 의도된 폐기 — 다이얼로그 없이 조용히 정지.
@@ -160,8 +183,12 @@ export class StepGuideWindowManager {
 
   private pushState(state: StepGuideState): void {
     if (!this.win || this.win.isDestroyed()) return;
-    const count = state.kind === 'recording' ? state.stepCount : 0;
-    this.win.webContents.send('step-guide:step-count', count);
+    // idle 은 창이 곧 닫히는 상태 — 0단계·GIF 미녹화로 정규화해 push(HUD 잔상 방지).
+    const hud: StepGuideHudState =
+      state.kind === 'recording'
+        ? { stepCount: state.stepCount, gifRecording: state.gifRecording }
+        : { stepCount: 0, gifRecording: false };
+    this.win.webContents.send('step-guide:step-count', hud);
   }
 
   private closeWindow(): void {

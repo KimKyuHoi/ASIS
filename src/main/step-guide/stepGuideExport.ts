@@ -13,8 +13,8 @@ import { basename } from 'node:path';
 
 /**
  * 스텝 이미지의 종류.
- *   - 'image': 그 시점의 정지 PNG (첫 스텝, 그리고 GIF 구간이 완성 못 된 경우의 fallback).
- *   - 'gif'  : 직전 클릭 ~ 현재 클릭 사이 구간을 기록한 애니메이션 GIF.
+ *   - 'image': 전역 클릭 시점의 정지 PNG (이미지 모드의 각 클릭).
+ *   - 'gif'  : [GIF 시작]~[GIF 정지] 구간 전체를 담은 하나의 연속 애니메이션 GIF.
  * kind 에 따라 파일 확장자·마커 표시 여부가 갈린다(gif 는 애니메이션이라 마커 없음).
  */
 export type StepKind =
@@ -64,15 +64,19 @@ function formatDate(ms: number): string {
 }
 
 /**
- * 한 스텝의 사람용 설명 텍스트 — 라벨이 있으면 "N. '버튼' 클릭", 없으면 좌표.
- * gif 스텝은 "직전 → 이번 클릭까지의 동작" 을 담으므로 접미사로 (동작)을 붙인다.
+ * 한 스텝의 사람용 설명 텍스트.
+ *   - gif: 연속 녹화 구간이라 단일 클릭 좌표가 없다 → "N. 화면 동작 (GIF)".
+ *   - image + 라벨: "N. '버튼' 클릭".
+ *   - image + 라벨 없음: "N. (x, y) 위치 클릭".
  */
 function stepCaption(step: GuideStep): string {
-  const suffix = step.kind === 'gif' ? ' (동작)' : '';
-  if (step.label) {
-    return `${step.order}. "${step.label}" 클릭${suffix}`;
+  if (step.kind === 'gif') {
+    return `${step.order}. 화면 동작 (GIF)`;
   }
-  return `${step.order}. (${step.clickX}, ${step.clickY}) 위치 클릭${suffix}`;
+  if (step.label) {
+    return `${step.order}. "${step.label}" 클릭`;
+  }
+  return `${step.order}. (${step.clickX}, ${step.clickY}) 위치 클릭`;
 }
 
 // ---------------------------------------------------------------------------

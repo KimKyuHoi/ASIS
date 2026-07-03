@@ -228,16 +228,26 @@ const patchHistory = {
 };
 
 /**
- * 스텝 가이드 IPC 브릿지 — 클릭마다 스텝 누적, 종료 시 형식 지정 export.
+ * 스텝 가이드 IPC 브릿지 — 수동 이미지/GIF 모드.
+ *  - onState(cb): main 이 클릭 스텝 수 + GIF 녹화 여부를 push
+ *  - startGif()/stopGif(): [GIF 시작]/[GIF 정지] — 연속 GIF 녹화 제어
+ *  - stop(format): 종료 + 형식 지정 export
  */
 const stepGuide = {
-  onStepCount: (callback: (count: number) => void): (() => void) => {
-    const handler = (_event: IpcRendererEvent, count: number): void => {
-      callback(count);
+  onState: (
+    callback: (state: { stepCount: number; gifRecording: boolean }) => void,
+  ): (() => void) => {
+    const handler = (
+      _event: IpcRendererEvent,
+      state: { stepCount: number; gifRecording: boolean },
+    ): void => {
+      callback(state);
     };
     ipcRenderer.on('step-guide:step-count', handler);
     return () => ipcRenderer.removeListener('step-guide:step-count', handler);
   },
+  startGif: (): void => ipcRenderer.send('step-guide:start-gif'),
+  stopGif: (): void => ipcRenderer.send('step-guide:stop-gif'),
   stop: (format: 'markdown' | 'html'): void =>
     ipcRenderer.send('step-guide:stop', format),
 };
