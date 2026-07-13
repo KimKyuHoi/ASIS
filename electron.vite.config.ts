@@ -6,6 +6,17 @@ export default defineConfig({
   main: {},
   preload: {},
   renderer: {
+    // dev 첫 prewarm 가속 — dev 서버가 뜰 때 단축키 임계 경로 엔트리를 미리
+    // 변환해 둔다. 없으면 첫 요청 시 즉석 변환으로 prewarm 이 ~1.1s 걸린다.
+    // server 옵션은 dev 전용이라 프로덕션 빌드에는 영향 없음.
+    server: {
+      warmup: {
+        clientFiles: [
+          './src/renderer/selection/**/*.{ts,tsx}',
+          './src/renderer/editor/**/*.{ts,tsx}',
+        ],
+      },
+    },
     build: {
       rollupOptions: {
         input: {
