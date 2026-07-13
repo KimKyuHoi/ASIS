@@ -10,6 +10,11 @@ type Rect = {
   h: number;
 };
 
+/** main 의 displaySnapshot.ts 와 동일 형태 — raw 는 BGRA 픽셀(스트라이드 없음). */
+type BackgroundPayload =
+  | { kind: 'raw'; data: Uint8Array; width: number; height: number } |
+  { kind: 'dataUrl'; dataUrl: string };
+
 /**
  * 영역 선택 오버레이 IPC 브릿지.
  */
@@ -17,11 +22,11 @@ const selection = {
   capture: (rect: Rect): Promise<void> =>
     ipcRenderer.invoke('capture:region', rect),
   cancel: (): void => ipcRenderer.send('capture:cancel'),
-  /** Color picker / Magnifier 용 — overlay 띄우기 전 화면의 dataURL.
-      반환값은 cleanup — useEffect teardown 에서 호출해 리스너를 해제한다. */
-  onBackground: (callback: (dataUrl: string) => void): (() => void) => {
-    const handler = (_event: IpcRendererEvent, dataUrl: string): void => {
-      callback(dataUrl);
+  /** Color picker / Magnifier 용 — overlay 띄우기 전 화면 스냅샷.
+      raw(BGRA) 또는 dataURL(폴백). 반환값은 cleanup — useEffect teardown 에서 호출. */
+  onBackground: (callback: (payload: BackgroundPayload) => void): (() => void) => {
+    const handler = (_event: IpcRendererEvent, payload: BackgroundPayload): void => {
+      callback(payload);
     };
     ipcRenderer.on('capture:background', handler);
     return () => ipcRenderer.removeListener('capture:background', handler);

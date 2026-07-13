@@ -4,6 +4,7 @@ import type { Point, Rect, RulerAction, RulerState } from '../types/selection';
 import { Magnifier } from './Magnifier';
 import { normalize } from '../lib/rect-utils';
 import { edgeDistances, niceTickStep, tickPositions } from '../lib/ruler-utils';
+import { paintBackground } from '../lib/paint-background';
 
 /**
  * 화면 자 / 간격 측정 오버레이(측정 전용).
@@ -56,30 +57,26 @@ export default function RulerOverlay(): JSX.Element {
     api.ready();
   }, []);
 
+  // 도착 즉시 hidden canvas 에 그림 — SelectionOverlay 와 동일 구조
+  // (paint-background.ts 공용, canvas 크기는 명령형 관리).
   useEffect(() => {
     const api = window.selection;
     if (!api) throw new Error('window.selection 미노출 — preload 셋업 확인.');
     if (!bgCanvas) return undefined;
-    let raf1 = 0;
-    let raf2 = 0;
-    const off = api.onBackground((dataUrl) => {
-      const img = new Image();
-      img.onload = (): void => {
-        raf1 = requestAnimationFrame(() => {
-          setBgSize({ w: img.naturalWidth, h: img.naturalHeight });
-          raf2 = requestAnimationFrame(() => {
-            const ctx = bgCanvas.getContext('2d');
-            if (!ctx) return;
-            ctx.drawImage(img, 0, 0);
-          });
+    let stale = false;
+    const off = api.onBackground((payload) => {
+      paintBackground(bgCanvas, payload)
+        .then((size) => {
+          if (!stale) setBgSize(size);
+        })
+        .catch((err: unknown) => {
+          // background 실패 시 magnifier 만 비활성 — 측정 UX 는 계속 동작한다.
+          console.warn('[asis ruler] background 그리기 실패:', err);
         });
-      };
-      img.src = dataUrl;
     });
     return () => {
+      stale = true;
       off();
-      cancelAnimationFrame(raf1);
-      cancelAnimationFrame(raf2);
     };
   }, [bgCanvas]);
   const bgReady = bgSize !== null;
@@ -175,13 +172,10 @@ export default function RulerOverlay(): JSX.Element {
 
       <Hint visible={rect === null} measured={state.kind === 'measured'} />
 
-      {/* hidden canvas — main 에서 받은 background. magnifier 픽셀 source. */}
-      <canvas
-        ref={setBgCanvas}
-        width={bgSize?.w ?? 0}
-        height={bgSize?.h ?? 0}
-        style={{ display: 'none' }}
-      />
+      {/* hidden canvas — main 에서 받은 background. magnifier 픽셀 source.
+          width/height 는 onBackground 콜백이 명령형으로 관리 — JSX prop 으로 두면
+          재렌더 시 attribute 재설정으로 그려 둔 픽셀이 지워진다. */}
+      <canvas ref={setBgCanvas} style={{ display: 'none' }} />
 
       {bgReady && pointer && bgCanvas ? (
         <Magnifier pointer={pointer} bgCanvas={bgCanvas} />

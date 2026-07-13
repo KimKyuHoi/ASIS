@@ -1,10 +1,14 @@
 import { BrowserWindow, ipcMain, Notification, screen } from 'electron';
+import type { IpcMainEvent } from 'electron';
 import { is } from '@electron-toolkit/utils';
-import { spawn } from 'node:child_process';
-import { readFile, unlink } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { loadRendererPage, preloadPath } from './common';
+import {
+  clearElementAtProvider,
+  loadRendererPage,
+  preloadPath,
+  setElementAtProvider,
+} from './common';
+import type { ElementAtProvider } from './common';
+import { sendBackgroundSnapshot } from '../capture/displaySnapshot';
 import { ensureAccessibilityPermission, getElementBoundsAtPoint } from '../windowsInfo';
 
 /**
@@ -28,10 +32,8 @@ import { ensureAccessibilityPermission, getElementBoundsAtPoint } from '../windo
  *   - imperative-style.md — main process 명령형 OK.
  */
 
-const CHANNEL_BACKGROUND = 'capture:background';
 const CHANNEL_READY = 'capture:ready';
 const CHANNEL_CANCEL = 'capture:cancel';
-const CHANNEL_ELEMENT_AT = 'capture:element-at';
 
 export class RulerOverlayManager {
   private win: BrowserWindow | null = null;
@@ -76,7 +78,8 @@ export class RulerOverlayManager {
     });
 
     // background 캡처를 win.show() 보다 먼저 시작 — overlay dim 이 캡처에 안 찍히도록.
-    captureBackgroundForRuler(win).catch((err: unknown) => {
+    const displayRef = { id: display.id, bounds: display.bounds };
+    sendBackgroundSnapshot(win, displayRef).catch((err: unknown) => {
       console.warn('[asis] ruler background 캡처 실패 (magnifier 비활성):', err);
     });
 
@@ -90,11 +93,9 @@ export class RulerOverlayManager {
     });
 
     // AX 요소 치수 조회 — 전역 좌표 ↔ 오버레이 로컬 좌표 변환(캡처 오버레이와 동일).
-    // ipcMain.handle 은 동일 채널 중복 등록 시 throw 하므로, 캡처 오버레이가
-    // 비정상 종료로 핸들러를 남겼을 가능성에 대비해 먼저 제거한다(캡처/측정은
-    // 상호 배타적이라 정상 흐름에서는 no-op).
-    ipcMain.removeHandler(CHANNEL_ELEMENT_AT);
-    ipcMain.handle(CHANNEL_ELEMENT_AT, (_event, x: number, y: number) => {
+    // 전역 핸들러 + provider 교체 (common.ts) — 이 창의 invoke 만 응답한다.
+    const elementAtProvider: ElementAtProvider = (event, x, y) => {
+      if (event.sender !== win.webContents) return null;
       const result = getElementBoundsAtPoint(x + minX, y + minY);
       if (!result) return null;
       return {
@@ -104,14 +105,19 @@ export class RulerOverlayManager {
         h: result.h,
         name: result.name,
       };
-    });
+    };
+    setElementAtProvider(elementAtProvider);
 
     // renderer 가 ready 를 보내면 background 를 다시 한 번 밀어 준다(초기 유실 대비).
-    ipcMain.once(CHANNEL_READY, () => {
-      captureBackgroundForRuler(win).catch((err: unknown) => {
+    // sender 로 이 창만 판정 — selection prewarm 창의 ready 를 오인하지 않도록.
+    const onReady = (event: IpcMainEvent): void => {
+      if (event.sender !== win.webContents) return;
+      ipcMain.removeListener(CHANNEL_READY, onReady);
+      sendBackgroundSnapshot(win, displayRef).catch((err: unknown) => {
         console.warn('[asis] ruler background(ready) 실패:', err);
       });
-    });
+    };
+    ipcMain.on(CHANNEL_READY, onReady);
 
     // ESC 처리는 renderer 가 담당한다 — measured 상태에서는 "측정 지우기", idle
     // 에서는 cancel IPC 로 창 닫기(2단계). 여기서 globalShortcut ESC 를 별도 등록하지
@@ -128,7 +134,7 @@ export class RulerOverlayManager {
       }
       if (bgInFlight) return;
       bgInFlight = true;
-      captureBackgroundForRuler(win)
+      sendBackgroundSnapshot(win, displayRef)
         .catch((err: unknown) => {
           if (!bgFailLogged) {
             console.warn('[asis] ruler background polling 실패 (이후 silent):', err);
@@ -139,9 +145,11 @@ export class RulerOverlayManager {
     }, BG_POLL_MS);
 
     const cleanup = (): void => {
-      ipcMain.removeHandler(CHANNEL_ELEMENT_AT);
+      clearElementAtProvider(elementAtProvider);
       ipcMain.removeAllListeners(CHANNEL_CANCEL);
-      ipcMain.removeAllListeners(CHANNEL_READY);
+      // 이 창의 ready 리스너만 해제 — removeAllListeners 를 쓰면 selection
+      // prewarm 의 ready 리스너까지 지워져 prewarmed-loading 오판을 유발한다.
+      ipcMain.removeListener(CHANNEL_READY, onReady);
       clearInterval(bgPoll);
       this.win = null;
     };
@@ -198,41 +206,3 @@ function createRulerWindow(bounds: DisplayBounds): BrowserWindow {
   return win;
 }
 
-/**
- * Magnifier 용 background 캡처 — overlay 뜨기 전 화면을 screencapture 로 잡아
- * dataURL 로 renderer 에 전송. selectionOverlay 의 동명 함수와 동일 로직.
- */
-async function captureBackgroundForRuler(win: BrowserWindow): Promise<void> {
-  const tmpPath = join(tmpdir(), `asis-ruler-bg-${Date.now()}-${process.pid}.png`);
-  try {
-    await new Promise<void>((resolve, reject) => {
-      const child = spawn('/usr/sbin/screencapture', ['-x', '-t', 'png', tmpPath]);
-      const timeout = setTimeout(() => {
-        child.kill();
-        reject(new Error('screencapture timeout (5s)'));
-      }, 5000);
-      child.on('error', (err) => {
-        clearTimeout(timeout);
-        reject(err);
-      });
-      child.on('close', (code) => {
-        clearTimeout(timeout);
-        if (code === 0) resolve();
-        else reject(new Error(`screencapture exit ${code}`));
-      });
-    });
-    const buf = await readFile(tmpPath);
-    const dataUrl = `data:image/png;base64,${buf.toString('base64')}`;
-    if (!win.isDestroyed()) {
-      win.webContents.send(CHANNEL_BACKGROUND, dataUrl);
-    }
-  } finally {
-    await unlink(tmpPath).catch((err: unknown) => {
-      if (!isFileNotFound(err)) console.warn('[asis] ruler background tmp cleanup failed', err);
-    });
-  }
-}
-
-function isFileNotFound(err: unknown): boolean {
-  return err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT';
-}

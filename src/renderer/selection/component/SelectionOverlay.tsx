@@ -2,6 +2,7 @@ import { useEffect, useReducer, useRef, useState } from 'react';
 import type { CSSProperties, JSX } from 'react';
 import type { DragAction, DragState, Point, Rect } from '../types/selection';
 import { Magnifier } from './Magnifier';
+import { paintBackground } from '../lib/paint-background';
 import { normalize, chipPlacement } from '../lib/rect-utils';
 import { rgbToHex } from '../lib/color-utils';
 
@@ -60,6 +61,12 @@ export default function SelectionOverlay(): JSX.Element {
   const stateKindRef = useRef<string>('idle');
   // 우클릭 색상 복사 — 이벤트 핸들러에서 최신 bgCanvas 를 읽기 위한 ref.
   const bgCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  // 세션 활성 여부 — main 은 실제 캡처 세션에만 windows/background 를 보낸다.
+  // invisible standby 창은 이 신호를 못 받으므로, 수신 전에는 elementAt IPC 를
+  // 보내지 않는다 (standby 가 mousemove 를 받아도 세션 밖 invoke 스팸 방지).
+  // document.hasFocus() 게이트는 쓰지 않는다 — macOS 26β focus 회귀 시 세션
+  // 중에도 false 가 되어 UI 자동감지가 죽는다.
+  const activatedRef = useRef(false);
   // 복사 성공 토스트(복사된 HEX 문자열). null 이면 미표시.
   const [copyToast, setCopyToast] = useState<string | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -85,38 +92,39 @@ export default function SelectionOverlay(): JSX.Element {
   useEffect(() => {
     const api = window.selection;
     if (!api) throw new Error('window.selection 미노출 — preload 셋업 확인.');
-    const off = api.onWindows((list) => setWindows(list));
+    const off = api.onWindows((list) => {
+      activatedRef.current = true;
+      setWindows(list);
+    });
     api.ready();
     return off;
   }, []);
 
-  // main → renderer: 화면 background dataURL → hidden canvas 에 그림.
+  // main → renderer: 화면 background 스냅샷 → hidden canvas 에 그림.
+  // raw(BGRA) 는 디코딩 없이 즉시, dataURL 폴백은 createImageBitmap 오프스레드
+  // 디코딩 — 어느 쪽도 RAF 대기 없이 도착 즉시 그린다 (paint-background.ts).
+  // canvas 크기는 콜백에서 명령형으로 관리 (imperative-style.md — effect 콜백
+  // 내부 명령형 OK). width/height 를 JSX prop 으로 두면 setBgSize 재렌더가
+  // canvas 를 리셋해 그린 픽셀이 지워진다.
   useEffect(() => {
     const api = window.selection;
     if (!api) throw new Error('window.selection 미노출 — preload 셋업 확인.');
     if (!bgCanvas) return undefined;
-    let raf1 = 0;
-    let raf2 = 0;
-    const off = api.onBackground((dataUrl) => {
-      const img = new Image();
-      img.onload = (): void => {
-        // bgSize state 갱신 → 다음 렌더에 canvas 가 그 크기로 render → 그 다음
-        // RAF 에서 drawImage. 두 단계지만 mutation 없이 안전.
-        raf1 = requestAnimationFrame(() => {
-          setBgSize({ w: img.naturalWidth, h: img.naturalHeight });
-          raf2 = requestAnimationFrame(() => {
-            const ctx = bgCanvas.getContext('2d');
-            if (!ctx) return;
-            ctx.drawImage(img, 0, 0);
-          });
+    let stale = false;
+    const off = api.onBackground((payload) => {
+      activatedRef.current = true;
+      paintBackground(bgCanvas, payload)
+        .then((size) => {
+          if (!stale) setBgSize(size);
+        })
+        .catch((err: unknown) => {
+          // background 실패 시 magnifier 만 비활성 — 선택 UX 는 계속 동작한다.
+          console.warn('[asis selection] background 그리기 실패:', err);
         });
-      };
-      img.src = dataUrl;
     });
     return () => {
+      stale = true;
       off();
-      cancelAnimationFrame(raf1);
-      cancelAnimationFrame(raf2);
     };
   }, [bgCanvas]);
   const bgReady = bgSize !== null;
@@ -186,6 +194,9 @@ export default function SelectionOverlay(): JSX.Element {
 
       // idle 상태에서만 AX 쿼리 — 드래그 중에는 불필요.
       if (stateKindRef.current !== 'idle') return;
+      // 세션 활성 전(invisible standby)에는 IPC/AX 호출을 건너뛴다.
+      // 크로스헤어(setPointer)는 게이트하지 않는다 — 표시 직후부터 따라와야 한다.
+      if (!activatedRef.current) return;
       const now = Date.now();
       if (now - lastElementQueryRef.current < 50) return;
       lastElementQueryRef.current = now;
@@ -344,13 +355,10 @@ export default function SelectionOverlay(): JSX.Element {
 
       <Hint visible={state.kind === 'idle'} />
 
-      {/* hidden canvas — main 에서 받은 background 캡처. magnifier/color picker 픽셀 source. */}
-      <canvas
-        ref={setBgCanvas}
-        width={bgSize?.w ?? 0}
-        height={bgSize?.h ?? 0}
-        style={{ display: 'none' }}
-      />
+      {/* hidden canvas — main 에서 받은 background 캡처. magnifier/color picker 픽셀 source.
+          width/height 는 onBackground 콜백이 명령형으로 관리 — JSX prop 으로 두면
+          재렌더 시 attribute 재설정으로 그려 둔 픽셀이 지워진다. */}
+      <canvas ref={setBgCanvas} style={{ display: 'none' }} />
 
       {bgReady && pointer && bgCanvas && state.kind !== 'committed' ? (
         <Magnifier pointer={pointer} bgCanvas={bgCanvas} />

@@ -1,4 +1,4 @@
-import { stat } from 'node:fs/promises';
+import { stat, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runProcess } from '../runProcess';
@@ -38,6 +38,23 @@ export type CaptureResult =
  */
 function soundArgs(): string[] {
   return loadMisc().captureSound ? [] : ['-x'];
+}
+
+/**
+ * screencapture 콜드스타트 warm-up — 앱 구동 후 *첫* spawn 은 바이너리 로드 +
+ * ScreenCaptureKit/TCC 초기화로 오래 걸린다 (실측: cold 629ms vs warm ~110ms).
+ * 앱 시작 시 2x2px 캡처를 한 번 치러 두면 첫 실제 캡처가 warm 속도로 시작한다.
+ */
+export function warmScreencapture(): void {
+  const tmpPath = join(tmpdir(), `asis-warm-${process.pid}.png`);
+  runProcess(SCREENCAPTURE_BIN, ['-x', '-R', '0,0,2,2', '-t', 'png', tmpPath], 'screencapture')
+    .catch(() => {
+      // warm-up 실패는 첫 캡처가 느려질 뿐 — 실제 캡처 경로가 에러를 표면화한다.
+    })
+    .finally(() =>
+      unlink(tmpPath).catch(() => {
+        // 파일 미생성(ENOENT) 포함 정리 실패는 무해 — tmpdir 이라 OS 가 정리한다.
+      }));
 }
 
 /** 전체화면 캡처 (메인 모니터만). 다중 모니터는 v2. */

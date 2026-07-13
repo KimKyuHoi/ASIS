@@ -14,13 +14,16 @@ import {
   captureRegion,
   captureWindow,
   captureWindowById,
+  warmScreencapture,
   type CaptureResult,
 } from './capture/capture';
+import { warmDisplaySnapshot } from './capture/displaySnapshot';
 import { SelectionOverlayManager } from './windows/selectionOverlay';
 import { EditorWindowManager } from './windows/editorWindow';
 import { PinWindowManager } from './windows/pinWindow';
 import { RecorderWindowManager } from './windows/recorderWindow';
 import { VideoRecorderWindowManager } from './windows/videoRecorderWindow';
+import { warmAvfoundationIndices } from './video/screenRecord';
 import { recognizeText } from './ocr/ocr';
 import { SettingsWindowManager } from './windows/settingsWindow';
 import { HistoryWindowManager } from './windows/historyWindow';
@@ -275,6 +278,9 @@ const handleVideo = (): void => {
   // 영역/창 선택 → 녹화 → .mov 저장.
   guardCapture().then((ok) => {
     if (!ok) return;
+    // 사용자가 영역을 고르는 동안 ffmpeg 장치 열거를 미리 끝내 둔다 —
+    // 선택 완료 → 녹화 시작 사이의 -list_devices spawn(수백 ms) 제거.
+    warmAvfoundationIndices();
     selectionOverlay.show().then(
       (selResult) => {
         if (selResult.kind !== 'selected') return;
@@ -479,10 +485,29 @@ if (process.platform === 'darwin') {
 setupAutoUpdater(stopAllManagers);
 
 app.whenReady().then(() => {
+  // [perf] 콜드스타트 진단 — 프로세스 시작 → whenReady 까지 걸린 시간.
+  log.info(`[perf] whenReady +${Math.round(process.uptime() * 1000)}ms`);
+
   electronApp.setAppUserModelId('com.pinkfong.asis');
 
   // 기본 메뉴의 zoom accelerator(Cmd +/-/0)가 에디터 줌 단축키를 가로채는 것을 막는다.
   installAppMenu();
+
+  app.on('browser-window-created', (_, window) => {
+    optimizer.watchWindowShortcuts(window);
+  });
+
+  // prewarm 을 whenReady 최상단에서 시작 — 앱 시작 직후 단축키를 눌렀을 때
+  // renderer 로드가 끝나 있을 확률을 높인다. 단축키 임계 경로인 selection 을
+  // editor(번들이 훨씬 큼)보다 먼저 로드해 dev 서버/디스크 IO 경합에서 우선권을 준다.
+  selectionOverlay.prewarm();
+  editorWindow.prewarm();
+
+  // screencapture 첫 spawn 의 SCK/TCC 초기화 콜드스타트(실측 629ms)를 미리 치러
+  // 둔다 — 첫 실제 캡처가 warm 속도(~110ms)로 시작한다.
+  warmScreencapture();
+  // CG background 캡처 경로도 동일하게 warm-up (첫 호출 ~80ms → 이후 ~20ms).
+  warmDisplaySnapshot();
 
   // 업데이트 완료 감지 — lastLaunchedVersion 이 현재보다 낮으면 방금 업데이트된 것.
   const current = app.getVersion();
@@ -523,10 +548,6 @@ app.whenReady().then(() => {
   // (process.platform === 'darwin' && app.dock) {
   //   app.dock.hide();
   // }
-
-  app.on('browser-window-created', (_, window) => {
-    optimizer.watchWindowShortcuts(window);
-  });
 
   const onFullscreen = (): void => {
     // 커서가 있는 디스플레이를 캡처 — 다중 모니터 지원.
@@ -748,8 +769,6 @@ app.whenReady().then(() => {
   };
   trayManager.start(handlers);
   shortcutManager.start(handlers);
-  editorWindow.prewarm();
-  selectionOverlay.prewarm();
 
   // 앱 시작 직후 권한 상태 확인 — 거부/미설정 시 안내 다이얼로그 표시.
   checkPermissionsOnLaunch().catch((err: unknown) => {

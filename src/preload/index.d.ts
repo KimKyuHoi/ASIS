@@ -11,10 +11,15 @@ type Rect = {
 
 type WindowInfo = { id: number; name: string; x: number; y: number; w: number; h: number };
 
+/** main 의 displaySnapshot.ts 와 동일 형태 — raw 는 BGRA 픽셀(스트라이드 없음). */
+type BackgroundPayload =
+  | { kind: 'raw'; data: Uint8Array; width: number; height: number } |
+  { kind: 'dataUrl'; dataUrl: string };
+
 type SelectionAPI = {
   capture: (rect: Rect) => Promise<void>;
   cancel: () => void;
-  onBackground: (callback: (dataUrl: string) => void) => () => void;
+  onBackground: (callback: (payload: BackgroundPayload) => void) => () => void;
   onWindows: (callback: (windows: WindowInfo[]) => void) => () => void;
   ready: () => void;
   elementAt: (

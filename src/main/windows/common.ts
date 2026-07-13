@@ -1,6 +1,48 @@
-import { BrowserWindow, type BrowserWindowConstructorOptions } from 'electron';
+import { BrowserWindow, ipcMain, type BrowserWindowConstructorOptions } from 'electron';
+import type { IpcMainInvokeEvent } from 'electron';
 import { join } from 'node:path';
 import { is } from '@electron-toolkit/utils';
+
+export type ElementAtResult = {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  name?: string;
+} | null;
+
+export type ElementAtProvider = (
+  event: IpcMainInvokeEvent,
+  x: number,
+  y: number,
+) => ElementAtResult;
+
+let elementAtProvider: ElementAtProvider | null = null;
+let elementAtHandlerInstalled = false;
+
+/**
+ * capture:element-at 핸들러를 프로세스 전역 1회만 등록하고 provider 를 교체한다.
+ *
+ * 세션마다 ipcMain.handle/removeHandler 를 반복하면:
+ *  (a) 세션 종료 ~ renderer 실제 종료/standby 사이에 도착하는 invoke 가
+ *      "No handler registered" 에러를 main 콘솔에 스팸하고,
+ *  (b) selection/ruler 오버레이가 서로의 핸들러를 removeHandler 로 지운다.
+ * provider 교체 방식은 세션 부재 시 null 응답으로 조용히 처리한다.
+ */
+export function setElementAtProvider(provider: ElementAtProvider): void {
+  if (!elementAtHandlerInstalled) {
+    elementAtHandlerInstalled = true;
+    ipcMain.handle('capture:element-at', (event, x: number, y: number) =>
+      // 세션 없음(provider null) = 오버레이 미표시 상태의 잔여 invoke — null 로 조용히 응답.
+      elementAtProvider?.(event, x, y) ?? null);
+  }
+  elementAtProvider = provider;
+}
+
+/** 자기 provider 일 때만 해제 — 다른 세션이 이미 교체했다면 건드리지 않는다. */
+export function clearElementAtProvider(provider: ElementAtProvider): void {
+  if (elementAtProvider === provider) elementAtProvider = null;
+}
 
 /**
  * preload 스크립트 절대 경로.
