@@ -7,6 +7,7 @@ import {
   screen,
 } from 'electron';
 import { is } from '@electron-toolkit/utils';
+import log from 'electron-log/main';
 import { copyFile, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { loadRendererPage, preloadPath } from './common';
@@ -125,7 +126,11 @@ export class VideoRecorderWindowManager {
         cancelCurrent().finally(() => settle({ kind: 'canceled' }));
       });
 
-      this.recorder.start(rect).catch((err: unknown) => {
+      // [perf] 콜드스타트 진단 — ffmpeg 첫 spawn(디스크 캐시 미적재) 지연 여부 확인용.
+      const startAt = Date.now();
+      this.recorder.start(rect).then(() => {
+        log.info(`[perf] video 녹화 시작 +${Date.now() - startAt}ms`);
+      }).catch((err: unknown) => {
         console.error('[asis] screen record start failed', err);
         settle({
           kind: 'failed',

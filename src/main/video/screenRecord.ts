@@ -262,6 +262,31 @@ async function resolveAvfInput(
 }
 
 /**
+ * avfoundation 인덱스 캐시 — `-list_devices` spawn 은 장치 열거로 수백 ms 걸려서
+ * 매 녹화 시작마다 하면 "선택 완료 → 녹화 시작" 사이 지연이 된다.
+ * 디스플레이 구성(id 목록)이 바뀌면 stale 이므로 signature 로 무효화한다.
+ * (카메라 추가/제거로도 인덱스가 밀릴 수 있지만 디스플레이 signature 만 추적 —
+ * 녹화 도중이 아닌 캡처 사이에 카메라가 바뀌는 케이스는 드물고, 그때는
+ * 디스플레이도 함께 재열거하는 warm 경로가 대부분 다시 탄다.)
+ */
+let avfIndicesCache: { signature: string; indices: number[] } | null = null;
+
+function displaySignature(): string {
+  return screen.getAllDisplays().map((d) => d.id).join(',');
+}
+
+/**
+ * 영역 선택이 뜨는 동안 미리 호출해 두는 warm-up — 사용자가 영역을 고르는
+ * 수 초 사이에 장치 열거가 끝나므로 녹화 시작 시 spawn 을 생략할 수 있다.
+ * 실패는 무시 — start() 경로의 avfoundationScreenIndices() 가 다시 시도한다.
+ */
+export function warmAvfoundationIndices(): void {
+  avfoundationScreenIndices().catch(() => {
+    // 여기서 로그까지 남기면 start() 실패와 이중 보고 — start() 쪽이 사용자에게 표면화한다.
+  });
+}
+
+/**
  * avfoundation "Capture screen N" 항목의 ffmpeg 입력 인덱스를 screen 번호 순서대로 반환.
  *
  * 카메라 수가 환경마다 달라(내장/iPhone/외장 등) screen 시작 인덱스가 가변이므로
@@ -272,6 +297,10 @@ async function resolveAvfInput(
  * (runProcess 는 code 를 판정하지 않고 stderr 를 그대로 준다).
  */
 async function avfoundationScreenIndices(): Promise<number[]> {
+  const signature = displaySignature();
+  if (avfIndicesCache && avfIndicesCache.signature === signature) {
+    return avfIndicesCache.indices;
+  }
   const { stderr } = await runProcess(FFMPEG_BIN, [
     '-f',
     'avfoundation',
@@ -288,6 +317,10 @@ async function avfoundationScreenIndices(): Promise<number[]> {
   const result: number[] = [];
   for (let i = 0; byScreen[i] !== undefined; i++) {
     result.push(byScreen[i]);
+  }
+  // 파싱 결과가 비면 캐시하지 않는다 — 일시적 실패(권한 프롬프트 등)를 고착시키지 않기 위해.
+  if (result.length > 0) {
+    avfIndicesCache = { signature, indices: result };
   }
   return result;
 }

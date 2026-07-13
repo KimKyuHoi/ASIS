@@ -7,6 +7,7 @@ import {
   screen,
 } from 'electron';
 import { is } from '@electron-toolkit/utils';
+import log from 'electron-log/main';
 import { copyFile, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -120,7 +121,11 @@ export class RecorderWindowManager {
       });
 
       const gifFps = settingsStore.get('misc').gifFps;
-      this.sequence.start({ rect, fps: gifFps }).catch((err: unknown) => {
+      // [perf] 콜드스타트 진단 — 시퀀스 캡처 시작 지연 확인용.
+      const startAt = Date.now();
+      this.sequence.start({ rect, fps: gifFps }).then(() => {
+        log.info(`[perf] GIF 녹화 시작 +${Date.now() - startAt}ms`);
+      }).catch((err: unknown) => {
         console.error('[asis] sequence start failed', err);
         settle({
           kind: 'failed',
