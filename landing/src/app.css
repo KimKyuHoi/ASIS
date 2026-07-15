@@ -104,6 +104,40 @@ svg {
   align-items: center;
   gap: 6px;
 }
+.nav-lang {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    color 0.15s,
+    background 0.15s,
+    border-color 0.15s;
+}
+.nav-lang:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+.nav-lang-opt {
+  color: var(--muted);
+  transition: color 0.15s;
+}
+.nav-lang-opt--active {
+  color: var(--accent);
+}
+.nav-lang-sep {
+  color: var(--muted);
+  opacity: 0.5;
+}
 
 /* ─── Buttons ───────────────────────────────────────────────── */
 .btn-primary {
@@ -1378,6 +1412,10 @@ svg {
   /* GitHub 는 아이콘만 — 폭 확보. */
   .nav-github-label {
     display: none;
+  }
+  .nav-lang {
+    padding: 5px 7px;
+    font-size: 11px;
   }
   .nav-github {
     padding: 6px 6px;

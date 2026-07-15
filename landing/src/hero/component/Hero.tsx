@@ -1,15 +1,14 @@
 import { motion, useScroll, useTransform } from 'framer-motion';
 import { useRef } from 'react';
+import { useLanguage } from '../../i18n/hook/useLanguage';
+import { HERO_STRINGS } from '../lib/strings';
 
 type HeroProps = {
   downloadHref: string
-  downloadLabel: string
+  version: string
 };
 
-const WORDS_LINE1 = ['스크린샷을'];
-const WORDS_LINE2 = ['더', '빠르게.'];
-
-function AppMockup(): React.JSX.Element {
+function AppMockup({ label }: { label: string }): React.JSX.Element {
   return (
     <div className="mockup">
       <div className="mockup-chrome">
@@ -54,7 +53,7 @@ function AppMockup(): React.JSX.Element {
               <path d="M4 20 L60 20 M48 8 L62 20 L48 32" stroke="#5ea2ff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </div>
-          <div className="anno-label">API 수정 필요</div>
+          <div className="anno-label">{label}</div>
           <div className="anno-number">1</div>
         </div>
       </div>
@@ -62,8 +61,11 @@ function AppMockup(): React.JSX.Element {
   );
 }
 
-export function Hero({ downloadHref, downloadLabel }: HeroProps): React.JSX.Element {
+export function Hero({ downloadHref, version }: HeroProps): React.JSX.Element {
   const ref = useRef<HTMLElement>(null);
+  const lang = useLanguage();
+  const t = HERO_STRINGS[lang];
+  const downloadLabel = version ? `${t.downloadLabel} (${version})` : t.downloadLabel;
   const { scrollYProgress } = useScroll({ target: ref, offset: ['start start', 'end start'] });
   const y = useTransform(scrollYProgress, [0, 1], ['0%', '18%']);
   const opacity = useTransform(scrollYProgress, [0, 0.75], [1, 0]);
@@ -78,12 +80,12 @@ export function Hero({ downloadHref, downloadLabel }: HeroProps): React.JSX.Elem
           transition={{ duration: 0.5, delay: 0.1 }}
         >
           <span className="badge-dot" />
-          무료 · 오픈소스 · macOS 전용
+          {t.badge}
         </motion.div>
 
         <h1 className="hero-title">
           <span className="hero-line">
-            {WORDS_LINE1.map((w, i) => (
+            {t.titleLine1.map((w, i) => (
               <motion.span
                 key={w}
                 className="hero-word"
@@ -96,7 +98,7 @@ export function Hero({ downloadHref, downloadLabel }: HeroProps): React.JSX.Elem
             ))}
           </span>
           <span className="hero-line hero-line--accent">
-            {WORDS_LINE2.map((w, i) => (
+            {t.titleLine2.map((w, i) => (
               <motion.span
                 key={w}
                 className="hero-word"
@@ -116,8 +118,8 @@ export function Hero({ downloadHref, downloadLabel }: HeroProps): React.JSX.Elem
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.55, delay: 0.7 }}
         >
-          캡처하고, 그 위에 바로 화살표·도형·텍스트를 그리고,<br />
-          클립보드로 복사하거나 화면에 핀으로 고정하세요.
+          {t.subLine1}<br />
+          {t.subLine2}
         </motion.p>
 
         <motion.div
@@ -138,7 +140,7 @@ export function Hero({ downloadHref, downloadLabel }: HeroProps): React.JSX.Elem
             target="_blank"
             rel="noopener noreferrer"
           >
-            GitHub에서 보기 →
+            {t.githubLabel}
           </a>
         </motion.div>
 
@@ -148,7 +150,7 @@ export function Hero({ downloadHref, downloadLabel }: HeroProps): React.JSX.Elem
           animate={{ opacity: 1 }}
           transition={{ duration: 0.5, delay: 1.05 }}
         >
-          macOS 13 Ventura 이상 · Apple Silicon &amp; Intel
+          {t.compat}
         </motion.p>
 
         <motion.div
@@ -158,7 +160,7 @@ export function Hero({ downloadHref, downloadLabel }: HeroProps): React.JSX.Elem
           transition={{ duration: 0.9, delay: 0.5, ease: [0.32, 0.72, 0, 1] }}
         >
           <div className="mockup-glow" />
-          <AppMockup />
+          <AppMockup label={t.mockupLabel} />
         </motion.div>
       </motion.div>
     </section>

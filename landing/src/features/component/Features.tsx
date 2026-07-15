@@ -1,13 +1,7 @@
 import { motion, useScroll, useTransform } from 'framer-motion';
 import { useRef } from 'react';
-
-type Feature = {
-  num: string
-  title: string
-  desc: string
-  detail: string
-  visual: React.ReactNode
-};
+import { useLanguage } from '../../i18n/hook/useLanguage';
+import { FEATURES_STRINGS } from '../lib/strings';
 
 function CaptureVisual(): React.JSX.Element {
   return (
@@ -28,25 +22,21 @@ function CaptureVisual(): React.JSX.Element {
   );
 }
 
+// 어노테이션 도구 아이콘·활성 상태는 데코 고정값. 라벨만 언어별로 바뀐다.
+const ANNO_TOOL_ICONS = ['↖', '□', '○', '→', 'T', '✏', '◎', '▦', '⬛', '#'];
+const ANNO_ACTIVE_INDEX = 1;
+
 function AnnoVisual(): React.JSX.Element {
+  const lang = useLanguage();
+  const v = FEATURES_STRINGS[lang].visuals;
+
   return (
     <div className="fv-anno">
       <div className="fv-toolbar-big">
-        {[
-          { icon: '↖', label: '선택' },
-          { icon: '□', label: '사각형', active: true },
-          { icon: '○', label: '원' },
-          { icon: '→', label: '화살표' },
-          { icon: 'T', label: '텍스트' },
-          { icon: '✏', label: '펜' },
-          { icon: '◎', label: '컬러' },
-          { icon: '▦', label: '모자이크' },
-          { icon: '⬛', label: '블러' },
-          { icon: '#', label: '번호' },
-        ].map(({ icon, label, active }) => (
-          <div key={label} className={`fv-tool${active ? ' fv-tool--active' : ''}`}>
+        {ANNO_TOOL_ICONS.map((icon, i) => (
+          <div key={i} className={`fv-tool${i === ANNO_ACTIVE_INDEX ? ' fv-tool--active' : ''}`}>
             <span className="fv-tool-icon">{icon}</span>
-            <span className="fv-tool-label">{label}</span>
+            <span className="fv-tool-label">{v.annoToolLabels[i]}</span>
           </div>
         ))}
       </div>
@@ -58,7 +48,7 @@ function AnnoVisual(): React.JSX.Element {
             <path d="M8 25 L72 25 M58 10 L74 25 L58 40" stroke="#ff3b30" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </div>
-        <div className="fv-shape fv-shape-text">중요 버그</div>
+        <div className="fv-shape fv-shape-text">{v.annoShapeText}</div>
         <div className="fv-shape fv-shape-num">3</div>
       </div>
     </div>
@@ -66,6 +56,9 @@ function AnnoVisual(): React.JSX.Element {
 }
 
 function PinVisual(): React.JSX.Element {
+  const lang = useLanguage();
+  const v = FEATURES_STRINGS[lang].visuals;
+
   return (
     <div className="fv-pin">
       <div className="fv-bg-window">
@@ -77,15 +70,15 @@ function PinVisual(): React.JSX.Element {
       <div className="fv-pinned-window">
         <div className="fv-pw-chrome">
           <span className="dot dot-red" /><span className="dot dot-yellow" /><span className="dot dot-green" />
-          <span className="fv-pw-title">캡처 · 고정됨</span>
+          <span className="fv-pw-title">{v.pinWindowTitle}</span>
         </div>
         <div className="fv-pw-body">
           <div className="fv-pw-anno-rect" />
-          <div className="fv-pw-text">수정 요청</div>
+          <div className="fv-pw-text">{v.pinText}</div>
         </div>
       </div>
       <div className="fv-pin-badge">
-        <span>📌</span> 항상 위에 표시
+        <span>📌</span> {v.pinBadge}
       </div>
     </div>
   );
@@ -120,6 +113,8 @@ function GifVisual(): React.JSX.Element {
 }
 
 function ColorVisual(): React.JSX.Element {
+  const lang = useLanguage();
+  const v = FEATURES_STRINGS[lang].visuals;
   const colors = [
     ['#ff3b30', '#ff6b6b', '#ff9f0a'],
     ['#30d158', '#5ea2ff', '#bf5af2'],
@@ -142,18 +137,21 @@ function ColorVisual(): React.JSX.Element {
           <span className="fv-color-rgb">rgb(94, 162, 255)</span>
           <span className="fv-color-hsl">hsl(213, 100%, 68%)</span>
         </div>
-        <button className="fv-color-copy">복사</button>
+        <button className="fv-color-copy">{v.colorCopy}</button>
       </div>
     </div>
   );
 }
 
 function HistoryVisual(): React.JSX.Element {
+  const lang = useLanguage();
+  const v = FEATURES_STRINGS[lang].visuals;
+
   return (
     <div className="fv-history">
       <div className="fv-history-header">
-        <span>캡처 히스토리</span>
-        <span className="fv-history-count">6개</span>
+        <span>{v.historyHeader}</span>
+        <span className="fv-history-count">{v.historyCount}</span>
       </div>
       <div className="fv-history-grid">
         {[
@@ -173,52 +171,23 @@ function HistoryVisual(): React.JSX.Element {
   );
 }
 
-const FEATURES: Feature[] = [
-  {
-    num: '01',
-    title: '글로벌 단축키',
-    desc: '어느 앱에서든 즉시 캡처',
-    detail: '어느 앱에서든 단축키 한 번으로 영역·전체화면·윈도우 캡처를 즉시 실행합니다. 앱을 전환할 필요가 없습니다.',
-    visual: <CaptureVisual />,
-  },
-  {
-    num: '02',
-    title: '인라인 어노테이션',
-    desc: '10가지 도구로 직접 설명',
-    detail: '화살표·사각형·원·펜·텍스트·번호마커·지우개·하이라이트·블러·모자이크 10가지 도구로 캡처 위에 바로 그립니다.',
-    visual: <AnnoVisual />,
-  },
-  {
-    num: '03',
-    title: 'Pin to Screen',
-    desc: '캡처를 화면 위에 고정',
-    detail: '어노테이션한 이미지를 항상 위에 띄워 참고 자료로 사용하면서 다른 작업을 계속할 수 있습니다.',
-    visual: <PinVisual />,
-  },
-  {
-    num: '04',
-    title: 'GIF 녹화',
-    desc: '영역을 선택해 바로 GIF로',
-    detail: '영역을 선택해 시퀀스 GIF 또는 영상 GIF로 녹화하고 바로 저장합니다. 긴 설명 대신 GIF 하나로 전달하세요.',
-    visual: <GifVisual />,
-  },
-  {
-    num: '05',
-    title: 'Color Picker',
-    desc: '픽셀 단위 색상 추출',
-    detail: '영역 선택 중 화면의 어떤 색이든 픽셀 단위로 확대·확인·복사할 수 있습니다. HEX·RGB·HSL 모두 지원합니다.',
-    visual: <ColorVisual />,
-  },
-  {
-    num: '06',
-    title: '캡처 히스토리',
-    desc: '세션 내 캡처 이력 관리',
-    detail: '세션 중 복사하거나 핀한 캡처를 트레이 메뉴에서 바로 다시 불러올 수 있습니다.',
-    visual: <HistoryVisual />,
-  },
+// 카드 텍스트와 순서가 1:1로 대응하는 시각 요소들.
+const FEATURE_VISUALS = [
+  CaptureVisual, AnnoVisual, PinVisual, GifVisual, ColorVisual, HistoryVisual,
 ];
 
-function FeatureItem({ feature, index }: { feature: Feature; index: number }): React.JSX.Element {
+type FeatureItemProps = {
+  num: string
+  title: string
+  desc: string
+  detail: string
+  Visual: () => React.JSX.Element
+  index: number
+};
+
+function FeatureItem(
+  { num, title, desc, detail, Visual, index }: FeatureItemProps,
+): React.JSX.Element {
   const ref = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({ target: ref, offset: ['start 0.85', 'start 0.25'] });
   const y = useTransform(scrollYProgress, [0, 1], [24, 0]);
@@ -228,19 +197,22 @@ function FeatureItem({ feature, index }: { feature: Feature; index: number }): R
   return (
     <div ref={ref} className={`feature-item${isEven ? '' : ' feature-item--flip'}`}>
       <motion.div className="feature-text" style={{ y, opacity: scrollYProgress }}>
-        <span className="feature-num">{feature.num}</span>
-        <h3 className="feature-title">{feature.title}</h3>
-        <p className="feature-desc-short">{feature.desc}</p>
-        <p className="feature-detail">{feature.detail}</p>
+        <span className="feature-num">{num}</span>
+        <h3 className="feature-title">{title}</h3>
+        <p className="feature-desc-short">{desc}</p>
+        <p className="feature-detail">{detail}</p>
       </motion.div>
       <motion.div className="feature-visual" style={{ y: visualY, opacity: scrollYProgress }}>
-        {feature.visual}
+        <Visual />
       </motion.div>
     </div>
   );
 }
 
 export function Features(): React.JSX.Element {
+  const lang = useLanguage();
+  const t = FEATURES_STRINGS[lang];
+
   return (
     <section className="features" id="features">
       <motion.div
@@ -250,14 +222,22 @@ export function Features(): React.JSX.Element {
         viewport={{ once: true, margin: '-80px' }}
         transition={{ duration: 0.6, ease: [0.32, 0.72, 0, 1] }}
       >
-        <span className="section-eyebrow">기능</span>
-        <h2 className="section-title">ASIS로 할 수 있는 것들</h2>
-        <p className="section-sub">캡처부터 공유까지, 한 번의 단축키로.</p>
+        <span className="section-eyebrow">{t.eyebrow}</span>
+        <h2 className="section-title">{t.title}</h2>
+        <p className="section-sub">{t.sub}</p>
       </motion.div>
 
       <div className="features-list">
-        {FEATURES.map((f, i) => (
-          <FeatureItem key={f.num} feature={f} index={i} />
+        {t.items.map((item, i) => (
+          <FeatureItem
+            key={i}
+            num={String(i + 1).padStart(2, '0')}
+            title={item.title}
+            desc={item.desc}
+            detail={item.detail}
+            Visual={FEATURE_VISUALS[i]}
+            index={i}
+          />
         ))}
       </div>
     </section>

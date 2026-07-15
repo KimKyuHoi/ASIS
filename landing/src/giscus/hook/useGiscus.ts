@@ -1,11 +1,6 @@
 import { useEffect, useRef } from 'react';
-import {
-  GISCUS_REPO,
-  GISCUS_REPO_ID,
-  GISCUS_THEME,
-  GISCUS_LANG,
-  type GiscusConfig,
-} from '../types/giscus';
+import { GISCUS_REPO, GISCUS_REPO_ID, GISCUS_THEME, type GiscusConfig } from '../types/giscus';
+import type { Language } from '../../i18n/lib/language';
 
 /**
  * giscus client.js 스크립트를 컨테이너에 주입한다.
@@ -13,9 +8,13 @@ import {
  * React lifecycle 과 무관한 외부 위젯 DOM 조작이므로 useEffect 가 맞는 자리다
  * (state 동기화가 아니라 mount/unmount 시 한 번씩 set up / tear down).
  *
- * config 가 바뀌면(탭 전환으로 다른 인스턴스가 마운트) 컨테이너를 비우고 다시 주입한다.
+ * config 나 lang 이 바뀌면(탭 전환·언어 전환) 컨테이너를 비우고 다시 주입한다.
+ * giscus 언어 코드는 'ko'/'en' 이 Language 값과 그대로 일치한다.
  */
-export function useGiscus(config: GiscusConfig): React.RefObject<HTMLDivElement | null> {
+export function useGiscus(
+  config: GiscusConfig,
+  lang: Language,
+): React.RefObject<HTMLDivElement | null> {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -37,16 +36,16 @@ export function useGiscus(config: GiscusConfig): React.RefObject<HTMLDivElement 
     script.setAttribute('data-emit-metadata', '0');
     script.setAttribute('data-input-position', config.inputPosition);
     script.setAttribute('data-theme', GISCUS_THEME);
-    script.setAttribute('data-lang', GISCUS_LANG);
+    script.setAttribute('data-lang', lang);
     script.setAttribute('data-loading', 'lazy');
 
     container.appendChild(script);
 
     return () => {
-      // 탭 전환/언마운트 시 주입한 스크립트 + 생성된 iframe 을 모두 제거.
+      // 탭 전환/언어 전환/언마운트 시 주입한 스크립트 + 생성된 iframe 을 모두 제거.
       container.replaceChildren();
     };
-  }, [config]);
+  }, [config, lang]);
 
   return containerRef;
 }

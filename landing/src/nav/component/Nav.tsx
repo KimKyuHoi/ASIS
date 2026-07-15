@@ -1,9 +1,14 @@
 import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import { NAV_ITEMS, type Route } from '../types/route';
+import { NAV_STRINGS } from '../lib/strings';
+import { useLanguage } from '../../i18n/hook/useLanguage';
+import { setLanguage } from '../../i18n/lib/language';
 
 export function Nav({ route }: { route: Route }): React.JSX.Element {
   const [scrolled, setScrolled] = useState(false);
+  const lang = useLanguage();
+  const t = NAV_STRINGS[lang];
 
   useEffect(() => {
     const handler = (): void => setScrolled(window.scrollY > 48);
@@ -36,9 +41,19 @@ export function Nav({ route }: { route: Route }): React.JSX.Element {
             className={`nav-tab${route === item.route ? ' nav-tab--active' : ''}`}
             aria-current={route === item.route ? 'page' : undefined}
           >
-            {item.label}
+            {t.labels[item.route]}
           </a>
         ))}
+        <button
+          type="button"
+          className="nav-lang"
+          onClick={() => setLanguage(lang === 'ko' ? 'en' : 'ko')}
+          aria-label={t.languageToggleAria}
+        >
+          <span className={`nav-lang-opt${lang === 'ko' ? ' nav-lang-opt--active' : ''}`}>KO</span>
+          <span className="nav-lang-sep">/</span>
+          <span className={`nav-lang-opt${lang === 'en' ? ' nav-lang-opt--active' : ''}`}>EN</span>
+        </button>
         <a
           href="https://github.com/KimKyuHoi/ASIS"
           target="_blank"

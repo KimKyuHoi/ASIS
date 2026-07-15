@@ -18,7 +18,12 @@ export const GISCUS_REPO_ID = 'R_kgDOSQhz7A';
 
 /** 사이트가 다크 단색 배경(#0d0d0f)이라 투명 다크 테마로 자연스럽게 녹인다. */
 export const GISCUS_THEME = 'transparent_dark';
-export const GISCUS_LANG = 'ko';
+
+/**
+ * 아래 term 은 giscus Discussion 스레드에 매핑되는 "식별자"다(mapping='specific').
+ * 사용자에게 보이는 카피가 아니라 스레드 키이므로 언어별로 바꾸지 않는다 —
+ * 바꾸면 기존 스레드와 매핑이 끊겨 댓글이 갈라진다. 그래서 한국어 문자열을 그대로 둔다.
+ */
 
 /** FAQ·문의 → Q&A 카테고리 */
 export const FAQ_GISCUS: GiscusConfig = {

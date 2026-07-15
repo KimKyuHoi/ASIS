@@ -1,6 +1,11 @@
 import { motion } from 'framer-motion';
+import { useLanguage } from '../../i18n/hook/useLanguage';
+import { FOOTER_STRINGS } from '../lib/strings';
 
 export function Footer(): React.JSX.Element {
+  const lang = useLanguage();
+  const t = FOOTER_STRINGS[lang];
+
   return (
     <motion.footer
       className="footer"
@@ -23,9 +28,9 @@ export function Footer(): React.JSX.Element {
         <div className="footer-links">
           <a href="https://github.com/KimKyuHoi/ASIS" target="_blank" rel="noopener noreferrer">GitHub</a>
           <span className="footer-sep">·</span>
-          <a href="https://github.com/KimKyuHoi/ASIS/releases" target="_blank" rel="noopener noreferrer">릴리스</a>
+          <a href="https://github.com/KimKyuHoi/ASIS/releases" target="_blank" rel="noopener noreferrer">{t.releases}</a>
           <span className="footer-sep">·</span>
-          <a href="#/bug">버그 제보</a>
+          <a href="#/bug">{t.bugReport}</a>
           <span className="footer-sep">·</span>
           <span>MIT License</span>
         </div>

@@ -6,6 +6,8 @@ import {
   PERMISSIONS,
   type ToolSpec,
 } from '../lib/feature-detail-data';
+import { FEATURE_DETAIL_STRINGS } from '../lib/strings';
+import { useLanguage } from '../../i18n/hook/useLanguage';
 import '../asset/feature-detail.css';
 
 const EASE: [number, number, number, number] = [0.32, 0.72, 0, 1];
@@ -39,6 +41,13 @@ function ToolCard({ tool, index }: { tool: ToolSpec; index: number }): React.JSX
 }
 
 export function FeatureDetail(): React.JSX.Element {
+  const lang = useLanguage();
+  const t = FEATURE_DETAIL_STRINGS[lang];
+  const annotationTools = ANNOTATION_TOOLS[lang];
+  const workflowFeatures = WORKFLOW_FEATURES[lang];
+  const shortcuts = SHORTCUTS[lang];
+  const permissions = PERMISSIONS[lang];
+
   return (
     <main className="page fd">
       <motion.header
@@ -47,32 +56,26 @@ export function FeatureDetail(): React.JSX.Element {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, ease: EASE }}
       >
-        <span className="section-eyebrow">기능 상세</span>
-        <h1 className="section-title">ASIS가 할 수 있는 모든 것</h1>
-        <p className="section-sub">
-          캡처부터 어노테이션, 공유까지 — 각 도구가 무엇을 하는지 자세히 살펴보세요.
-        </p>
+        <span className="section-eyebrow">{t.eyebrow}</span>
+        <h1 className="section-title">{t.title}</h1>
+        <p className="section-sub">{t.sub}</p>
       </motion.header>
 
       <section className="fd-section">
-        <h2 className="fd-section-title">어노테이션 도구</h2>
-        <p className="fd-section-desc">
-          캡처 위에 바로 그리는 8가지 도구. 모두 단축키로 즉시 전환됩니다.
-        </p>
+        <h2 className="fd-section-title">{t.annoTitle}</h2>
+        <p className="fd-section-desc">{t.annoDesc}</p>
         <div className="fd-grid">
-          {ANNOTATION_TOOLS.map((tool, i) => (
+          {annotationTools.map((tool, i) => (
             <ToolCard key={tool.name} tool={tool} index={i} />
           ))}
         </div>
       </section>
 
       <section className="fd-section">
-        <h2 className="fd-section-title">캡처 &amp; 워크플로우</h2>
-        <p className="fd-section-desc">
-          캡처를 시작하고 결과물을 활용하는 흐름 전체를 한 앱에서.
-        </p>
+        <h2 className="fd-section-title">{t.workflowTitle}</h2>
+        <p className="fd-section-desc">{t.workflowDesc}</p>
         <div className="fd-grid">
-          {WORKFLOW_FEATURES.map((tool, i) => (
+          {workflowFeatures.map((tool, i) => (
             <ToolCard key={tool.name} tool={tool} index={i} />
           ))}
         </div>
@@ -80,10 +83,10 @@ export function FeatureDetail(): React.JSX.Element {
 
       <section className="fd-section fd-section--split">
         <div className="fd-shortcuts">
-          <h2 className="fd-section-title">단축키</h2>
+          <h2 className="fd-section-title">{t.shortcutsTitle}</h2>
           <table className="fd-table">
             <tbody>
-              {SHORTCUTS.map((s) => (
+              {shortcuts.map((s) => (
                 <tr key={s.action}>
                   <td className="fd-table-key">
                     <kbd className="fd-kbd">{s.keys}</kbd>
@@ -95,10 +98,10 @@ export function FeatureDetail(): React.JSX.Element {
           </table>
         </div>
         <div className="fd-perms">
-          <h2 className="fd-section-title">필요 권한</h2>
-          <p className="fd-section-desc">앱 최초 실행 시 아래 권한을 요청합니다.</p>
+          <h2 className="fd-section-title">{t.permsTitle}</h2>
+          <p className="fd-section-desc">{t.permsDesc}</p>
           <ul className="fd-perm-list">
-            {PERMISSIONS.map((p) => (
+            {permissions.map((p) => (
               <li key={p.name} className="fd-perm-item">
                 <span className="fd-perm-name">{p.name}</span>
                 <span className="fd-perm-use">{p.use}</span>
@@ -111,7 +114,7 @@ export function FeatureDetail(): React.JSX.Element {
             target="_blank"
             rel="noopener noreferrer"
           >
-            macOS 다운로드 →
+            {t.cta}
           </a>
         </div>
       </section>

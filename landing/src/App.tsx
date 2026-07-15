@@ -8,6 +8,8 @@ import { Footer } from './footer/component/Footer';
 import { FeatureDetail } from './feature-detail/component/FeatureDetail';
 import { Faq } from './faq/component/Faq';
 import { BugReport } from './bug-report/component/BugReport';
+import { useLanguage } from './i18n/hook/useLanguage';
+import { META_STRINGS } from './meta/lib/strings';
 
 type ReleaseAsset = { name: string; browser_download_url: string };
 type Release = { tag_name: string; assets: ReleaseAsset[] };
@@ -16,6 +18,7 @@ const DEFAULT_HREF = 'https://github.com/KimKyuHoi/ASIS/releases/latest';
 
 export default function App(): React.JSX.Element {
   const route = useHashRoute();
+  const lang = useLanguage();
   const [version, setVersion] = useState('');
   const [armHref, setArmHref] = useState(DEFAULT_HREF);
   const [intelHref, setIntelHref] = useState(DEFAULT_HREF);
@@ -39,14 +42,21 @@ export default function App(): React.JSX.Element {
     window.scrollTo({ top: 0 });
   }, [route]);
 
-  const heroLabel = version ? `macOS 다운로드 (${version})` : 'macOS 다운로드';
+  // 브라우저 탭 제목·meta description 을 현재 언어에 맞춘다(React state → DOM 동기화).
+  useEffect(() => {
+    const meta = META_STRINGS[lang];
+    document.title = meta.title;
+    const descEl = document.querySelector('meta[name="description"]');
+    if (!descEl) throw new Error('meta[name="description"] must exist in index.html');
+    descEl.setAttribute('content', meta.description);
+  }, [lang]);
 
   return (
     <>
       <Nav route={route} />
       {route === 'home' ? (
         <>
-          <Hero downloadHref="#download" downloadLabel={heroLabel} />
+          <Hero downloadHref="#download" version={version} />
           <Features />
           <Download armHref={armHref} intelHref={intelHref} version={version} />
         </>
