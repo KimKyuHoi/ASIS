@@ -1,5 +1,7 @@
 import type { JSX } from 'react';
+import { useLanguage } from '../../../shared/i18n/use-language';
 import { useStepGuideState } from '../hook/useStepGuideState';
+import { stepGuideStrings } from '../lib/strings';
 
 /**
  * 스텝 가이드 녹화 컨트롤 — 작은 floating bar (video-recorder HUD 결).
@@ -16,6 +18,7 @@ import { useStepGuideState } from '../hook/useStepGuideState';
  * react-compiler.md — useMemo/useCallback 미사용. 인라인 핸들러 그대로.
  */
 export default function StepGuide(): JSX.Element {
+  const t = stepGuideStrings[useLanguage()];
   const { stepCount, gifRecording } = useStepGuideState();
 
   const api = (): NonNullable<typeof window.stepGuide> => {
@@ -40,33 +43,33 @@ export default function StepGuide(): JSX.Element {
         REC
       </div>
       {gifRecording ? (
-        <div className="sg__gifstatus">● GIF 녹화 중</div>
+        <div className="sg__gifstatus">{t.gifStatus}</div>
       ) : (
-        <div className="sg__count">{stepCount}단계 기록됨</div>
+        <div className="sg__count">{t.stepCount(stepCount)}</div>
       )}
       <button
         type="button"
         className={`sg__btn${gifRecording ? ' sg__btn--rec' : ''}`}
         onClick={toggleGif}
-        title={gifRecording ? 'GIF 녹화를 멈추고 한 스텝으로 저장' : '이 시점부터 연속 GIF 녹화 시작'}
+        title={gifRecording ? t.gifStopTitle : t.gifStartTitle}
       >
-        {gifRecording ? 'GIF 정지' : 'GIF 시작'}
+        {gifRecording ? t.gifStop : t.gifStart}
       </button>
       <button
         type="button"
         className="sg__btn"
         onClick={(): void => stop('markdown')}
-        title="Markdown 으로 저장하고 종료"
+        title={t.saveMdTitle}
       >
-        MD 저장
+        {t.saveMd}
       </button>
       <button
         type="button"
         className="sg__btn sg__btn--primary"
         onClick={(): void => stop('html')}
-        title="HTML 으로 저장하고 종료"
+        title={t.saveHtmlTitle}
       >
-        HTML 저장
+        {t.saveHtml}
       </button>
     </div>
   );

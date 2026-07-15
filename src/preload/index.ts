@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import { electronAPI } from '@electron-toolkit/preload';
 import type { HotkeyConfig, MiscConfig } from '../main/settings';
 import type { PatchNote } from '../main/patch-notes/patchNotes';
+import type { Language } from '../shared/i18n/language';
 
 type Rect = {
   x: number;
@@ -285,6 +286,29 @@ const scrollCapture = {
   },
 };
 
+/**
+ * 언어(i18n) IPC 브릿지.
+ *  - getLanguage(): 현재 언어 동기 조회 — 첫 페인트 전에 언어가 결정돼야 해서 sendSync.
+ *    main 의 핸들러는 즉시 returnValue 응답이라 블로킹은 준비된 값 1회 왕복뿐이다.
+ *  - setLanguage(lang): 저장 + 전체 앱 반영 (설정 창·onboarding 에서 호출)
+ *  - onLanguageChanged(cb): main broadcast 구독. 반환값은 cleanup — 엔트리 모듈
+ *    스코프의 앱 수명 구독은 cleanup 을 호출하지 않는다 (ipc-init 예외 패턴).
+ *  - completeOnboarding(): 첫 실행 언어 선택 창 닫기 요청.
+ */
+const i18n = {
+  getLanguage: (): Language => ipcRenderer.sendSync('i18n:get-language') as Language,
+  setLanguage: (lang: Language): Promise<void> =>
+    ipcRenderer.invoke('i18n:set-language', lang),
+  onLanguageChanged: (callback: (lang: Language) => void): (() => void) => {
+    const handler = (_event: IpcRendererEvent, lang: Language): void => {
+      callback(lang);
+    };
+    ipcRenderer.on('i18n:language-changed', handler);
+    return () => ipcRenderer.removeListener('i18n:language-changed', handler);
+  },
+  completeOnboarding: (): void => ipcRenderer.send('i18n:onboarding-done'),
+};
+
 if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('electron', electronAPI);
@@ -298,6 +322,7 @@ if (process.contextIsolated) {
     contextBridge.exposeInMainWorld('patchHistory', patchHistory);
     contextBridge.exposeInMainWorld('stepGuide', stepGuide);
     contextBridge.exposeInMainWorld('scrollCapture', scrollCapture);
+    contextBridge.exposeInMainWorld('i18n', i18n);
   } catch (err) {
     console.error('preload: contextBridge expose failed', err);
   }

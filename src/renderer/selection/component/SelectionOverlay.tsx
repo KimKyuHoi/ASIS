@@ -1,10 +1,12 @@
 import { useEffect, useReducer, useRef, useState } from 'react';
 import type { CSSProperties, JSX } from 'react';
+import { useLanguage } from '../../../shared/i18n/use-language';
 import type { DragAction, DragState, Point, Rect } from '../types/selection';
 import { Magnifier } from './Magnifier';
 import { paintBackground } from '../lib/paint-background';
 import { normalize, chipPlacement } from '../lib/rect-utils';
 import { rgbToHex } from '../lib/color-utils';
+import { selectionStrings } from '../lib/strings';
 
 /**
  * AX RoleDescription 중 사용자에게 정보 가치가 낮은 generic 이름들.
@@ -33,6 +35,7 @@ const GENERIC_AX_NAMES: ReadonlySet<string> = new Set([
  *   - communication-tone.md 한국어 주석 평어. UI 텍스트는 사용자 대상 자연스러운 톤.
  */
 export default function SelectionOverlay(): JSX.Element {
+  const t = selectionStrings[useLanguage()];
   const [state, dispatch] = useReducer(reduce, INITIAL_STATE);
   const [pointer, setPointer] = useState<Point | null>(null);
   const [bgCanvas, setBgCanvas] = useState<HTMLCanvasElement | null>(null);
@@ -372,7 +375,7 @@ export default function SelectionOverlay(): JSX.Element {
             aria-hidden="true"
           />
           <span>
-            <strong>{copyToast}</strong> 복사됨
+            <strong>{copyToast}</strong> {t.copied}
           </span>
         </div>
       ) : null}
@@ -488,14 +491,15 @@ function Chip({ rect }: { rect: Rect }): JSX.Element {
 }
 
 function Hint({ visible }: { visible: boolean }): JSX.Element {
+  const t = selectionStrings[useLanguage()];
   return (
     <div className={`hint ${visible ? 'hint--visible' : 'hint--hidden'}`}>
       <kbd className="hint__key">esc</kbd>
-      <span className="hint__label">취소</span>
+      <span className="hint__label">{t.hintCancel}</span>
       <span className="hint__divider" aria-hidden="true" />
-      <span className="hint__instruction">드래그하여 영역을 선택하세요</span>
+      <span className="hint__instruction">{t.hintSelect}</span>
       <span className="hint__divider" aria-hidden="true" />
-      <span className="hint__instruction">우클릭으로 색상 복사</span>
+      <span className="hint__instruction">{t.hintColorCopy}</span>
     </div>
   );
 }

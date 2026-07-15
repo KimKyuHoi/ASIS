@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { JSX } from 'react';
+import { useLanguage } from '../../../shared/i18n/use-language';
 import { formatDuration } from '../lib/format-time';
+import { scrollCaptureStrings } from '../lib/strings';
 
 type Phase = 'capturing' | 'stitching';
 
@@ -18,6 +20,7 @@ type Phase = 'capturing' | 'stitching';
  * 한 장의 긴 PNG 다.
  */
 export default function ScrollCapture(): JSX.Element {
+  const t = scrollCaptureStrings[useLanguage()];
   const [phase, setPhase] = useState<Phase>('capturing');
   const [seconds, setSeconds] = useState(0);
   const [frames, setFrames] = useState(0);
@@ -73,8 +76,8 @@ export default function ScrollCapture(): JSX.Element {
       <div className="scroll-capture">
         <span className="scroll-capture__spinner" aria-hidden="true" />
         <div className="scroll-capture__time">
-          이어붙이는 중…
-          <span className="scroll-capture__sub">{frames}장 합성</span>
+          {t.stitching}
+          <span className="scroll-capture__sub">{t.stitchingCount(frames)}</span>
         </div>
       </div>
     );
@@ -88,15 +91,15 @@ export default function ScrollCapture(): JSX.Element {
       </div>
       <div className="scroll-capture__time">
         {formatDuration(seconds)}
-        <span className="scroll-capture__sub">{frames}장 · 천천히 스크롤</span>
+        <span className="scroll-capture__sub">{t.capturingCount(frames)}</span>
       </div>
       <button
         type="button"
         className="scroll-capture__btn scroll-capture__btn--cancel"
         onClick={(): void => window.scrollCapture.cancel()}
-        title="취소 (ESC)"
+        title={t.cancelTitle}
       >
-        취소
+        {t.cancel}
       </button>
       <button
         type="button"
@@ -105,9 +108,9 @@ export default function ScrollCapture(): JSX.Element {
           setPhase('stitching');
           window.scrollCapture.stop();
         }}
-        title="정지 (Enter)"
+        title={t.stopTitle}
       >
-        정지
+        {t.stop}
       </button>
     </div>
   );

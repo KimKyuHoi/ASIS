@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { JSX } from 'react';
+import { useLanguage } from '../../../shared/i18n/use-language';
 import { formatTimestamp } from '../lib/format-time';
+import { historyStrings } from '../lib/strings';
 
 type HistoryEntry = {
   id: string;
@@ -11,6 +13,8 @@ type HistoryEntry = {
 };
 
 export default function History(): JSX.Element {
+  const lang = useLanguage();
+  const t = historyStrings[lang];
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const [copying, setCopying] = useState<string | null>(null);
 
@@ -41,15 +45,15 @@ export default function History(): JSX.Element {
   if (entries.length === 0) {
     return (
       <div className="history history--empty">
-        <p className="history__empty-text">아직 캡처 기록이 없습니다.</p>
-        <p className="history__empty-hint">캡처 후 복사 또는 핀을 누르면 여기에 표시됩니다.</p>
+        <p className="history__empty-text">{t.emptyText}</p>
+        <p className="history__empty-hint">{t.emptyHint}</p>
       </div>
     );
   }
 
   return (
     <div className="history">
-      <h1 className="history__title">캡처 히스토리 ({entries.length})</h1>
+      <h1 className="history__title">{t.title(entries.length)}</h1>
       <div className="history__grid">
         {entries.map((entry) => (
           <div key={entry.id} className="history-card">
@@ -57,28 +61,28 @@ export default function History(): JSX.Element {
               <img
                 className="history-card__thumb"
                 src={entry.dataUrl}
-                alt={`캡처 ${formatTimestamp(entry.timestamp)}`}
+                alt={t.thumbAlt(formatTimestamp(entry.timestamp, lang))}
                 loading="lazy"
               />
             </div>
             <div className="history-card__footer">
-              <span className="history-card__time">{formatTimestamp(entry.timestamp)}</span>
+              <span className="history-card__time">{formatTimestamp(entry.timestamp, lang)}</span>
               <div className="history-card__actions">
                 <button
                   type="button"
                   className="history-card__btn"
                   onClick={(): void => handleCopy(entry)}
-                  title="클립보드 복사"
+                  title={t.copyTitle}
                 >
-                  {copying === entry.id ? '✓' : '복사'}
+                  {copying === entry.id ? '✓' : t.copy}
                 </button>
                 <button
                   type="button"
                   className="history-card__btn"
                   onClick={(): void => handlePin(entry)}
-                  title="핀으로 띄우기"
+                  title={t.pinTitle}
                 >
-                  핀
+                  {t.pin}
                 </button>
               </div>
             </div>

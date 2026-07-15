@@ -1,5 +1,6 @@
 import { Menu, type MenuItemConstructorOptions } from 'electron';
 import { is } from '@electron-toolkit/utils';
+import { tMain } from './i18n/strings';
 
 /**
  * 애플리케이션 메뉴 설치.
@@ -24,7 +25,7 @@ export function installAppMenu(): void {
     { role: 'fileMenu' },
     { role: 'editMenu' },
     {
-      label: '보기',
+      label: tMain().menu.view,
       submenu: [
         // dev 에서만 reload/devtools 노출 — prod 에디터에서 새로고침은 이미지 유실 위험.
         ...(is.dev

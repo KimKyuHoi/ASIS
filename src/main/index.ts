@@ -43,6 +43,10 @@ import {
   isQuittingForUpdate,
 } from './updateChecker';
 import { CountdownWindow } from './windows/countdownWindow';
+import { OnboardingWindowManager } from './windows/onboardingWindow';
+import { initLanguage, isLanguageChosen } from './i18n/i18n';
+import { tMain } from './i18n/strings';
+import { subscribeLanguage } from '../shared/i18n/language';
 
 /**
  * ASIS — macOS 메뉴바 캡처·어노테이션 도구.
@@ -71,6 +75,7 @@ const timeMachine = new TimeMachineManager();
 const stepGuideWindow = new StepGuideWindowManager();
 const scrollCaptureWindow = new ScrollCaptureWindowManager();
 const countdownWindow = new CountdownWindow();
+const onboardingWindow = new OnboardingWindowManager();
 editorWindow.setPinHandler((dataUrl, w, h) => pinWindow.pin(dataUrl, w, h));
 
 /**
@@ -93,6 +98,7 @@ const stopAllManagers = (): void => {
   timeMachine.dispose();
   stepGuideWindow.stop();
   scrollCaptureWindow.stop();
+  onboardingWindow.stop();
 };
 
 // 단일 인스턴스 보장.
@@ -116,7 +122,7 @@ const notifyInfo = (body: string): void => {
 };
 
 const notifyError = (body: string): void => {
-  notify('ASIS — 오류', body);
+  notify(tMain().notify.errorTitle, body);
 };
 
 /**
@@ -142,30 +148,30 @@ const runCapture = (
       if (!loadMisc().autoOpenEditor) {
         const image = nativeImage.createFromPath(result.path);
         if (image.isEmpty()) {
-          notifyError(`${label} — 캡처 이미지를 읽지 못했습니다`);
+          notifyError(tMain().capture.imageReadFailed(label));
           return;
         }
         clipboard.writeImage(image);
-        notifyInfo(`${label} — 클립보드에 복사되었습니다`);
+        notifyInfo(tMain().capture.copiedToClipboard(label));
         return;
       }
       editorWindow.show(result.path).then(
         (editorResult) => {
           if (editorResult.kind === 'copied') {
-            notifyInfo(`${label} — 클립보드에 복사되었습니다`);
+            notifyInfo(tMain().capture.copiedToClipboard(label));
           }
         },
         (err: unknown) => {
           const message = err instanceof Error ? err.message : String(err);
           console.error(`[asis] ${label} 에디터 실패`, err);
-          notifyError(`${label} 에디터 실패: ${message}`);
+          notifyError(tMain().capture.editorFailed(label, message));
         },
       );
     },
     (err: unknown) => {
       const message = err instanceof Error ? err.message : String(err);
       console.error(`[asis] ${label} 실패`, err);
-      notifyError(`${label} 실패: ${message}`);
+      notifyError(tMain().capture.failed(label, message));
     },
   );
 };
@@ -193,7 +199,7 @@ const handleRegionCapture = (): void => {
           // overlay close 후 macOS compositor 의 dim 잔상이 캡처에 들어가지
           // 않도록 OVERLAY_CLOSE_DELAY_MS 대기 후 screencapture 실행.
           setTimeout(() => {
-            handleCapture('영역 캡처', () =>
+            handleCapture(tMain().capture.labelRegion, () =>
               // Dock 아이템은 가짜 음수 ID — screencapture -l 가 invalid 처리하므로
               // rect 기반 captureRegion 으로 fallback. 일반 윈도우(양수 ID) 는 그대로.
               windowId !== undefined && windowId > 0
@@ -206,7 +212,7 @@ const handleRegionCapture = (): void => {
       (err: unknown) => {
         const message = err instanceof Error ? err.message : String(err);
         console.error('[asis] 영역 선택 오버레이 실패', err);
-        notifyError(`영역 선택 실패: ${message}`);
+        notifyError(tMain().capture.regionSelectFailed(message));
       },
     );
   });
@@ -219,7 +225,7 @@ const handleRegionCapture = (): void => {
 const handleClipboardPin = (): void => {
   const image = clipboard.readImage();
   if (image.isEmpty()) {
-    notifyInfo('클립보드에 이미지가 없습니다');
+    notifyInfo(tMain().pin.empty);
     return;
   }
   const { width, height } = image.getSize();
@@ -230,7 +236,7 @@ const handleClipboardPin = (): void => {
 const handleGif = (): void => {
   // 녹화 중이면 정지 (toggle) — 알약 안 띄우니 *유일한 회수 경로*.
   if (recorderWindow.isActive()) {
-    notifyInfo('GIF 인코딩 중…');
+    notifyInfo(tMain().gif.encoding);
     recorderWindow.triggerStop();
     return;
   }
@@ -242,27 +248,27 @@ const handleGif = (): void => {
         if (selResult.kind !== 'selected') return;
         const showPromise = recorderWindow.show(selResult.rect);
         if (recorderWindow.isHidden()) {
-          notifyInfo('GIF 녹화 중 — 단축키로 정지');
+          notifyInfo(tMain().gif.recording);
         }
         showPromise.then(
           (recResult) => {
             if (recResult.kind === 'saved') {
-              notifyInfo(`GIF 저장 — ${recResult.path}`);
+              notifyInfo(tMain().gif.saved(recResult.path));
             } else if (recResult.kind === 'failed') {
-              notifyError(`GIF 인코딩 실패: ${recResult.error.message}`);
+              notifyError(tMain().gif.encodeFailed(recResult.error.message));
             }
           },
           (err: unknown) => {
             const message = err instanceof Error ? err.message : String(err);
             console.error('[asis] recorder failed', err);
-            notifyError(`GIF 녹화 실패: ${message}`);
+            notifyError(tMain().gif.recordFailed(message));
           },
         );
       },
       (err: unknown) => {
         const message = err instanceof Error ? err.message : String(err);
         console.error('[asis] GIF 영역 선택 실패', err);
-        notifyError(`GIF 시작 실패: ${message}`);
+        notifyError(tMain().gif.startFailed(message));
       },
     );
   });
@@ -271,7 +277,7 @@ const handleGif = (): void => {
 const handleVideo = (): void => {
   // 녹화 중이면 정지 (toggle) — 알약 hidden 케이스의 유일한 회수 경로.
   if (videoRecorderWindow.isActive()) {
-    notifyInfo('화면 녹화 정지 중…');
+    notifyInfo(tMain().video.stopping);
     videoRecorderWindow.triggerStop();
     return;
   }
@@ -289,27 +295,27 @@ const handleVideo = (): void => {
         const rect = { x: r.x, y: r.y, w: r.w, h: r.h };
         const showPromise = videoRecorderWindow.show(rect);
         if (videoRecorderWindow.isHidden()) {
-          notifyInfo('화면 녹화 중 — 단축키로 정지');
+          notifyInfo(tMain().video.recording);
         }
         showPromise.then(
           (recResult) => {
             if (recResult.kind === 'saved') {
-              notifyInfo(`화면 녹화 저장 — ${recResult.path}`);
+              notifyInfo(tMain().video.saved(recResult.path));
             } else if (recResult.kind === 'failed') {
-              notifyError(`화면 녹화 실패: ${recResult.error.message}`);
+              notifyError(tMain().video.failed(recResult.error.message));
             }
           },
           (err: unknown) => {
             const message = err instanceof Error ? err.message : String(err);
             console.error('[asis] video recorder failed', err);
-            notifyError(`화면 녹화 실패: ${message}`);
+            notifyError(tMain().video.failed(message));
           },
         );
       },
       (err: unknown) => {
         const message = err instanceof Error ? err.message : String(err);
         console.error('[asis] 화면 녹화 영역 선택 실패', err);
-        notifyError(`화면 녹화 시작 실패: ${message}`);
+        notifyError(tMain().video.startFailed(message));
       },
     );
   });
@@ -338,25 +344,25 @@ const handleOcr = (): void => {
                   cleanup();
                   const trimmed = text.trim();
                   if (!trimmed) {
-                    notifyInfo('텍스트를 찾지 못했습니다');
+                    notifyInfo(tMain().ocr.noText);
                     return;
                   }
                   clipboard.writeText(trimmed);
-                  notifyInfo('텍스트를 클립보드에 복사했습니다');
+                  notifyInfo(tMain().ocr.copied);
                 },
                 (err: unknown) => {
                   cleanup();
                   const message =
                     err instanceof Error ? err.message : String(err);
                   console.error('[asis] OCR 실패', err);
-                  notifyError(`텍스트 추출 실패: ${message}`);
+                  notifyError(tMain().ocr.failed(message));
                 },
               );
             },
             (err: unknown) => {
               const message = err instanceof Error ? err.message : String(err);
               console.error('[asis] OCR 캡처 실패', err);
-              notifyError(`텍스트 추출 실패: ${message}`);
+              notifyError(tMain().ocr.failed(message));
             },
           );
         }, OVERLAY_CLOSE_DELAY_MS);
@@ -364,7 +370,7 @@ const handleOcr = (): void => {
       (err: unknown) => {
         const message = err instanceof Error ? err.message : String(err);
         console.error('[asis] OCR 영역 선택 실패', err);
-        notifyError(`텍스트 추출 실패: ${message}`);
+        notifyError(tMain().ocr.failed(message));
       },
     );
   });
@@ -373,7 +379,7 @@ const handleOcr = (): void => {
 const handleScrollCapture = (): void => {
   // 녹화 중이면 정지 (toggle).
   if (scrollCaptureWindow.isActive()) {
-    notifyInfo('스크롤 캡처 정지 중…');
+    notifyInfo(tMain().scroll.stopping);
     scrollCaptureWindow.triggerStop();
     return;
   }
@@ -386,29 +392,29 @@ const handleScrollCapture = (): void => {
         const rect = { x: r.x, y: r.y, w: r.w, h: r.h };
         const showPromise = scrollCaptureWindow.show(rect);
         if (scrollCaptureWindow.isHidden()) {
-          notifyInfo('스크롤 캡처 중 — 천천히 스크롤 후 단축키로 정지');
+          notifyInfo(tMain().scroll.recording);
         }
         showPromise.then(
           (res) => {
             if (res.kind === 'saved') {
-              notifyInfo(`스크롤 캡처 저장 — ${res.path}`);
+              notifyInfo(tMain().scroll.saved(res.path));
             } else if (res.kind === 'copied') {
-              notifyInfo('스크롤 캡처 — 클립보드에 복사되었습니다');
+              notifyInfo(tMain().scroll.copied);
             } else if (res.kind === 'failed') {
-              notifyError(`스크롤 캡처 실패: ${res.error.message}`);
+              notifyError(tMain().scroll.failed(res.error.message));
             }
           },
           (err: unknown) => {
             const message = err instanceof Error ? err.message : String(err);
             console.error('[asis] scroll capture failed', err);
-            notifyError(`스크롤 캡처 실패: ${message}`);
+            notifyError(tMain().scroll.failed(message));
           },
         );
       },
       (err: unknown) => {
         const message = err instanceof Error ? err.message : String(err);
         console.error('[asis] 스크롤 캡처 영역 선택 실패', err);
-        notifyError(`스크롤 캡처 시작 실패: ${message}`);
+        notifyError(tMain().scroll.startFailed(message));
       },
     );
   });
@@ -428,7 +434,7 @@ ipcMain.handle('settings:set-folder', (_event, path: string) => {
 ipcMain.handle('settings:pick-folder', async () => {
   const result = await dialog.showOpenDialog({
     properties: ['openDirectory', 'createDirectory'],
-    title: '저장 폴더 선택',
+    title: tMain().capture.saveFolderDialogTitle,
     defaultPath: settingsStore.get('saveFolderPath') || app.getPath('pictures'),
   });
   if (result.canceled || result.filePaths.length === 0) return null;
@@ -444,6 +450,12 @@ ipcMain.handle('settings:set-misc', (_event, misc: MiscConfig) => {
   if (process.platform === 'darwin' && app.isPackaged) {
     app.setLoginItemSettings({ openAtLogin: misc.openAtLogin });
   }
+});
+
+// 첫 실행 언어 선택 완료 — onboarding 창을 닫는다. 언어 저장 자체는
+// i18n:set-language(i18n/i18n.ts) 가 처리하므로 여기서는 창 정리만 한다.
+ipcMain.on('i18n:onboarding-done', () => {
+  onboardingWindow.stop();
 });
 
 // 히스토리 IPC
@@ -490,6 +502,15 @@ app.whenReady().then(() => {
 
   electronApp.setAppUserModelId('com.pinkfong.asis');
 
+  // 언어 로드 + i18n IPC 등록 — 첫 BrowserWindow(prewarm 포함)·메뉴 설치보다
+  // 반드시 먼저 실행돼야 preload sendSync 와 메뉴 라벨이 올바른 언어를 본다.
+  initLanguage();
+  // 언어 변경 → 트레이 툴팁·컨텍스트 메뉴와 앱 메뉴 재빌드. 앱 수명 구독.
+  subscribeLanguage(() => {
+    trayManager.refresh();
+    installAppMenu();
+  });
+
   // 기본 메뉴의 zoom accelerator(Cmd +/-/0)가 에디터 줌 단축키를 가로채는 것을 막는다.
   installAppMenu();
 
@@ -514,7 +535,7 @@ app.whenReady().then(() => {
   const lastVersion = settingsStore.get('lastLaunchedVersion');
   // lastVersion 이 '' (기본값, falsy) 인 경우도 포함 — isNewer 는 '' 을 '0.0.0' 으로 처리한다.
   if (isNewer(current, lastVersion)) {
-    notifyInfo(`ASIS ${current} 업데이트 완료!`);
+    notifyInfo(tMain().app.updateComplete(current));
   }
   settingsStore.set('lastLaunchedVersion', current);
 
@@ -553,12 +574,12 @@ app.whenReady().then(() => {
     // 커서가 있는 디스플레이를 캡처 — 다중 모니터 지원.
     const cursor = screen.getCursorScreenPoint();
     const d = screen.getDisplayNearestPoint(cursor);
-    handleCapture('전체화면 캡처', () =>
+    handleCapture(tMain().capture.labelFullscreen, () =>
       captureRegion({ x: d.bounds.x, y: d.bounds.y, w: d.bounds.width, h: d.bounds.height }),
     );
   };
   const onWindow = (): void => {
-    handleCapture('윈도우 캡처', captureWindow);
+    handleCapture(tMain().capture.labelWindow, captureWindow);
   };
   const onRegion = (): void => {
     handleRegionCapture();
@@ -575,7 +596,7 @@ app.whenReady().then(() => {
         countdownWindow.close();
         const newCursor = screen.getCursorScreenPoint();
         const d = screen.getDisplayNearestPoint(newCursor);
-        runCapture('전체화면 캡처', () =>
+        runCapture(tMain().capture.labelFullscreen, () =>
           captureRegion({ x: d.bounds.x, y: d.bounds.y, w: d.bounds.width, h: d.bounds.height }),
         );
       }, delayMs);
@@ -594,7 +615,7 @@ app.whenReady().then(() => {
           setTimeout(() => {
             countdownWindow.close();
             const { windowId, ...rect } = result.rect;
-            runCapture('영역 캡처', () =>
+            runCapture(tMain().capture.labelRegion, () =>
               // Dock 아이템은 가짜 음수 ID — screencapture -l 가 invalid 처리하므로
               // rect 기반 captureRegion 으로 fallback. 일반 윈도우(양수 ID) 는 그대로.
               windowId !== undefined && windowId > 0
@@ -606,7 +627,7 @@ app.whenReady().then(() => {
         (err: unknown) => {
           const message = err instanceof Error ? err.message : String(err);
           console.error('[asis] 지연 영역 선택 실패', err);
-          notifyError(`영역 선택 실패: ${message}`);
+          notifyError(tMain().capture.regionSelectFailed(message));
         },
       );
     });
@@ -614,13 +635,13 @@ app.whenReady().then(() => {
   const onDisableClickThrough = (): void => {
     pinWindow.disableAllClickThrough();
     if (pinWindow.count() > 0) {
-      notifyInfo(`핀 ${pinWindow.count()}개 click-through 해제`);
+      notifyInfo(tMain().pin.disableClickThrough(pinWindow.count()));
     }
   };
   const onCloseAllPins = (): void => {
     const n = pinWindow.count();
     pinWindow.closeAll();
-    if (n > 0) notifyInfo(`핀 ${n}개 닫음`);
+    if (n > 0) notifyInfo(tMain().pin.closed(n));
   };
   const onGif = (): void => {
     handleGif();
@@ -659,7 +680,7 @@ app.whenReady().then(() => {
       info: notifyInfo,
       error: notifyError,
       needsAccessibility: () => {
-        notifyError('스텝 가이드: 손쉬운 사용 권한이 필요합니다');
+        notifyError(tMain().stepGuide.needsAccessibility);
         openPermissionSettings();
       },
     });
@@ -667,10 +688,10 @@ app.whenReady().then(() => {
   const onTimeMachineToggle = (): void => {
     if (timeMachine.isRunning()) {
       timeMachine.stop().then(
-        () => notifyInfo('타임머신 녹화를 정지했습니다'),
+        () => notifyInfo(tMain().timeMachine.stopped),
         (err: unknown) =>
           notifyError(
-            `타임머신 정지 실패: ${err instanceof Error ? err.message : String(err)}`,
+            tMain().timeMachine.stopFailed(err instanceof Error ? err.message : String(err)),
           ),
       );
       return;
@@ -680,23 +701,23 @@ app.whenReady().then(() => {
       const buf = loadMisc().timeMachineBufferSeconds;
       // rect 미지정 = 커서가 있는 디스플레이 전체를 상시 녹화.
       timeMachine.start(undefined, buf).then(
-        () => notifyInfo(`타임머신 시작 — 최근 ${buf}초 유지 중 (⌘⇧S로 저장)`),
+        () => notifyInfo(tMain().timeMachine.started(buf)),
         (err: unknown) =>
           notifyError(
-            `타임머신 시작 실패: ${err instanceof Error ? err.message : String(err)}`,
+            tMain().timeMachine.startFailed(err instanceof Error ? err.message : String(err)),
           ),
       );
     });
   };
   const onTimeMachineSave = (): void => {
     if (!timeMachine.isRunning()) {
-      notifyInfo('타임머신이 실행 중이 아닙니다 (⌘⇧T로 시작)');
+      notifyInfo(tMain().timeMachine.notRunning);
       return;
     }
     timeMachine.save().then(
       async (result) => {
         if (result.kind === 'empty') {
-          notifyInfo('아직 저장할 구간이 없습니다 (조금 더 기다려 주세요)');
+          notifyInfo(tMain().timeMachine.empty);
           return;
         }
         // DRM 감지 — 저장 구간이 near-black 이면 경고(휴리스틱, 오탐 가능). 저장은 막지 않는다.
@@ -708,9 +729,7 @@ app.whenReady().then(() => {
             },
           );
           if (probe && probe.kind === 'protected') {
-            notifyError(
-              `저장된 화면이 검게 녹화되었습니다 — DRM/HDCP 보호 콘텐츠일 수 있습니다 (YMAX=${probe.ymax})`,
-            );
+            notifyError(tMain().timeMachine.drmWarning(probe.ymax));
           }
         }
         const dest = join(
@@ -731,13 +750,11 @@ app.whenReady().then(() => {
         await unlink(result.path).catch((e: unknown) => {
           console.warn('[asis] timemachine tmp cleanup failed', e);
         });
-        notifyInfo(
-          `타임머신 저장 — 최근 약 ${result.approxSeconds}초 (${saved.filePath})`,
-        );
+        notifyInfo(tMain().timeMachine.saved(result.approxSeconds, saved.filePath));
       },
       (err: unknown) =>
         notifyError(
-          `타임머신 저장 실패: ${err instanceof Error ? err.message : String(err)}`,
+          tMain().timeMachine.saveFailed(err instanceof Error ? err.message : String(err)),
         ),
     );
   };
@@ -770,6 +787,11 @@ app.whenReady().then(() => {
   trayManager.start(handlers);
   shortcutManager.start(handlers);
 
+  // 첫 실행(언어 미선택) — 언어 선택 창을 띄운다. 이후 실행에는 나타나지 않는다.
+  if (!isLanguageChosen()) {
+    onboardingWindow.show();
+  }
+
   // 앱 시작 직후 권한 상태 확인 — 거부/미설정 시 안내 다이얼로그 표시.
   checkPermissionsOnLaunch().catch((err: unknown) => {
     console.error('[asis] permission check failed', err);
@@ -783,7 +805,10 @@ app.whenReady().then(() => {
 }).catch((err: unknown) => {
   // app.whenReady() 체인의 미처리 에러가 조용히 삼켜지는 걸 방지.
   console.error('[asis] app initialization failed', err);
-  dialog.showErrorBox('ASIS 시작 실패', String(err instanceof Error ? err.message : err));
+  dialog.showErrorBox(
+    tMain().app.startFailedTitle,
+    String(err instanceof Error ? err.message : err),
+  );
 });
 
 app.on('window-all-closed', () => {

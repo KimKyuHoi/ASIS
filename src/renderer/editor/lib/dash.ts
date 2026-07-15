@@ -1,12 +1,15 @@
 import type { DashStyle } from '../types/shapes';
 
-/** 드롭다운 노출용 선 스타일 목록 (순서 = UI 표시 순서). */
-export const DASH_STYLES: readonly { value: DashStyle; label: string }[] = [
-  { value: 'solid', label: '실선' },
-  { value: 'dashed', label: '점선' },
-  { value: 'dotted', label: '도트' },
-  { value: 'long-dash', label: '긴 파선' },
-  { value: 'dash-dot', label: '일점쇄선' },
+/**
+ * 드롭다운 노출용 선 스타일 값 목록 (순서 = UI 표시 순서).
+ * 사람이 읽는 라벨은 lib/strings.ts 의 dashStyle 사전이 담당한다.
+ */
+export const DASH_STYLES: readonly DashStyle[] = [
+  'solid',
+  'dashed',
+  'dotted',
+  'long-dash',
+  'dash-dot',
 ];
 
 /**

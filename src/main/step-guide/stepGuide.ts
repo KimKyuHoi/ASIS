@@ -17,6 +17,7 @@ import {
   type GuideStep,
   type StepKind,
 } from './stepGuideExport';
+import { tMain } from '../i18n/strings';
 
 /**
  * 스텝바이스텝 가이드 생성기 오케스트레이터 — 수동 이미지/GIF 모드.
@@ -138,7 +139,7 @@ export class StepGuideManager {
       onExit: (info) => {
         // stop() 없이 죽음 — 권한 문제 또는 헬퍼 버그. 상태를 idle 로 되돌린다.
         const detail = info.stderr || `exit ${info.code ?? 'null'}`;
-        callbacks.onError(`클릭 감지 종료됨: ${detail}`);
+        callbacks.onError(tMain().stepGuide.clickDetectionStopped(detail));
         callbacks.onStateChange({ kind: 'idle' });
       },
     });
@@ -467,7 +468,7 @@ export class StepGuideManager {
     const ext = isMd ? 'md' : 'html';
 
     const result = await dialog.showSaveDialog({
-      title: '가이드 저장',
+      title: tMain().stepGuide.saveDialogTitle,
       // 문서 폴더를 기본 저장 위치로 — 임시 폴더(tmpdir)는 경로가 깊어 찾기 어렵다.
       defaultPath: join(app.getPath('documents'), defaultName),
       filters: [{ name: filterName, extensions: [ext] }],
@@ -540,7 +541,7 @@ function buildGuide(rawSteps: RawStep[]): Guide {
     label: r.label,
   }));
   return {
-    title: `ASIS 가이드 (${steps.length}단계)`,
+    title: tMain().stepGuideDoc.title(steps.length),
     createdAt,
     steps,
   };

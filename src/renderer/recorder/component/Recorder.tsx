@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { JSX } from 'react';
+import { useLanguage } from '../../../shared/i18n/use-language';
 import { formatDuration } from '../lib/format-time';
+import { recorderStrings } from '../lib/strings';
 
 type Phase = 'recording' | 'encoding';
 
@@ -13,6 +15,7 @@ type Phase = 'recording' | 'encoding';
  *               2-pass 인코딩이 끝날 때까지 (수 초). 끝나면 main 이 윈도우 close.
  */
 export default function Recorder(): JSX.Element {
+  const t = recorderStrings[useLanguage()];
   const [phase, setPhase] = useState<Phase>('recording');
   const [seconds, setSeconds] = useState(0);
   const [frames, setFrames] = useState(0);
@@ -64,8 +67,8 @@ export default function Recorder(): JSX.Element {
       <div className="recorder">
         <span className="recorder__spinner" aria-hidden="true" />
         <div className="recorder__time">
-          GIF 만드는 중…
-          <span className="recorder__sub">{frames}프레임 인코딩</span>
+          {t.encoding}
+          <span className="recorder__sub">{t.encodingFrames(frames)}</span>
         </div>
       </div>
     );
@@ -79,23 +82,23 @@ export default function Recorder(): JSX.Element {
       </div>
       <div className="recorder__time">
         {formatDuration(seconds)}
-        <span className="recorder__sub">{frames}프레임</span>
+        <span className="recorder__sub">{t.frames(frames)}</span>
       </div>
       <button
         type="button"
         className="recorder__btn recorder__btn--cancel"
         onClick={(): void => window.recorder.cancel()}
-        title="취소 (ESC)"
+        title={t.cancelTitle}
       >
-        취소
+        {t.cancel}
       </button>
       <button
         type="button"
         className="recorder__btn recorder__btn--stop"
         onClick={(): void => window.recorder.stop()}
-        title="정지 (Enter)"
+        title={t.stopTitle}
       >
-        정지
+        {t.stop}
       </button>
     </div>
   );

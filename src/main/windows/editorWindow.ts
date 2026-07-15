@@ -14,6 +14,7 @@ import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { loadRendererPage, preloadPath } from './common';
 import { addEntry } from '../captureHistory';
+import { tMain } from '../i18n/strings';
 import devIconPath from '../../../resources/icon.png?asset';
 
 function resolveAppIcon(): Electron.NativeImage {
@@ -78,7 +79,7 @@ export class EditorWindowManager {
       height: 480,
       minWidth: 480,
       minHeight: 360,
-      title: 'ASIS — 어노테이션',
+      title: tMain().windows.editorTitle,
       titleBarStyle: 'hiddenInset',
       backgroundColor: '#161618',
       show: false,
@@ -328,7 +329,7 @@ export class EditorWindowManager {
           const base64 = dataUrl.replace(/^data:image\/[a-z]+;base64,/, '');
           await writeFile(filePath, Buffer.from(base64, 'base64'));
           new Notification({
-            title: 'ASIS — 저장 완료',
+            title: tMain().windows.editorSavedTitle,
             body: filePath,
             icon: resolveAppIcon(),
           }).show();

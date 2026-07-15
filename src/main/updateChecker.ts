@@ -1,6 +1,7 @@
 import { autoUpdater } from 'electron-updater';
 import { app, BrowserWindow, dialog, autoUpdater as nativeUpdater } from 'electron';
 import log from 'electron-log/main';
+import { tMain } from './i18n/strings';
 
 /** semver 비교 — latest 가 current 보다 크면 true. */
 export function isNewer(latest: string, current: string): boolean {
@@ -90,13 +91,14 @@ export function setupAutoUpdater(prepareQuitForUpdate: () => void): void {
 
   autoUpdater.on('update-downloaded', (info) => {
     log.info('[updater] update downloaded', info.version);
+    const t = tMain().updater;
     dialog
       .showMessageBox({
         type: 'info',
-        title: `ASIS ${info.version} 업데이트`,
-        message: `ASIS ${info.version} 업데이트가 준비되었습니다.`,
-        detail: '지금 설치하시겠어요?\n설치 후 자동으로 재시작됩니다.',
-        buttons: ['지금 설치', '나중에'],
+        title: t.title(info.version),
+        message: t.message(info.version),
+        detail: t.detail,
+        buttons: [t.installNowButton, t.laterButton],
         defaultId: 0,
         cancelId: 1,
       })

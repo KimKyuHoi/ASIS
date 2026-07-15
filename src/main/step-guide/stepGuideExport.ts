@@ -1,4 +1,6 @@
 import { basename } from 'node:path';
+import { getLanguage } from '../../shared/i18n/language';
+import { tMain } from '../i18n/strings';
 
 /**
  * 스텝바이스텝 가이드 문서 생성 — 순수 문자열 생성(부수효과 없음).
@@ -70,13 +72,14 @@ function formatDate(ms: number): string {
  *   - image + 라벨 없음: "N. (x, y) 위치 클릭".
  */
 function stepCaption(step: GuideStep): string {
+  const t = tMain().stepGuideDoc;
   if (step.kind === 'gif') {
-    return `${step.order}. 화면 동작 (GIF)`;
+    return t.captionGif(step.order);
   }
   if (step.label) {
-    return `${step.order}. "${step.label}" 클릭`;
+    return t.captionLabel(step.order, step.label);
   }
-  return `${step.order}. (${step.clickX}, ${step.clickY}) 위치 클릭`;
+  return t.captionPoint(step.order, step.clickX, step.clickY);
 }
 
 // ---------------------------------------------------------------------------
@@ -94,14 +97,15 @@ export function toMarkdown(guide: Guide, imageFileNames: string[]): string {
     );
   }
 
+  const t = tMain().stepGuideDoc;
   const lines: string[] = [];
   lines.push(`# ${guide.title}`);
   lines.push('');
-  lines.push(`_생성: ${formatDate(guide.createdAt)} · 총 ${guide.steps.length}단계_`);
+  lines.push(`_${t.metaLine(formatDate(guide.createdAt), guide.steps.length)}_`);
   lines.push('');
 
   if (guide.steps.length === 0) {
-    lines.push('_기록된 단계가 없습니다._');
+    lines.push(`_${t.empty}_`);
     lines.push('');
     return lines.join('\n');
   }
@@ -112,7 +116,7 @@ export function toMarkdown(guide: Guide, imageFileNames: string[]): string {
     lines.push(`## ${stepCaption(step)}`);
     lines.push('');
     // alt 텍스트에 순번 — 스크린리더/이미지 로드 실패 대비.
-    lines.push(`![단계 ${step.order}](./${fileName})`);
+    lines.push(`![${t.stepAlt(step.order)}](./${fileName})`);
     lines.push('');
   }
 
@@ -138,13 +142,14 @@ function escapeHtml(s: string): string {
  * 마커 위치는 이미지 표시 크기에 맞춰 퍼센트로 배치(반응형).
  */
 export function toHtml(guide: Guide): string {
+  const t = tMain().stepGuideDoc;
   const stepsHtml = guide.steps.length === 0
-    ? '<p class="empty">기록된 단계가 없습니다.</p>'
+    ? `<p class="empty">${escapeHtml(t.empty)}</p>`
     : guide.steps.map(renderStepHtml).join('\n');
 
   // 인라인 CSS — asis-ocr/에디터처럼 자체 완결 산출물이라 외부 의존 없음.
   return `<!doctype html>
-<html lang="ko">
+<html lang="${getLanguage()}">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -180,7 +185,7 @@ export function toHtml(guide: Guide): string {
 </head>
 <body>
 <h1>${escapeHtml(guide.title)}</h1>
-<p class="meta">생성: ${escapeHtml(formatDate(guide.createdAt))} · 총 ${guide.steps.length}단계</p>
+<p class="meta">${escapeHtml(t.metaLine(formatDate(guide.createdAt), guide.steps.length))}</p>
 ${stepsHtml}
 </body>
 </html>
@@ -189,7 +194,7 @@ ${stepsHtml}
 
 function renderStepHtml(step: GuideStep): string {
   const caption = escapeHtml(stepCaption(step));
-  const alt = escapeHtml(`단계 ${step.order}`);
+  const alt = escapeHtml(tMain().stepGuideDoc.stepAlt(step.order));
 
   // gif 스텝은 "직전 → 이번 클릭까지의 동작" 을 애니메이션으로 이미 담고 있어
   // 정지 포인터 마커가 의미 없다(클릭 지점이 애니메이션 마지막 프레임에서 자연히 드러남).

@@ -1,10 +1,12 @@
 import { useEffect, useReducer, useRef, useState } from 'react';
 import type { CSSProperties, JSX } from 'react';
+import { useLanguage } from '../../../shared/i18n/use-language';
 import type { Point, Rect, RulerAction, RulerState } from '../types/selection';
 import { Magnifier } from './Magnifier';
 import { normalize } from '../lib/rect-utils';
 import { edgeDistances, niceTickStep, tickPositions } from '../lib/ruler-utils';
 import { paintBackground } from '../lib/paint-background';
+import { selectionStrings } from '../lib/strings';
 
 /**
  * 화면 자 / 간격 측정 오버레이(측정 전용).
@@ -361,10 +363,11 @@ function RulerInfoPanel({
   rect: Rect | null;
   hoverElement: { x: number; y: number; w: number; h: number; name?: string } | null;
 }): JSX.Element | null {
+  const t = selectionStrings[useLanguage()];
   if (rect) {
     return (
       <div className="hover-info">
-        <div className="hover-info__name">측정</div>
+        <div className="hover-info__name">{t.rulerLabel}</div>
         <div className="hover-info__size">
           {Math.round(rect.w)} × {Math.round(rect.h)} px
         </div>
@@ -389,12 +392,13 @@ function RulerInfoPanel({
 }
 
 function Hint({ visible, measured }: { visible: boolean; measured: boolean }): JSX.Element {
+  const t = selectionStrings[useLanguage()];
   return (
     <div className={`hint ${visible || measured ? 'hint--visible' : 'hint--hidden'}`}>
       <kbd className="hint__key">esc</kbd>
-      <span className="hint__label">{measured ? '측정 지우기' : '닫기'}</span>
+      <span className="hint__label">{measured ? t.rulerClear : t.rulerClose}</span>
       <span className="hint__divider" aria-hidden="true" />
-      <span className="hint__instruction">드래그하여 거리·치수를 측정하세요</span>
+      <span className="hint__instruction">{t.rulerHint}</span>
     </div>
   );
 }

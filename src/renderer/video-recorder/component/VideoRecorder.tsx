@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { JSX } from 'react';
+import { useLanguage } from '../../../shared/i18n/use-language';
 import { formatDuration } from '../lib/format-time';
+import { videoRecorderStrings } from '../lib/strings';
 
 type Phase = 'recording' | 'saving';
 
@@ -14,6 +16,7 @@ type Phase = 'recording' | 'saving';
  * GIF recorder 와 달리 인코딩 단계·프레임 수가 없다 (mov 는 바로 저장).
  */
 export default function VideoRecorder(): JSX.Element {
+  const t = videoRecorderStrings[useLanguage()];
   const [phase, setPhase] = useState<Phase>('recording');
   const [seconds, setSeconds] = useState(0);
 
@@ -64,7 +67,7 @@ export default function VideoRecorder(): JSX.Element {
     return (
       <div className="recorder">
         <span className="recorder__spinner" aria-hidden="true" />
-        <div className="recorder__time">저장 준비 중…</div>
+        <div className="recorder__time">{t.saving}</div>
       </div>
     );
   }
@@ -80,9 +83,9 @@ export default function VideoRecorder(): JSX.Element {
         type="button"
         className="recorder__btn recorder__btn--cancel"
         onClick={(): void => window.videoRecorder.cancel()}
-        title="취소 (ESC)"
+        title={t.cancelTitle}
       >
-        취소
+        {t.cancel}
       </button>
       <button
         type="button"
@@ -91,9 +94,9 @@ export default function VideoRecorder(): JSX.Element {
           setPhase('saving');
           window.videoRecorder.stop();
         }}
-        title="정지 (Enter)"
+        title={t.stopTitle}
       >
-        정지
+        {t.stop}
       </button>
     </div>
   );

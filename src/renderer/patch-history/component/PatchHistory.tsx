@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { JSX } from 'react';
+import { useLanguage } from '../../../shared/i18n/use-language';
+import { patchHistoryStrings } from '../lib/strings';
 import type { PatchNote } from '../types/patch-note';
 
 type LoadState =
@@ -15,6 +17,7 @@ type LoadState =
  * 보여준다(별도 렌더러 없이 가독 가능한 수준).
  */
 export default function PatchHistory(): JSX.Element {
+  const t = patchHistoryStrings[useLanguage()];
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
 
   useEffect(() => {
@@ -40,7 +43,7 @@ export default function PatchHistory(): JSX.Element {
   if (state.kind === 'loading') {
     return (
       <div className="ph">
-        <p className="ph__status">변경 이력을 불러오는 중…</p>
+        <p className="ph__status">{t.loading}</p>
       </div>
     );
   }
@@ -48,7 +51,7 @@ export default function PatchHistory(): JSX.Element {
     return (
       <div className="ph">
         <p className="ph__status ph__status--error">
-          변경 이력을 불러오지 못했습니다.
+          {t.loadFailed}
           <br />
           {state.message}
         </p>
@@ -58,7 +61,7 @@ export default function PatchHistory(): JSX.Element {
   if (state.notes.length === 0) {
     return (
       <div className="ph">
-        <p className="ph__status">아직 게시된 릴리스가 없습니다.</p>
+        <p className="ph__status">{t.empty}</p>
       </div>
     );
   }
@@ -78,11 +81,11 @@ export default function PatchHistory(): JSX.Element {
                   window.patchHistory.openUrl(n.url);
                 }}
               >
-                GitHub에서 보기 ↗
+                {t.viewOnGitHub}
               </button>
             </div>
           </header>
-          <pre className="ph__body">{n.body.trim() || '(내용 없음)'}</pre>
+          <pre className="ph__body">{n.body.trim() || t.noContent}</pre>
         </section>
       ))}
     </div>

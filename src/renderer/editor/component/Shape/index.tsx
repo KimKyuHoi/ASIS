@@ -9,6 +9,8 @@ import {
 } from 'react-konva';
 import type Konva from 'konva';
 import { useEditorStore } from '../../lib/store';
+import { useLanguage } from '../../../../shared/i18n/use-language';
+import { editorStrings } from '../../lib/strings';
 import { dashPattern } from '../../lib/dash';
 import {
   clampXY,
@@ -49,6 +51,7 @@ export function Shape({
   onSelect: (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => void;
   onContextMenu?: (e: Konva.KonvaEventObject<MouseEvent>) => void;
 }): JSX.Element | null {
+  const t = editorStrings[useLanguage()];
   const updateShape = useEditorStore((s) => s.updateShape);
   const setEditingId = useEditorStore((s) => s.setEditingId);
   // 실제 적용 배율(stageScale/fitScale) — zoom 이 아닌 이 값으로 보정해야
@@ -284,7 +287,7 @@ export function Shape({
           width={shape.width}
           height={shape.height}
           wrap="word"
-          text={shape.text || '텍스트'}
+          text={shape.text || t.shape.defaultText}
           fill={shape.fill}
           fontSize={shape.fontSize}
           fontFamily={shape.fontFamily}

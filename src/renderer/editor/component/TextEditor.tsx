@@ -2,6 +2,8 @@ import { useEffect, useRef } from 'react';
 import type { CSSProperties, JSX } from 'react';
 import { createPortal } from 'react-dom';
 import { useEditorStore } from '../lib/store';
+import { useLanguage } from '../../../shared/i18n/use-language';
+import { editorStrings } from '../lib/strings';
 import type { TextShape } from '../types/shapes';
 
 /**
@@ -32,6 +34,7 @@ export function TextEditor({
   stageScale: number;
   imageWidth: number;
 }): JSX.Element {
+  const t = editorStrings[useLanguage()];
   const updateShape = useEditorStore((s) => s.updateShape);
   const deleteShape = useEditorStore((s) => s.deleteShape);
   const setEditingId = useEditorStore((s) => s.setEditingId);
@@ -145,7 +148,7 @@ export function TextEditor({
         el.style.height = 'auto';
         el.style.height = `${el.scrollHeight}px`;
       }}
-      placeholder="텍스트 입력"
+      placeholder={t.textEditor.placeholder}
       rows={1}
       style={style}
     />,

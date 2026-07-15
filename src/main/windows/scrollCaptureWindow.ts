@@ -15,6 +15,7 @@ import { join } from 'node:path';
 import { loadRendererPage, preloadPath } from './common';
 import { pickRecorderPlacement } from './recorderPlacement';
 import { ScrollCaptureManager } from '../scroll-capture/scrollCapture';
+import { tMain } from '../i18n/strings';
 
 const CHANNEL_STOP = 'scroll-capture:stop';
 const CHANNEL_CANCEL = 'scroll-capture:cancel';
@@ -165,7 +166,7 @@ export class ScrollCaptureWindowManager {
             );
             const saveResult = await dialog.showSaveDialog({
               defaultPath,
-              filters: [{ name: 'PNG 이미지', extensions: ['png'] }],
+              filters: [{ name: tMain().scroll.pngFilterName, extensions: ['png'] }],
             });
             if (saveResult.canceled || !saveResult.filePath) {
               // 저장 취소 시 클립보드에는 복사해 결과를 잃지 않게 한다.

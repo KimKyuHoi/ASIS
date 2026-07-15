@@ -1,5 +1,7 @@
 import type { JSX } from 'react';
 import type { DashStyle, TextAlign, Tool } from '../types/shapes';
+import { useLanguage } from '../../../shared/i18n/use-language';
+import { editorStrings } from '../lib/strings';
 import { DASH_STYLES, dashPattern } from '../lib/dash';
 import {
   BLUR_RADII,
@@ -15,19 +17,20 @@ import {
 } from '../lib/store';
 import { hexToRgba } from '../lib/color-utils';
 
-const TOOL_ITEMS: { tool: Tool; label: string; key: string }[] = [
-  { tool: 'select', label: '선택', key: 'V' },
-  { tool: 'rect', label: '사각형', key: 'R' },
-  { tool: 'ellipse', label: '원', key: 'O' },
-  { tool: 'arrow', label: '화살표', key: 'A' },
-  { tool: 'line', label: '직선', key: 'L' },
-  { tool: 'pen', label: '펜', key: 'P' },
-  { tool: 'text', label: '텍스트', key: 'T' },
-  { tool: 'step', label: '번호', key: 'S' },
-  { tool: 'highlight', label: '하이라이트', key: 'H' },
-  { tool: 'blur', label: '블러', key: 'B' },
-  { tool: 'mosaic', label: '모자이크', key: 'M' },
-  { tool: 'eraser', label: '지우개', key: 'E' },
+// 라벨은 lib/strings.ts 의 tool 사전이 담당한다 (Tool 종류가 키).
+const TOOL_ITEMS: { tool: Tool; key: string }[] = [
+  { tool: 'select', key: 'V' },
+  { tool: 'rect', key: 'R' },
+  { tool: 'ellipse', key: 'O' },
+  { tool: 'arrow', key: 'A' },
+  { tool: 'line', key: 'L' },
+  { tool: 'pen', key: 'P' },
+  { tool: 'text', key: 'T' },
+  { tool: 'step', key: 'S' },
+  { tool: 'highlight', key: 'H' },
+  { tool: 'blur', key: 'B' },
+  { tool: 'mosaic', key: 'M' },
+  { tool: 'eraser', key: 'E' },
 ];
 
 export function Toolbar({
@@ -43,6 +46,7 @@ export function Toolbar({
   onPin: () => void;
   onSaveFolder: () => void;
 }): JSX.Element {
+  const t = editorStrings[useLanguage()];
   const tool = useEditorStore((s) => s.tool);
   const color = useEditorStore((s) => s.color);
   const strokeWidth = useEditorStore((s) => s.strokeWidth);
@@ -232,7 +236,7 @@ export function Toolbar({
         {TOOL_ITEMS.map((item) => (
           <ToolButton
             key={item.tool}
-            label={item.label}
+            label={t.tool[item.tool]}
             shortcut={item.key}
             active={tool === item.tool}
             onClick={(): void => setTool(item.tool)}
@@ -250,10 +254,10 @@ export function Toolbar({
             className={`color ${color === c ? 'color--active' : ''}`}
             style={{ background: c }}
             onClick={(): void => handleColor(c)}
-            aria-label={`색상 ${c}`}
+            aria-label={t.toolbar.colorLabel(c)}
           />
         ))}
-        <label className="color color--custom" title="커스텀 색상">
+        <label className="color color--custom" title={t.toolbar.customColor}>
           <input
             type="color"
             value={color}
@@ -266,14 +270,14 @@ export function Toolbar({
 
       {!isEraser && (isBlur ? (
         <div className="toolbar__group toolbar__group--slider">
-          <span className="slider-label">블러</span>
+          <span className="slider-label">{t.toolbar.blur}</span>
           {BLUR_RADII.map((r) => (
             <button
               key={r}
               type="button"
               className={`radius ${displayBlurRadius === r ? 'radius--active' : ''}`}
               onClick={(): void => handleBlurRadius(r)}
-              title={`블러 ${r}px`}
+              title={t.toolbar.blurValue(r)}
             >
               {r}
             </button>
@@ -281,14 +285,14 @@ export function Toolbar({
         </div>
       ) : isMosaic ? (
         <div className="toolbar__group toolbar__group--slider">
-          <span className="slider-label">블록</span>
+          <span className="slider-label">{t.toolbar.block}</span>
           {MOSAIC_BLOCK_SIZES.map((bs) => (
             <button
               key={bs}
               type="button"
               className={`radius ${displayMosaicBlockSize === bs ? 'radius--active' : ''}`}
               onClick={(): void => handleMosaicBlockSize(bs)}
-              title={`블록 ${bs}px`}
+              title={t.toolbar.blockValue(bs)}
             >
               {bs}
             </button>
@@ -297,12 +301,12 @@ export function Toolbar({
       ) : isText ? (
         <>
           <div className="toolbar__group">
-            <span className="slider-label">폰트</span>
+            <span className="slider-label">{t.toolbar.font}</span>
             <select
               className="font-select"
               value={displayFontFamily}
               onChange={(e): void => handleFontFamily(e.target.value)}
-              title="폰트 변경"
+              title={t.toolbar.fontChange}
             >
               {FONT_FAMILIES.map((f) => (
                 <option key={f.value} value={f.value}>{f.label}</option>
@@ -310,7 +314,7 @@ export function Toolbar({
             </select>
           </div>
           <div className="toolbar__group toolbar__group--slider">
-            <span className="slider-label">크기</span>
+            <span className="slider-label">{t.toolbar.size}</span>
             {FONT_SIZES.map((s) => (
               <button
                 key={s}
@@ -330,7 +334,7 @@ export function Toolbar({
                   type="button"
                   className={`iconbtn ${displayTextAlign === 'left' ? 'iconbtn--active' : ''}`}
                   onClick={(): void => handleTextAlign('left')}
-                  title="왼쪽 정렬"
+                  title={t.toolbar.alignLeft}
                 >
                   <AlignLeftIcon />
                 </button>
@@ -338,7 +342,7 @@ export function Toolbar({
                   type="button"
                   className={`iconbtn ${displayTextAlign === 'center' ? 'iconbtn--active' : ''}`}
                   onClick={(): void => handleTextAlign('center')}
-                  title="가운데 정렬"
+                  title={t.toolbar.alignCenter}
                 >
                   <AlignCenterIcon />
                 </button>
@@ -346,20 +350,20 @@ export function Toolbar({
                   type="button"
                   className={`iconbtn ${displayTextAlign === 'right' ? 'iconbtn--active' : ''}`}
                   onClick={(): void => handleTextAlign('right')}
-                  title="오른쪽 정렬"
+                  title={t.toolbar.alignRight}
                 >
                   <AlignRightIcon />
                 </button>
               </div>
               <div className="toolbar__group toolbar__group--slider">
-                <span className="slider-label">줄간격</span>
+                <span className="slider-label">{t.toolbar.lineHeight}</span>
                 {LINE_HEIGHTS.map((h) => (
                   <button
                     key={h}
                     type="button"
                     className={`radius ${displayLineHeight === h ? 'radius--active' : ''}`}
                     onClick={(): void => handleLineHeight(h)}
-                    title={`줄간격 × ${h}`}
+                    title={t.toolbar.lineHeightValue(h)}
                   >
                     {h}
                   </button>
@@ -377,7 +381,7 @@ export function Toolbar({
                 type="button"
                 className={`stroke ${displayStrokeWidth === w ? 'stroke--active' : ''}`}
                 onClick={(): void => handleStrokeWidth(w)}
-                aria-label={`두께 ${w}px`}
+                aria-label={t.toolbar.strokeWidthLabel(w)}
                 title={`${w}px`}
               >
                 <span
@@ -392,17 +396,17 @@ export function Toolbar({
           </div>
           <div className="toolbar__divider" aria-hidden="true" />
           <div className="toolbar__group toolbar__group--dashes">
-            <span className="slider-label">선</span>
+            <span className="slider-label">{t.toolbar.lineLabel}</span>
             {DASH_STYLES.map((d) => (
               <button
-                key={d.value}
+                key={d}
                 type="button"
-                className={`dash ${displayDash === d.value ? 'dash--active' : ''}`}
-                onClick={(): void => handleDash(d.value)}
-                aria-label={`선 스타일 ${d.label}`}
-                title={d.label}
+                className={`dash ${displayDash === d ? 'dash--active' : ''}`}
+                onClick={(): void => handleDash(d)}
+                aria-label={t.toolbar.dashAriaLabel(t.dashStyle[d])}
+                title={t.dashStyle[d]}
               >
-                <DashPreview style={d.value} />
+                <DashPreview style={d} />
               </button>
             ))}
           </div>
@@ -413,7 +417,7 @@ export function Toolbar({
 
       <div className="toolbar__group">
         <ToolbarButton
-          label="실행 취소"
+          label={t.toolbar.undo}
           shortcut="⌘Z"
           disabled={past.length === 0}
           onClick={undo}
@@ -421,7 +425,7 @@ export function Toolbar({
           ↶
         </ToolbarButton>
         <ToolbarButton
-          label="다시 실행"
+          label={t.toolbar.redo}
           shortcut="⌘⇧Z"
           disabled={future.length === 0}
           onClick={redo}
@@ -430,7 +434,7 @@ export function Toolbar({
         </ToolbarButton>
         <label
           className="iconbtn"
-          title="이미지 첨부 (드롭 · ⌘V 도 가능)"
+          title={t.toolbar.attachImage}
         >
           <ImageIcon />
           <input
@@ -451,7 +455,7 @@ export function Toolbar({
           type="button"
           className="iconbtn"
           onClick={onPin}
-          title="화면에 핀 — 위에 떠있는 윈도우로 박아두기"
+          title={t.toolbar.pin}
         >
           <PinIcon />
         </button>
@@ -459,7 +463,7 @@ export function Toolbar({
           type="button"
           className="iconbtn"
           onClick={onSaveFolder}
-          title="폴더에 저장 — ~/Pictures/ASIS/ 에 자동 저장 (⌘S 는 다른 이름으로 저장)"
+          title={t.toolbar.saveFolder}
         >
           <SaveFolderIcon />
         </button>
@@ -473,7 +477,7 @@ export function Toolbar({
           className="iconbtn"
           onClick={(): void => setZoom(zoom / 1.25)}
           disabled={zoom <= ZOOM_MIN}
-          title="축소 (-)"
+          title={t.toolbar.zoomOut}
         >
           <ZoomOutIcon />
         </button>
@@ -481,7 +485,7 @@ export function Toolbar({
           type="button"
           className="iconbtn zoom-pct"
           onClick={(): void => setZoom(1)}
-          title="원래 크기로 (⌘0)"
+          title={t.toolbar.zoomReset}
         >
           {Math.round(zoom * 100)}%
         </button>
@@ -490,7 +494,7 @@ export function Toolbar({
           className="iconbtn"
           onClick={(): void => setZoom(zoom * 1.25)}
           disabled={zoom >= ZOOM_MAX}
-          title="확대 (+)"
+          title={t.toolbar.zoomIn}
         >
           <ZoomInIcon />
         </button>
@@ -504,14 +508,14 @@ export function Toolbar({
           className="action action--secondary"
           onClick={onCancel}
         >
-          취소
+          {t.toolbar.cancel}
         </button>
         <button
           type="button"
           className="action action--primary"
           onClick={onCopy}
         >
-          복사
+          {t.toolbar.copy}
           <span className="action__hint">⌘C</span>
         </button>
       </div>

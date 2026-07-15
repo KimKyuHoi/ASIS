@@ -1,5 +1,6 @@
 import { type ElectronAPI } from '@electron-toolkit/preload';
 import type { HotkeyConfig, MiscConfig } from '../main/settings';
+import type { Language } from '../shared/i18n/language';
 
 type Rect = {
   x: number;
@@ -116,6 +117,14 @@ type StepGuideAPI = {
   stop: (format: 'markdown' | 'html') => void;
 };
 
+type I18nAPI = {
+  /** 현재 언어 동기 조회 — 엔트리 main.tsx 가 첫 렌더 전에 호출한다. */
+  getLanguage: () => Language;
+  setLanguage: (lang: Language) => Promise<void>;
+  onLanguageChanged: (callback: (lang: Language) => void) => () => void;
+  completeOnboarding: () => void;
+};
+
 type ScrollCaptureAPI = {
   stop: () => void;
   cancel: () => void;
@@ -139,5 +148,6 @@ declare global {
     patchHistory: PatchHistoryAPI;
     stepGuide: StepGuideAPI;
     scrollCapture: ScrollCaptureAPI;
+    i18n: I18nAPI;
   }
 }

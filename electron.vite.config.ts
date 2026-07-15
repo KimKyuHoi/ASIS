@@ -31,6 +31,7 @@ export default defineConfig({
           countdown: resolve('src/renderer/countdown/index.html'),
           settings: resolve('src/renderer/settings/index.html'),
           history: resolve('src/renderer/history/index.html'),
+          onboarding: resolve('src/renderer/onboarding/index.html'),
         },
       },
     },

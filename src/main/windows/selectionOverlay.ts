@@ -17,6 +17,7 @@ import {
   onSpaceChange,
 } from '../windowsInfo';
 import type { WindowInfo } from '../windowsInfo';
+import { tMain } from '../i18n/strings';
 
 type Rect = {
   x: number;
@@ -135,8 +136,8 @@ export class SelectionOverlayManager {
     if (!ensureAccessibilityPermission(false)) {
       ensureAccessibilityPermission(true);
       new Notification({
-        title: 'ASIS — 손쉬운 사용 권한 필요',
-        body: '시스템 설정에서 ASIS를 허용한 후 앱을 재시작하면 UI 자동감지가 활성화됩니다.',
+        title: tMain().accessibility.title,
+        body: tMain().accessibility.selectionBody,
       }).show();
     }
 

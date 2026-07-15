@@ -10,6 +10,8 @@ import {
 } from 'react-konva';
 import type Konva from 'konva';
 import { useEditorStore } from '../lib/store';
+import { useLanguage } from '../../../shared/i18n/use-language';
+import { editorStrings } from '../lib/strings';
 import type { LineShape, Shape as ShapeData, StepShape, TextShape } from '../types/shapes';
 import { cancelEditor, copyToClipboard, stageToDataUrl } from '../lib/editor-actions';
 import { addImageFromSource, clamp } from '../lib/image-utils';
@@ -62,6 +64,7 @@ const CURSOR_ROTATE =
  *   - imperative-style.md 이벤트 핸들러 안 명령형 OK. 렌더 path declarative.
  */
 export default function Editor(): JSX.Element {
+  const t = editorStrings[useLanguage()];
   const stageRef = useRef<Konva.Stage>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -581,7 +584,7 @@ export default function Editor(): JSX.Element {
     <div className="editor">
       {saveToast !== null && (
         <div className="editor__toast">
-          ✓ 저장됨 — {saveToast}
+          {t.editor.savedToast(saveToast)}
         </div>
       )}
       {contextMenu !== null && createPortal(
@@ -593,19 +596,19 @@ export default function Editor(): JSX.Element {
           <button type="button" className="context-menu__item" onClick={(): void => {
             reorderShape(contextMenu.shapeId, 'front');
             setContextMenu(null);
-          }}>맨 앞으로</button>
+          }}>{t.editor.bringToFront}</button>
           <button type="button" className="context-menu__item" onClick={(): void => {
             reorderShape(contextMenu.shapeId, 'forward');
             setContextMenu(null);
-          }}>앞으로</button>
+          }}>{t.editor.bringForward}</button>
           <button type="button" className="context-menu__item" onClick={(): void => {
             reorderShape(contextMenu.shapeId, 'backward');
             setContextMenu(null);
-          }}>뒤로</button>
+          }}>{t.editor.sendBackward}</button>
           <button type="button" className="context-menu__item" onClick={(): void => {
             reorderShape(contextMenu.shapeId, 'back');
             setContextMenu(null);
-          }}>맨 뒤로</button>
+          }}>{t.editor.sendToBack}</button>
         </div>,
         document.body,
       )}
@@ -839,7 +842,7 @@ export default function Editor(): JSX.Element {
             ) : null}
           </div>
         ) : (
-          <div className="editor__empty">캡처를 불러오는 중…</div>
+          <div className="editor__empty">{t.editor.loading}</div>
         )}
       </div>
 

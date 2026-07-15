@@ -1,4 +1,5 @@
 import ElectronStore from 'electron-store';
+import type { Language } from '../shared/i18n/language';
 
 export type HotkeyConfig = {
   region: string;
@@ -44,6 +45,8 @@ export type Settings = {
   misc: MiscConfig;
   /** 직전 실행 시 버전 — 업데이트 완료 알림 감지에 사용. */
   lastLaunchedVersion: string;
+  /** UI 언어. '' = 첫 실행에서 아직 선택 안 함 → onboarding 언어 선택 창 표시. */
+  language: Language | '';
 };
 
 export const DEFAULT_HOTKEYS: HotkeyConfig = {
@@ -81,6 +84,7 @@ export const settingsStore = new ElectronStore<Settings>({
     saveFolderPath: '',
     misc: DEFAULT_MISC,
     lastLaunchedVersion: '',
+    language: '',
   },
 });
 

@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import type { JSX } from 'react';
+import { isLanguage } from '../../../shared/i18n/language';
+import { useLanguage } from '../../../shared/i18n/use-language';
 import { toAccelerator, toDisplayString } from '../lib/keyboard-utils';
+import { settingsStrings } from '../lib/strings';
 
 type HotkeyConfig = {
   region: string;
@@ -61,24 +64,6 @@ const DEFAULT: HotkeyConfig = {
   scrollCapture: 'CommandOrControl+Shift+J',
 };
 
-const LABELS: Record<keyof HotkeyConfig, string> = {
-  region: '영역 캡처',
-  fullscreen: '전체 화면 캡처',
-  window: '윈도우 캡처',
-  delayedFullscreen: '지연 전체화면 캡처 (3초)',
-  delayedRegion: '지연 영역 캡처 (3초)',
-  disableClickThrough: '클릭 통과 해제',
-  gif: 'GIF 녹화',
-  video: '화면 녹화',
-  ocr: '텍스트 추출 (OCR)',
-  clipboardPin: '클립보드 핀',
-  ruler: '화면 자 / 간격 측정',
-  timeMachineToggle: '타임머신 시작/정지',
-  timeMachineSave: '타임머신 최근 구간 저장',
-  stepGuide: '스텝 가이드 녹화',
-  scrollCapture: '스크롤 캡처',
-};
-
 const HOTKEY_FIELDS: Array<keyof HotkeyConfig> = [
   'region',
   'fullscreen',
@@ -98,6 +83,8 @@ const HOTKEY_FIELDS: Array<keyof HotkeyConfig> = [
 ];
 
 export default function Settings(): JSX.Element {
+  const lang = useLanguage();
+  const t = settingsStrings[lang];
   const [hotkeys, setHotkeys] = useState<HotkeyConfig>(DEFAULT);
   const [misc, setMisc] = useState<MiscConfig>(DEFAULT_MISC);
   const [recording, setRecording] = useState<keyof HotkeyConfig | null>(null);
@@ -166,24 +153,52 @@ export default function Settings(): JSX.Element {
 
   return (
     <div className="settings">
-      <h1 className="settings__title">환경설정</h1>
+      <h1 className="settings__title">{t.title}</h1>
 
       <section className="settings__section">
-        <h2 className="settings__section-title">저장 위치</h2>
+        <h2 className="settings__section-title">{t.languageSection}</h2>
+        <div className="misc-row">
+          <label className="misc-row__label" htmlFor="language">
+            {t.languageLabel}
+          </label>
+          <select
+            id="language"
+            className="misc-row__select"
+            value={lang}
+            onChange={(e): void => {
+              const next = e.target.value;
+              if (!isLanguage(next)) {
+                // option 은 ko/en 뿐이라 도달 불가 — 도달하면 코드 버그.
+                throw new Error(`unsupported language option: ${next}`);
+              }
+              // 저장 버튼과 무관하게 즉시 전체 앱(트레이·메뉴·모든 창)에 반영된다.
+              window.i18n.setLanguage(next).catch((err: unknown) => {
+                console.error('[asis settings] setLanguage failed', err);
+              });
+            }}
+          >
+            <option value="ko">{t.languageKo}</option>
+            <option value="en">{t.languageEn}</option>
+          </select>
+        </div>
+      </section>
+
+      <section className="settings__section">
+        <h2 className="settings__section-title">{t.folderSection}</h2>
         <div className="folder-row">
           <span className="folder-row__path">
-            {folderPath || '기본값 (~/Pictures/ASIS)'}
+            {folderPath || t.folderDefault}
           </span>
           <button type="button" className="btn btn--secondary folder-row__btn" onClick={handlePickFolder}>
-            변경…
+            {t.change}
           </button>
         </div>
       </section>
 
       <section className="settings__section">
-        <h2 className="settings__section-title">일반</h2>
+        <h2 className="settings__section-title">{t.generalSection}</h2>
         <div className="misc-row">
-          <label className="misc-row__label" htmlFor="gifFps">GIF 프레임 속도</label>
+          <label className="misc-row__label" htmlFor="gifFps">{t.gifFps}</label>
           <select
             id="gifFps"
             className="misc-row__select"
@@ -199,7 +214,7 @@ export default function Settings(): JSX.Element {
           </select>
         </div>
         <div className="misc-row">
-          <label className="misc-row__label" htmlFor="pinOpacity">핀 기본 투명도</label>
+          <label className="misc-row__label" htmlFor="pinOpacity">{t.pinOpacity}</label>
           <input
             id="pinOpacity"
             type="range"
@@ -227,7 +242,7 @@ export default function Settings(): JSX.Element {
                 setSaved(false);
               }}
             />
-            캡처 완료 소리
+            {t.captureSound}
           </label>
         </div>
         <div className="misc-row">
@@ -242,12 +257,12 @@ export default function Settings(): JSX.Element {
                 setSaved(false);
               }}
             />
-            로그인 시 자동 시작
+            {t.openAtLogin}
           </label>
         </div>
         <div className="misc-row">
           <label className="misc-row__label" htmlFor="tmBuffer">
-            타임머신 버퍼 (최근)
+            {t.tmBuffer}
           </label>
           <input
             id="tmBuffer"
@@ -266,18 +281,18 @@ export default function Settings(): JSX.Element {
             }}
           />
           <span className="misc-row__value">
-            {misc.timeMachineBufferSeconds}초
+            {t.seconds(misc.timeMachineBufferSeconds)}
           </span>
         </div>
       </section>
 
       <section className="settings__section">
-        <h2 className="settings__section-title">단축키</h2>
+        <h2 className="settings__section-title">{t.hotkeySection}</h2>
         <table className="hotkey-table">
           <tbody>
             {HOTKEY_FIELDS.map((field) => (
               <tr key={field} className="hotkey-row">
-                <td className="hotkey-row__label">{LABELS[field]}</td>
+                <td className="hotkey-row__label">{t.hotkeyLabels[field]}</td>
                 <td className="hotkey-row__input">
                   <button
                     type="button"
@@ -287,7 +302,7 @@ export default function Settings(): JSX.Element {
                     }}
                   >
                     {recording === field
-                      ? '단축키 누르기…'
+                      ? t.recordingHint
                       : toDisplayString(hotkeys[field])}
                   </button>
                 </td>
@@ -299,10 +314,10 @@ export default function Settings(): JSX.Element {
 
       <div className="settings__actions">
         <button type="button" className="btn btn--secondary" onClick={handleReset}>
-          기본값으로
+          {t.reset}
         </button>
         <button type="button" className="btn btn--primary" onClick={handleSave}>
-          {saved ? '저장됨 ✓' : '저장'}
+          {saved ? t.saved : t.save}
         </button>
       </div>
     </div>

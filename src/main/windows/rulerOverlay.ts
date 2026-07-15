@@ -10,6 +10,7 @@ import {
 import type { ElementAtProvider } from './common';
 import { sendBackgroundSnapshot } from '../capture/displaySnapshot';
 import { ensureAccessibilityPermission, getElementBoundsAtPoint } from '../windowsInfo';
+import { tMain } from '../i18n/strings';
 
 /**
  * 화면 자 / 간격 측정 오버레이 — 풀스크린 transparent BrowserWindow lifecycle.
@@ -52,8 +53,8 @@ export class RulerOverlayManager {
     if (!ensureAccessibilityPermission(false)) {
       ensureAccessibilityPermission(true);
       new Notification({
-        title: 'ASIS — 손쉬운 사용 권한 필요',
-        body: '시스템 설정에서 ASIS를 허용하면 요소 치수 측정이 활성화됩니다.',
+        title: tMain().accessibility.title,
+        body: tMain().accessibility.rulerBody,
       }).show();
     }
 

@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { CSSProperties, JSX } from 'react';
+import { useLanguage } from '../../../shared/i18n/use-language';
+import { pinStrings } from '../lib/strings';
 
 /**
  * Pin to Screen — 캡처 결과(또는 클립보드 이미지)를 떠있는 작은 윈도우로 표시.
@@ -160,12 +162,13 @@ export default function Pin(): JSX.Element {
 function CloseButton({ onClick }: { onClick: () => void }): JSX.Element {
   // macOS traffic-light 스타일 — 윈도우 *외부* 좌상단에 살짝 걸친 빨간 작은 동그라미.
   // 평소엔 흐릿하게, hover 시 진하게 + × 표시. CSS class 로 hover 처리 (inline 한계).
+  const t = pinStrings[useLanguage()];
   return (
     <button
       type="button"
       onClick={onClick}
       className="pin-close"
-      aria-label="닫기"
+      aria-label={t.close}
     >
       <span className="pin-close__glyph">×</span>
     </button>
@@ -173,6 +176,7 @@ function CloseButton({ onClick }: { onClick: () => void }): JSX.Element {
 }
 
 function ClickThroughBadge(): JSX.Element {
+  const t = pinStrings[useLanguage()];
   const style: CSSProperties = {
     position: 'absolute',
     bottom: 6,
@@ -186,5 +190,5 @@ function ClickThroughBadge(): JSX.Element {
     fontFamily:
       '-apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif',
   };
-  return <span style={style}>click-through (X 토글)</span>;
+  return <span style={style}>{t.clickThroughBadge}</span>;
 }
