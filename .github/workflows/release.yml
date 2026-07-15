@@ -48,6 +48,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # 네이티브 헬퍼(asis-ocr, asis-clickmon)를 electron-builder 전에 빌드한다.
+      # 이게 없으면 extraResources 의 resources/bin/* 소스가 존재하지 않아 앱 번들에
+      # 바이너리가 빠진 채 배포된다 (v0.6.3 에서 OCR·스텝 가이드가 깨졌던 원인).
+      - name: Build native helpers (OCR / click monitor)
+        run: |
+          pnpm build:ocr
+          pnpm build:clickmon
+
       - name: Build renderer + main
         run: pnpm run build
 
