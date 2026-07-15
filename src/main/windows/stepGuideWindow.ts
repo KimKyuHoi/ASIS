@@ -2,6 +2,7 @@ import { BrowserWindow, ipcMain, screen } from 'electron';
 import { is } from '@electron-toolkit/utils';
 import { loadRendererPage, preloadPath } from './common';
 import { StepGuideManager, type StepGuideState } from '../step-guide/stepGuide';
+import { tMain } from '../i18n/strings';
 
 const CHANNEL_STOP = 'step-guide:stop';
 const CHANNEL_START_GIF = 'step-guide:start-gif';
@@ -111,7 +112,51 @@ export class StepGuideWindowManager {
     ipcMain.on(CHANNEL_START_GIF, onStartGif);
     ipcMain.on(CHANNEL_STOP_GIF, onStopGif);
 
-    // StepGuideManager 시작 — 상태 변화를 HUD 로 push, 알림은 notifiers 로.
+    win.on('closed', () => {
+      ipcMain.removeListener(CHANNEL_STOP, onStop);
+      ipcMain.removeListener(CHANNEL_START_GIF, onStartGif);
+      ipcMain.removeListener(CHANNEL_STOP_GIF, onStopGif);
+      this.win = null;
+      // 창이 (사용자 강제 종료 등으로) 닫혔는데 아직 녹화 중이면 export 없이 폐기.
+      // 명시적 저장 버튼을 안 눌렀으므로 의도된 폐기 — 다이얼로그 없이 조용히 정지.
+      // (finishAndExport 경로에서는 closeWindow() 전에 이미 stop(format) 이 호출돼
+      //  guide.isActive() 가 false 이므로 여기서 중복 폐기되지 않는다.)
+      this.guide.stopSilently();
+    });
+
+    // StepGuideManager 시작 — 반드시 closed 핸들러 등록 *이후*. start() 는 클릭
+    // 감지 바이너리(asis-clickmon) 부재 시 동기 throw 하며(clickMonitor.ts — spawn
+    // 전이라 내부 상태는 남지 않음), 잡지 않으면 uncaught exception 다이얼로그로
+    // 앱이 죽는다. 알림 + HUD 정리로 강등하고, closeWindow() 가 closed 핸들러를
+    // 태워 IPC 리스너까지 해제한다.
+    try {
+      this.startGuide(notifiers);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('[asis] stepGuide start failed', err);
+      notifiers.error(tMain().stepGuide.startFailed(message));
+      this.closeWindow();
+    }
+  }
+
+  /**
+   * 외부(트레이/단축키) 정지 트리거 — 기본 HTML 형식으로 종료·export.
+   * HUD 가 안 보이거나 focus 를 못 받는 경우의 회수 경로.
+   */
+  triggerStop(format: 'markdown' | 'html' = 'html'): void {
+    this.finishAndExport(format);
+  }
+
+  /** 앱 종료 시 정리 — export 없이 감지만 끄고 창을 닫는다. */
+  stop(): void {
+    // 녹화 중이면 export 시도(사용자 데이터 보존) 없이 조용히 폐기 — 앱 종료 경로라
+    // 다이얼로그를 띄우면 종료가 막힌다. 감지만 끄고 창 닫음.
+    this.guide.stopSilently();
+    this.closeWindow();
+  }
+
+  /** StepGuideManager 시작 — 상태 변화를 HUD 로 push, 알림은 notifiers 로. */
+  private startGuide(notifiers: StepGuideNotifiers): void {
     this.guide.start({
       onStateChange: (state) => {
         this.pushState(state);
@@ -131,47 +176,19 @@ export class StepGuideWindowManager {
           const isMarkdown = result.path.toLowerCase().endsWith('.md');
           notifiers.info(
             isMarkdown
-              ? `가이드 저장 — ${result.path}\n(이미지는 같은 폴더의 step-*.png — md만 옮기면 이미지가 안 보입니다)`
-              : `가이드 저장 — ${result.path}`,
+              ? tMain().stepGuide.savedMarkdown(result.path)
+              : tMain().stepGuide.saved(result.path),
           );
         }
         // canceled 는 조용히 — 사용자가 저장 다이얼로그를 취소한 것.
       },
       onExportError: (message) => {
-        notifiers.error(`가이드 저장 실패: ${message}`);
+        notifiers.error(tMain().stepGuide.saveFailed(message));
       },
       onEmpty: () => {
-        notifiers.info('기록된 클릭이 없습니다');
+        notifiers.info(tMain().stepGuide.empty);
       },
     });
-
-    win.on('closed', () => {
-      ipcMain.removeListener(CHANNEL_STOP, onStop);
-      ipcMain.removeListener(CHANNEL_START_GIF, onStartGif);
-      ipcMain.removeListener(CHANNEL_STOP_GIF, onStopGif);
-      this.win = null;
-      // 창이 (사용자 강제 종료 등으로) 닫혔는데 아직 녹화 중이면 export 없이 폐기.
-      // 명시적 저장 버튼을 안 눌렀으므로 의도된 폐기 — 다이얼로그 없이 조용히 정지.
-      // (finishAndExport 경로에서는 closeWindow() 전에 이미 stop(format) 이 호출돼
-      //  guide.isActive() 가 false 이므로 여기서 중복 폐기되지 않는다.)
-      this.guide.stopSilently();
-    });
-  }
-
-  /**
-   * 외부(트레이/단축키) 정지 트리거 — 기본 HTML 형식으로 종료·export.
-   * HUD 가 안 보이거나 focus 를 못 받는 경우의 회수 경로.
-   */
-  triggerStop(format: 'markdown' | 'html' = 'html'): void {
-    this.finishAndExport(format);
-  }
-
-  /** 앱 종료 시 정리 — export 없이 감지만 끄고 창을 닫는다. */
-  stop(): void {
-    // 녹화 중이면 export 시도(사용자 데이터 보존) 없이 조용히 폐기 — 앱 종료 경로라
-    // 다이얼로그를 띄우면 종료가 막힌다. 감지만 끄고 창 닫음.
-    this.guide.stopSilently();
-    this.closeWindow();
   }
 
   private finishAndExport(format: 'markdown' | 'html'): void {
