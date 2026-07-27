@@ -1,0 +1,187 @@
+/* 타임머신 상태 알약 — 상시 표시되는 한 줄 floating bar.
+   video-recorder 의 알약과 같은 결(어두운 반투명 캡슐)이되, 오래 떠 있는 UI 라
+   채도를 낮추고 점멸을 부드럽게 해 시선을 덜 뺏는다. */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+}
+
+.tmhud {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 100%;
+  padding: 0 6px 0 12px;
+  background: rgba(28, 28, 32, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.94);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 4px 14px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  /* 알약 전체가 드래그 핸들 — 가려서 방해되면 사용자가 옮길 수 있어야 한다.
+     버튼만 no-drag 로 되돌린다. */
+  -webkit-app-region: drag;
+}
+
+/* 저장 중/안내는 텍스트 한 줄뿐이라 좌우 여백을 맞춘다. */
+.tmhud--busy,
+.tmhud--done {
+  padding: 0 12px;
+}
+
+.tmhud--done {
+  border-color: rgba(90, 220, 150, 0.35);
+}
+
+.tmhud__dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgb(255, 60, 60);
+  box-shadow: 0 0 6px rgba(255, 60, 60, 0.55);
+  animation: tmhud-pulse 2s ease-in-out infinite;
+}
+
+.tmhud__label {
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.tmhud__time {
+  flex: none;
+  font-family: 'SF Mono', 'JetBrains Mono', Menlo, ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+/* 보조 정보(버퍼 길이·저장 길이) — 주 정보보다 한 단계 낮은 대비. */
+.tmhud__meta {
+  flex: none;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.58);
+  white-space: nowrap;
+}
+
+.tmhud__status {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 11.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tmhud__check {
+  flex: none;
+  font-size: 12px;
+  font-weight: 700;
+  color: rgb(90, 220, 150);
+}
+
+.tmhud__info {
+  flex: none;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* 버튼은 우측에 붙인다 — 좌측 정보와 시선 흐름을 분리. */
+.tmhud__btn {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  flex: none;
+  height: 22px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.94);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background 0.12s ease-out,
+    transform 0.08s ease-out;
+}
+
+.tmhud__btn:first-of-type {
+  margin-left: auto;
+}
+
+.tmhud__btn:hover {
+  background: rgba(255, 255, 255, 0.13);
+}
+
+.tmhud__btn:active {
+  transform: translateY(0.5px);
+}
+
+/* 저장이 이 알약의 주 동작 — 유일하게 채운 버튼. */
+.tmhud__btn--save {
+  background: rgba(94, 162, 255, 0.92);
+  border-color: rgba(255, 255, 255, 0.2);
+  font-weight: 600;
+}
+
+.tmhud__btn--save:hover {
+  background: rgb(120, 180, 255);
+}
+
+.tmhud__spinner {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-top-color: rgba(94, 162, 255, 0.95);
+  animation: tmhud-spin 0.7s linear infinite;
+}
+
+@keyframes tmhud-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@keyframes tmhud-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tmhud__dot,
+  .tmhud__spinner {
+    animation: none;
+  }
+}

@@ -1,6 +1,6 @@
 import { app, clipboard, dialog, ipcMain, nativeImage, Notification, screen, shell } from 'electron';
 import { existsSync } from 'node:fs';
-import { copyFile, unlink } from 'node:fs/promises';
+import { unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { electronApp, is, optimizer } from '@electron-toolkit/utils';
 import log from 'electron-log/main';
@@ -34,7 +34,8 @@ import { ScrollCaptureWindowManager } from './windows/scrollCaptureWindow';
 import { getEntries } from './captureHistory';
 import { fetchPatchNotes } from './patch-notes/patchNotes';
 import { TimeMachineManager } from './time-machine/timeMachine';
-import { probeProtectedContent } from './time-machine/drmDetect';
+import { TimeMachineController } from './time-machine/timeMachineController';
+import { TimeMachineHudWindowManager } from './windows/timeMachineHudWindow';
 import { checkPermissionsOnLaunch, guardCapture, openPermissionSettings } from './permissions';
 import {
   isNewer,
@@ -72,6 +73,7 @@ const historyWindow = new HistoryWindowManager();
 const patchHistoryWindow = new PatchHistoryWindowManager();
 const rulerOverlay = new RulerOverlayManager();
 const timeMachine = new TimeMachineManager();
+const timeMachineHud = new TimeMachineHudWindowManager();
 const stepGuideWindow = new StepGuideWindowManager();
 const scrollCaptureWindow = new ScrollCaptureWindowManager();
 const countdownWindow = new CountdownWindow();
@@ -96,6 +98,9 @@ const stopAllManagers = (): void => {
   patchHistoryWindow.stop();
   rulerOverlay.stop();
   timeMachine.dispose();
+  // 컨트롤러가 HUD 알약과 표시 타이머까지 함께 정리한다 (선언은 아래 — 호출은
+  // before-quit 시점이라 초기화 완료 후다).
+  timeMachineController.dispose();
   stepGuideWindow.stop();
   scrollCaptureWindow.stop();
   onboardingWindow.stop();
@@ -110,10 +115,11 @@ if (!gotInstanceLock) {
 // macOS 에서 알림 전달 실패(UNNotification 권한·등록 문제 등)는 기본적으로 조용히
 // 사라진다. failed/show 이벤트를 로그로 남겨 "알림이 안 뜬다" 이슈를 사후 진단한다.
 // https://www.electronjs.org/docs/latest/api/notification
-const notify = (title: string, body: string): void => {
+const notify = (title: string, body: string, onClick?: () => void): void => {
   const n = new Notification({ title, body });
   n.on('failed', (_event, error) => log.error('[notify] failed', { title, body, error }));
   n.on('show', () => log.info('[notify] shown', { title, body }));
+  if (onClick) n.on('click', () => onClick());
   n.show();
 };
 
@@ -124,6 +130,27 @@ const notifyInfo = (body: string): void => {
 const notifyError = (body: string): void => {
   notify(tMain().notify.errorTitle, body);
 };
+
+/** 클릭하면 후속 동작이 있는 알림 (예: 저장 완료 → Finder 에서 파일 표시). */
+const notifyAction = (body: string, onClick: () => void): void => {
+  notify('ASIS', body, onClick);
+};
+
+/**
+ * 타임머신 조율자 — 시작/정지/저장 상태를 소유하고 HUD 알약·트레이·알림에 뿌린다.
+ * notify 계열을 참조하므로 그 정의 이후에 만든다.
+ */
+const timeMachineController = new TimeMachineController({
+  manager: timeMachine,
+  hud: timeMachineHud,
+  bufferSeconds: () => loadMisc().timeMachineBufferSeconds,
+  drmDetectEnabled: () => loadMisc().drmDetectEnabled,
+  guardCapture: () => guardCapture(),
+  notifyInfo,
+  notifyError,
+  notifyAction,
+  onStateChanged: () => trayManager.refresh(),
+});
 
 /**
  * overlay 의 BrowserWindow close 후 macOS compositor 가 dim 픽셀을 화면에서
@@ -685,79 +712,9 @@ app.whenReady().then(() => {
       },
     });
   };
-  const onTimeMachineToggle = (): void => {
-    if (timeMachine.isRunning()) {
-      timeMachine.stop().then(
-        () => notifyInfo(tMain().timeMachine.stopped),
-        (err: unknown) =>
-          notifyError(
-            tMain().timeMachine.stopFailed(err instanceof Error ? err.message : String(err)),
-          ),
-      );
-      return;
-    }
-    guardCapture().then((ok) => {
-      if (!ok) return;
-      const buf = loadMisc().timeMachineBufferSeconds;
-      // rect 미지정 = 커서가 있는 디스플레이 전체를 상시 녹화.
-      timeMachine.start(undefined, buf).then(
-        () => notifyInfo(tMain().timeMachine.started(buf)),
-        (err: unknown) =>
-          notifyError(
-            tMain().timeMachine.startFailed(err instanceof Error ? err.message : String(err)),
-          ),
-      );
-    });
-  };
-  const onTimeMachineSave = (): void => {
-    if (!timeMachine.isRunning()) {
-      notifyInfo(tMain().timeMachine.notRunning);
-      return;
-    }
-    timeMachine.save().then(
-      async (result) => {
-        if (result.kind === 'empty') {
-          notifyInfo(tMain().timeMachine.empty);
-          return;
-        }
-        // DRM 감지 — 저장 구간이 near-black 이면 경고(휴리스틱, 오탐 가능). 저장은 막지 않는다.
-        if (loadMisc().drmDetectEnabled) {
-          const probe = await probeProtectedContent(result.path).catch(
-            (err: unknown) => {
-              console.warn('[asis] DRM 감지 실패(무시하고 저장 진행)', err);
-              return null;
-            },
-          );
-          if (probe && probe.kind === 'protected') {
-            notifyError(tMain().timeMachine.drmWarning(probe.ymax));
-          }
-        }
-        const dest = join(
-          app.getPath('videos'),
-          `ASIS-TimeMachine-${Date.now()}.mp4`,
-        );
-        const saved = await dialog.showSaveDialog({
-          defaultPath: dest,
-          filters: [{ name: 'MP4 Video', extensions: ['mp4'] }],
-        });
-        if (saved.canceled || !saved.filePath) {
-          await unlink(result.path).catch((e: unknown) => {
-            console.warn('[asis] timemachine tmp cleanup failed', e);
-          });
-          return;
-        }
-        await copyFile(result.path, saved.filePath);
-        await unlink(result.path).catch((e: unknown) => {
-          console.warn('[asis] timemachine tmp cleanup failed', e);
-        });
-        notifyInfo(tMain().timeMachine.saved(result.approxSeconds, saved.filePath));
-      },
-      (err: unknown) =>
-        notifyError(
-          tMain().timeMachine.saveFailed(err instanceof Error ? err.message : String(err)),
-        ),
-    );
-  };
+  // 타임머신 흐름 전체(상태·HUD·트레이·알림)는 컨트롤러가 소유한다.
+  const onTimeMachineToggle = (): void => timeMachineController.toggle();
+  const onTimeMachineSave = (): void => timeMachineController.save();
   const onOpenPermissions = (): void => {
     openPermissionSettings();
   };
@@ -784,8 +741,18 @@ app.whenReady().then(() => {
     onTimeMachineSave,
     onOpenPermissions,
   };
-  trayManager.start(handlers);
+  trayManager.start(handlers, {
+    isTimeMachineRunning: () => timeMachineController.isRunning(),
+    timeMachineSavePhase: () => timeMachineController.savePhase(),
+    timeMachineBufferSeconds: () => loadMisc().timeMachineBufferSeconds,
+  });
   shortcutManager.start(handlers);
+
+  // ffmpeg 가 스스로 죽으면(권한 거부 등) 토글을 거치지 않는다 — 알약이 "녹화 중"인
+  // 채 남지 않도록 컨트롤러가 표시를 내리고 사유를 알린다.
+  timeMachine.onEarlyExit = (): void => {
+    timeMachineController.handleEarlyExit();
+  };
 
   // 첫 실행(언어 미선택) — 언어 선택 창을 띄운다. 이후 실행에는 나타나지 않는다.
   if (!isLanguageChosen()) {

@@ -25,6 +25,7 @@ export default defineConfig({
           pin: resolve('src/renderer/pin/index.html'),
           recorder: resolve('src/renderer/recorder/index.html'),
           videoRecorder: resolve('src/renderer/video-recorder/index.html'),
+          timeMachine: resolve('src/renderer/time-machine/index.html'),
           patchHistory: resolve('src/renderer/patch-history/index.html'),
           stepGuide: resolve('src/renderer/step-guide/index.html'),
           scrollCapture: resolve('src/renderer/scroll-capture/index.html'),

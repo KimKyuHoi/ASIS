@@ -26,8 +26,15 @@ export const mainStrings = defineDict({
       video: '화면 녹화…',
       gif: 'GIF 녹화…',
       stepGuide: '스텝 가이드 녹화…',
-      timeMachineToggle: '타임머신 녹화 시작/정지',
+      timeMachineStart: '타임머신 녹화 시작',
+      timeMachineStop: '타임머신 녹화 정지',
       timeMachineSave: '타임머신 최근 구간 저장',
+      /** 메뉴 안 비활성 헤더 — 메뉴를 열었을 때 현재 상태를 한 줄로 알려준다. */
+      timeMachineStatusRecording: (bufferSeconds: number) =>
+        `● 타임머신 녹화 중 · 최근 ${bufferSeconds}초 유지`,
+      timeMachineStatusSaving: '⟳ 타임머신 구간 저장 중…',
+      timeMachineStatusSaved: '✓ 타임머신 구간 저장됨',
+      timeMachineStatusIdle: '○ 타임머신 꺼짐',
       clipboardPin: '클립보드를 핀으로',
       disableClickThrough: '모든 핀 click-through 해제',
       closeAllPins: '모든 핀 닫기',
@@ -121,18 +128,27 @@ export const mainStrings = defineDict({
       stepAlt: (order: number) => `단계 ${order}`,
     },
     timeMachine: {
-      stopped: '타임머신 녹화를 정지했습니다',
+      stopped: '타임머신 녹화를 정지했습니다 — 남아 있던 버퍼는 폐기됐습니다',
       stopFailed: (message: string) => `타임머신 정지 실패: ${message}`,
       started: (bufferSeconds: number) =>
         `타임머신 시작 — 최근 ${bufferSeconds}초 유지 중 (⌘⇧S로 저장)`,
       startFailed: (message: string) => `타임머신 시작 실패: ${message}`,
       notRunning: '타임머신이 실행 중이 아닙니다 (⌘⇧T로 시작)',
-      empty: '아직 저장할 구간이 없습니다 (조금 더 기다려 주세요)',
+      empty: (bufferSeconds: number) =>
+        `아직 저장할 구간이 없습니다 — 최소 몇 초는 녹화돼야 합니다 (버퍼 ${bufferSeconds}초)`,
+      /** HUD 알약용 축약 — 알약 폭이 한 줄이라 짧게. */
+      emptyShort: '아직 저장할 구간이 없습니다',
       drmWarning: (ymax: number) =>
         `저장된 화면이 검게 녹화되었습니다 — DRM/HDCP 보호 콘텐츠일 수 있습니다 (YMAX=${ymax})`,
-      saved: (approxSeconds: number, path: string) =>
-        `타임머신 저장 — 최근 약 ${approxSeconds}초 (${path})`,
+      saved: (approxSeconds: number, fileName: string) =>
+        `타임머신 저장 완료 — 최근 ${approxSeconds}초 · ${fileName} (클릭하면 폴더에서 보기)`,
       saveFailed: (message: string) => `타임머신 저장 실패: ${message}`,
+      saveFailedShort: '저장 실패 — 알림을 확인해 주세요',
+      copyFailed: (message: string) => `저장 폴더로 복사 실패: ${message}`,
+      revealMissing: (fileName: string) =>
+        `${fileName} 을(를) 찾을 수 없습니다 — 옮기거나 삭제된 것 같습니다`,
+      diedUnexpectedly:
+        '타임머신 녹화가 예기치 않게 종료됐습니다 — 화면 녹화 권한을 확인해 주세요',
     },
     permissions: {
       launchDeniedTitle: 'ASIS — 화면 녹화 권한 없음',
@@ -177,8 +193,14 @@ export const mainStrings = defineDict({
       video: 'Record Screen…',
       gif: 'Record GIF…',
       stepGuide: 'Record Step Guide…',
-      timeMachineToggle: 'Start/Stop Time Machine',
+      timeMachineStart: 'Start Time Machine',
+      timeMachineStop: 'Stop Time Machine',
       timeMachineSave: 'Save Recent Time Machine Clip',
+      timeMachineStatusRecording: (bufferSeconds: number) =>
+        `● Time Machine recording · last ${bufferSeconds}s buffered`,
+      timeMachineStatusSaving: '⟳ Saving Time Machine clip…',
+      timeMachineStatusSaved: '✓ Time Machine clip saved',
+      timeMachineStatusIdle: '○ Time Machine off',
       clipboardPin: 'Pin Clipboard Image',
       disableClickThrough: 'Disable Click-Through on All Pins',
       closeAllPins: 'Close All Pins',
@@ -272,18 +294,26 @@ export const mainStrings = defineDict({
       stepAlt: (order: number) => `Step ${order}`,
     },
     timeMachine: {
-      stopped: 'Time Machine recording stopped',
+      stopped: 'Time Machine stopped — the buffered clip was discarded',
       stopFailed: (message: string) => `Failed to stop Time Machine: ${message}`,
       started: (bufferSeconds: number) =>
         `Time Machine started — keeping the last ${bufferSeconds}s (⌘⇧S to save)`,
       startFailed: (message: string) => `Failed to start Time Machine: ${message}`,
       notRunning: "Time Machine isn't running (⌘⇧T to start)",
-      empty: 'Nothing to save yet (give it a moment)',
+      empty: (bufferSeconds: number) =>
+        `Nothing to save yet — a few seconds must be recorded first (buffer ${bufferSeconds}s)`,
+      emptyShort: 'Nothing to save yet',
       drmWarning: (ymax: number) =>
         `The saved video came out black — it may be DRM/HDCP-protected content (YMAX=${ymax})`,
-      saved: (approxSeconds: number, path: string) =>
-        `Time Machine saved — about the last ${approxSeconds}s (${path})`,
+      saved: (approxSeconds: number, fileName: string) =>
+        `Time Machine saved — last ${approxSeconds}s · ${fileName} (click to reveal in Finder)`,
       saveFailed: (message: string) => `Failed to save Time Machine clip: ${message}`,
+      saveFailedShort: 'Save failed — see the notification',
+      copyFailed: (message: string) => `Failed to copy into the save folder: ${message}`,
+      revealMissing: (fileName: string) =>
+        `Couldn't find ${fileName} — it may have been moved or deleted`,
+      diedUnexpectedly:
+        'Time Machine recording exited unexpectedly — check Screen Recording permission',
     },
     permissions: {
       launchDeniedTitle: 'ASIS — Screen Recording Denied',

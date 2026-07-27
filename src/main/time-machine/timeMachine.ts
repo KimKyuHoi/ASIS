@@ -80,6 +80,12 @@ export class TimeMachineManager {
   private stderrBuf = '';
   /** 유지할 버퍼 길이(초). start() 인자로 덮어쓸 수 있다. */
   private bufferSeconds = DEFAULT_BUFFER_SECONDS;
+  /**
+   * ffmpeg 가 stop()/dispose() 없이 스스로 죽었을 때(권한 거부 등) 호출된다.
+   * 트레이 라벨 같은 외부 상태 표시 갱신용. 진짜 옵셔널 — 미설정이면 알림 없이
+   * 기존 earlyExit 지연 보고(다음 save/stop 시 사유 표시)만 동작한다.
+   */
+  onEarlyExit: (() => void) | null = null;
 
   isRunning(): boolean {
     return this.child !== null;
@@ -203,6 +209,7 @@ export class TimeMachineManager {
         if (!this.stopping) {
           this.earlyExit = { code, stderr: this.stderrBuf };
           this.child = null;
+          if (this.onEarlyExit) this.onEarlyExit();
         }
       });
     });

@@ -186,6 +186,42 @@ const videoRecorder = {
 };
 
 /**
+ * 타임머신 상태 알약(HUD) IPC 브릿지.
+ *  - ready(): 구독을 건 뒤 현재 상태를 요청 (main 의 첫 push 를 놓치지 않기 위함)
+ *  - onState(cb): 녹화/저장 단계 push 구독. cleanup 반환
+ *  - save()/stop(): 알약 버튼 → 단축키와 같은 동작
+ *  - reveal(): 마지막 저장 파일을 Finder 에서 표시
+ * 상태는 전부 main 이 소유한다 — 여기서는 전달만 한다.
+ */
+const timeMachineHudPhaseChannel = 'time-machine-hud:state';
+const timeMachineHud = {
+  ready: (): void => ipcRenderer.send('time-machine-hud:ready'),
+  onState: (
+    callback: (state: {
+      phase:
+        | { kind: 'recording' } |
+        { kind: 'saving' } |
+        { kind: 'saved'; seconds: number } |
+        { kind: 'notice'; message: string };
+      bufferSeconds: number;
+      startedAt: number;
+    }) => void,
+  ): (() => void) => {
+    const handler = (
+      _event: IpcRendererEvent,
+      state: Parameters<typeof callback>[0],
+    ): void => {
+      callback(state);
+    };
+    ipcRenderer.on(timeMachineHudPhaseChannel, handler);
+    return () => ipcRenderer.removeListener(timeMachineHudPhaseChannel, handler);
+  },
+  save: (): void => ipcRenderer.send('time-machine-hud:save'),
+  stop: (): void => ipcRenderer.send('time-machine-hud:stop'),
+  reveal: (): void => ipcRenderer.send('time-machine-hud:reveal'),
+};
+
+/**
  * 환경설정 IPC 브릿지.
  *  - get(): 현재 핫키 설정 반환
  *  - set(hotkeys): 저장 + ShortcutManager 재등록
@@ -317,6 +353,7 @@ if (process.contextIsolated) {
     contextBridge.exposeInMainWorld('pin', pin);
     contextBridge.exposeInMainWorld('recorder', recorder);
     contextBridge.exposeInMainWorld('videoRecorder', videoRecorder);
+    contextBridge.exposeInMainWorld('timeMachineHud', timeMachineHud);
     contextBridge.exposeInMainWorld('settings', settings);
     contextBridge.exposeInMainWorld('captureHistory', captureHistory);
     contextBridge.exposeInMainWorld('patchHistory', patchHistory);

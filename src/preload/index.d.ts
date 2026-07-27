@@ -68,6 +68,27 @@ type VideoRecorderAPI = {
   onTriggerCancel: (callback: () => void) => () => void;
 };
 
+/** main 의 windows/timeMachineHudWindow.ts, renderer 의 hook 정의와 동형. */
+type TimeMachineHudPhase =
+  | { kind: 'recording' } |
+  { kind: 'saving' } |
+  { kind: 'saved'; seconds: number } |
+  { kind: 'notice'; message: string };
+
+type TimeMachineHudState = {
+  phase: TimeMachineHudPhase;
+  bufferSeconds: number;
+  startedAt: number;
+};
+
+type TimeMachineHudAPI = {
+  ready: () => void;
+  onState: (callback: (state: TimeMachineHudState) => void) => () => void;
+  save: () => void;
+  stop: () => void;
+  reveal: () => void;
+};
+
 type SettingsAPI = {
   get: () => Promise<HotkeyConfig>;
   set: (hotkeys: HotkeyConfig) => Promise<void>;
@@ -143,6 +164,7 @@ declare global {
     pin: PinAPI;
     recorder: RecorderAPI;
     videoRecorder: VideoRecorderAPI;
+    timeMachineHud: TimeMachineHudAPI;
     settings: SettingsAPI;
     captureHistory: HistoryAPI;
     patchHistory: PatchHistoryAPI;
