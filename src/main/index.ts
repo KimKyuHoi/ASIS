@@ -1,4 +1,14 @@
-import { app, clipboard, dialog, ipcMain, nativeImage, Notification, screen, shell } from 'electron';
+import {
+  app,
+  clipboard,
+  dialog,
+  ipcMain,
+  nativeImage,
+  Notification,
+  screen,
+  shell,
+  type WebContents,
+} from 'electron';
 import { existsSync } from 'node:fs';
 import { unlink } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -48,6 +58,7 @@ import { OnboardingWindowManager } from './windows/onboardingWindow';
 import { initLanguage, isLanguageChosen } from './i18n/i18n';
 import { tMain } from './i18n/strings';
 import { subscribeLanguage } from '../shared/i18n/language';
+import type { RunningFeature } from '../shared/running-features';
 
 /**
  * ASIS — macOS 메뉴바 캡처·어노테이션 도구.
@@ -81,11 +92,61 @@ const onboardingWindow = new OnboardingWindowManager();
 editorWindow.setPinHandler((dataUrl, w, h) => pinWindow.pin(dataUrl, w, h));
 
 /**
+ * 지금 진행 중인 녹화·캡처 목록.
+ *
+ * 순서 = 표시 우선순위. 타임머신을 뒤로 미루는 이유: 상시 녹화라 거의 항상 켜져
+ * 있는데, 그게 앞에 오면 GIF·영상 녹화 중이라는 사실을 메뉴바 인디케이터가
+ * 가려버린다. 타임머신은 자체 HUD(timeMachineHudWindow) 로 이미 보인다.
+ */
+function runningFeatures(): RunningFeature[] {
+  const running: RunningFeature[] = [];
+  if (recorderWindow.isActive()) running.push('gif');
+  if (videoRecorderWindow.isActive()) running.push('video');
+  if (stepGuideWindow.isActive()) running.push('stepGuide');
+  if (scrollCaptureWindow.isActive()) running.push('scrollCapture');
+  if (timeMachineController.isRunning()) running.push('timeMachine');
+  return running;
+}
+
+/**
+ * 단축키 녹화 중 억제 대상 webContents. null = 녹화 중 아님.
+ *
+ * 녹화 동안에는 두 가지가 키 입력을 먼저 가로챈다:
+ *  (a) 전역 단축키 — ⌘⇧A 를 누르면 영역 캡처가 실행돼 버린다.
+ *  (b) 앱 메뉴 accelerator — ⌘W(닫기)·⌘A(전체 선택)·⌘Z(실행 취소) 등.
+ * 둘 다 끈 뒤 renderer 의 keydown 만으로 순수 조합을 받는다.
+ * setIgnoreMenuShortcuts 는 page keydown 은 그대로 두고 메뉴 accelerator 만 무시한다.
+ * 출처: electronjs.org/docs/latest/api/web-contents (setIgnoreMenuShortcuts / destroyed).
+ */
+let hotkeyRecordingContents: WebContents | null = null;
+
+/**
+ * @param resumeShortcuts 전역 단축키를 다시 등록할지. 앱 종료 경로에서는 false —
+ *   stopAllManagers 가 이미 끈 단축키를 되살리면 종료 도중 재등록이 일어난다.
+ */
+function endHotkeyRecording(resumeShortcuts: boolean): void {
+  if (!hotkeyRecordingContents) return;
+  const contents = hotkeyRecordingContents;
+  hotkeyRecordingContents = null;
+  contents.removeListener('destroyed', onHotkeyRecordingContentsDestroyed);
+  // 파괴된 webContents 에 메서드를 호출하면 throw — 파괴 경로에서는 건너뛴다.
+  if (!contents.isDestroyed()) contents.setIgnoreMenuShortcuts(false);
+  if (resumeShortcuts) shortcutManager.resume();
+}
+
+function onHotkeyRecordingContentsDestroyed(): void {
+  endHotkeyRecording(true);
+}
+
+/**
  * 모든 매니저 정리 — stopped 플래그가 세워져 prewarm 의 closed→재생성 재귀가
  * 차단된다. before-quit 과 업데이트 설치 경로(updateChecker) 양쪽에서 호출되며,
  * 각 stop() 은 멱등이라 이중 호출 안전.
  */
 const stopAllManagers = (): void => {
+  // 녹화 상태 정리를 먼저 — 아래 settingsWindow.stop() 이 webContents 를 파괴할 때
+  // destroyed 콜백이 방금 끈 전역 단축키를 되살리는 것을 막는다.
+  endHotkeyRecording(false);
   shortcutManager.stop();
   trayManager.stop();
   selectionOverlay.stop();
@@ -274,6 +335,10 @@ const handleGif = (): void => {
       (selResult) => {
         if (selResult.kind !== 'selected') return;
         const showPromise = recorderWindow.show(selResult.rect);
+        // 메뉴바 ● 인디케이터·트레이 정지 항목 반영. 알약이 hidden 인 전체화면
+        // 녹화에서는 이게 "녹화 중" 을 보여주는 유일한 상시 단서다.
+        trayManager.refresh();
+        showPromise.finally(() => trayManager.refresh());
         if (recorderWindow.isHidden()) {
           notifyInfo(tMain().gif.recording);
         }
@@ -321,6 +386,8 @@ const handleVideo = (): void => {
         const r = selResult.rect;
         const rect = { x: r.x, y: r.y, w: r.w, h: r.h };
         const showPromise = videoRecorderWindow.show(rect);
+        trayManager.refresh();
+        showPromise.finally(() => trayManager.refresh());
         if (videoRecorderWindow.isHidden()) {
           notifyInfo(tMain().video.recording);
         }
@@ -418,6 +485,8 @@ const handleScrollCapture = (): void => {
         const r = selResult.rect;
         const rect = { x: r.x, y: r.y, w: r.w, h: r.h };
         const showPromise = scrollCaptureWindow.show(rect);
+        trayManager.refresh();
+        showPromise.finally(() => trayManager.refresh());
         if (scrollCaptureWindow.isHidden()) {
           notifyInfo(tMain().scroll.recording);
         }
@@ -449,6 +518,31 @@ const handleScrollCapture = (): void => {
 
 // 환경설정 IPC — 앱 전체 lifecycle 동안 유효.
 ipcMain.handle('settings:get', () => loadHotkeys());
+
+// ESC — 환경설정 창 닫기.
+ipcMain.on('settings:close', () => {
+  settingsWindow.stop();
+});
+
+/**
+ * 지금 실행 중인 기능 목록 — 환경설정 창의 경고 배너용.
+ * 녹화·캡처가 도는 중에 단축키를 만지면 그 동안 전역 단축키가 멈추고,
+ * GIF/영상 녹화처럼 ESC 를 전역 등록해 둔 기능은 ESC 로 취소돼 버린다.
+ */
+ipcMain.handle('settings:get-running-features', () => runningFeatures());
+
+ipcMain.on('settings:hotkey-recording', (event, active: boolean) => {
+  if (!active) {
+    endHotkeyRecording(true);
+    return;
+  }
+  if (hotkeyRecordingContents) return;
+  hotkeyRecordingContents = event.sender;
+  event.sender.setIgnoreMenuShortcuts(true);
+  // 녹화 도중 창이 닫히면 종료 신호가 오지 않는다 — 전역 단축키가 영영 죽지 않도록 복구.
+  event.sender.once('destroyed', onHotkeyRecordingContentsDestroyed);
+  shortcutManager.pause();
+});
 ipcMain.handle('settings:set', (_event, hotkeys: HotkeyConfig) => {
   settingsStore.set('hotkeys', hotkeys);
   shortcutManager.reload();
@@ -745,7 +839,11 @@ app.whenReady().then(() => {
     isTimeMachineRunning: () => timeMachineController.isRunning(),
     timeMachineSavePhase: () => timeMachineController.savePhase(),
     timeMachineBufferSeconds: () => loadMisc().timeMachineBufferSeconds,
+    activeRecording: () => runningFeatures()[0] ?? null,
   });
+  // 스텝 가이드는 show() 가 void 라 종료 시점을 Promise 로 못 받는다 — 콜백으로 통지받아
+  // 메뉴바 인디케이터를 내린다 (GIF·영상·스크롤 캡처는 show() 의 finally 에서 처리).
+  stepGuideWindow.onActiveChange = (): void => trayManager.refresh();
   shortcutManager.start(handlers);
 
   // ffmpeg 가 스스로 죽으면(권한 거부 등) 토글을 거치지 않는다 — 알약이 "녹화 중"인

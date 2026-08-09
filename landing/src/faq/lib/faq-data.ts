@@ -19,7 +19,7 @@ export const FAQ_ENTRIES = defineDict<FaqEntry[]>({
     },
     {
       q: '캡처는 어떻게 시작하나요?',
-      a: '어느 앱에서든 ⌥ Space 단축키로 영역 캡처를 시작할 수 있습니다. 캡처 직후 어노테이션 에디터가 열립니다.',
+      a: '어느 앱에서든 전역 단축키로 영역 캡처를 시작할 수 있습니다. 단축키는 환경설정에서 확인·변경할 수 있고, 캡처 직후 어노테이션 에디터가 열립니다.',
     },
   ],
   en: [
@@ -37,7 +37,7 @@ export const FAQ_ENTRIES = defineDict<FaqEntry[]>({
     },
     {
       q: 'How do I start a capture?',
-      a: 'Press ⌥ Space from any app to start a region capture. The annotation editor opens right after.',
+      a: 'A global shortcut starts a region capture from any app. You can check and change it in Preferences, and the annotation editor opens right after the capture.',
     },
   ],
 });

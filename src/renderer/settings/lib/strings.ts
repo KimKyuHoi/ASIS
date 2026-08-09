@@ -1,4 +1,5 @@
 import { defineDict } from '../../../shared/i18n/language';
+import type { RunningFeature } from '../../../shared/running-features';
 
 /** HotkeyConfig 의 키 집합 — 라벨 사전이 이 키를 모두 채우도록 강제한다. */
 type HotkeyKey =
@@ -48,6 +49,18 @@ export const settingsStrings = defineDict({
     reset: '기본값으로',
     save: '저장',
     saved: '저장됨 ✓',
+    conflictWarning: (keys: string): string =>
+      `${keys} 이(가) 여러 기능에 중복 지정됐습니다. 중복을 없애야 저장할 수 있습니다.`,
+    conflictBadge: '중복',
+    runningWarning: (features: string): string =>
+      `${features} 실행 중입니다. 단축키를 바꾸는 동안에는 전역 단축키가 잠시 멈추고, ESC 로 진행 중인 녹화가 취소될 수 있습니다.`,
+    runningFeatureLabels: {
+      timeMachine: '타임머신 녹화',
+      gif: 'GIF 녹화',
+      video: '화면 녹화',
+      stepGuide: '스텝 가이드 녹화',
+      scrollCapture: '스크롤 캡처',
+    } as Record<RunningFeature, string>,
     hotkeyLabels: {
       region: '영역 캡처',
       fullscreen: '전체 화면 캡처',
@@ -87,6 +100,18 @@ export const settingsStrings = defineDict({
     reset: 'Reset to Defaults',
     save: 'Save',
     saved: 'Saved ✓',
+    conflictWarning: (keys: string): string =>
+      `${keys} is assigned to more than one action. Resolve the conflict to save.`,
+    conflictBadge: 'Conflict',
+    runningWarning: (features: string): string =>
+      `${features} is running. Global shortcuts pause while you record a new one, and ESC may cancel the recording in progress.`,
+    runningFeatureLabels: {
+      timeMachine: 'Time Machine recording',
+      gif: 'GIF recording',
+      video: 'Screen recording',
+      stepGuide: 'Step Guide recording',
+      scrollCapture: 'Scroll capture',
+    } as Record<RunningFeature, string>,
     hotkeyLabels: {
       region: 'Region Capture',
       fullscreen: 'Fullscreen Capture',

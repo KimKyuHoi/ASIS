@@ -56,10 +56,11 @@ export class VideoRecorderWindowManager {
       return Promise.resolve({ kind: 'canceled' });
     }
 
-    const display = screen.getPrimaryDisplay();
+    // 보조 모니터가 있으면 그쪽으로 피한다 — 예전엔 primary 기준으로만 계산해서
+    // 보조 모니터의 창을 녹화하면 자리가 남아 있어도 무조건 hidden 이었다.
     const winW = 320;
     const winH = 38;
-    const placement = pickRecorderPlacement(rect, winW, winH, display);
+    const placement = pickRecorderPlacement(rect, winW, winH, screen.getAllDisplays());
 
     const win = new BrowserWindow({
       width: winW,

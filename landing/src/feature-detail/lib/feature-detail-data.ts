@@ -160,9 +160,8 @@ export const ANNOTATION_TOOLS = defineDict<ToolSpec[]>({
 export const WORKFLOW_FEATURES = defineDict<ToolSpec[]>({
   ko: [
     {
-      icon: '⌥',
+      icon: '⌘',
       name: '글로벌 단축키 캡처',
-      shortcut: '⌥ Space',
       summary: '어느 앱에서든 즉시 캡처',
       details: [
         '앱을 전환하지 않고 단축키 한 번으로 영역 캡처를 시작한다.',
@@ -208,9 +207,8 @@ export const WORKFLOW_FEATURES = defineDict<ToolSpec[]>({
   ],
   en: [
     {
-      icon: '⌥',
+      icon: '⌘',
       name: 'Global Shortcut Capture',
-      shortcut: '⌥ Space',
       summary: 'Capture instantly from any app',
       details: [
         'Start a region capture with a single shortcut, without switching apps.',
@@ -258,7 +256,7 @@ export const WORKFLOW_FEATURES = defineDict<ToolSpec[]>({
 
 export const SHORTCUTS = defineDict<Shortcut[]>({
   ko: [
-    { keys: '⌥ Space', action: '캡처 시작' },
+    // 캡처 시작 단축키는 환경설정에서 바꿀 수 있어 여기 고정 표기하지 않는다.
     { keys: 'V', action: '선택 도구' },
     { keys: 'R', action: '사각형' },
     { keys: 'O', action: '원' },
@@ -273,7 +271,6 @@ export const SHORTCUTS = defineDict<Shortcut[]>({
     { keys: 'ESC', action: '캡처 취소' },
   ],
   en: [
-    { keys: '⌥ Space', action: 'Start capture' },
     { keys: 'V', action: 'Select tool' },
     { keys: 'R', action: 'Rectangle' },
     { keys: 'O', action: 'Circle' },

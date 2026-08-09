@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { JSX } from 'react';
 import { isLanguage } from '../../../shared/i18n/language';
+import type { RunningFeature } from '../../../shared/running-features';
 import { useLanguage } from '../../../shared/i18n/use-language';
 import { toAccelerator, toDisplayString } from '../lib/keyboard-utils';
 import { settingsStrings } from '../lib/strings';
@@ -90,6 +91,7 @@ export default function Settings(): JSX.Element {
   const [recording, setRecording] = useState<keyof HotkeyConfig | null>(null);
   const [saved, setSaved] = useState(false);
   const [folderPath, setFolderPath] = useState<string>('');
+  const [running, setRunning] = useState<RunningFeature[]>([]);
 
   useEffect(() => {
     window.settings.get().then((cfg) => {
@@ -109,10 +111,41 @@ export default function Settings(): JSX.Element {
     });
   }, []);
 
+  // 실행 중 기능 조회 — 창을 열 때와 다시 focus 될 때마다 갱신한다.
+  // (외부 상태지만 IPC invoke 가 Promise 라 useSyncExternalStore 대상이 아니다.
+  //  main 이 push 하는 상태가 아니므로 focus 시점 pull 로 충분하다.)
   useEffect(() => {
-    if (!recording) return undefined;
+    const refresh = (): void => {
+      window.settings.getRunningFeatures().then((list) => {
+        setRunning(list);
+      }).catch((err: unknown) => {
+        console.error('[asis settings] getRunningFeatures failed', err);
+      });
+    };
 
+    refresh();
+    window.addEventListener('focus', refresh);
+    return () => window.removeEventListener('focus', refresh);
+  }, []);
+
+  // 녹화 중에는 main 이 전역 단축키(⌘⇧A …)와 앱 메뉴 accelerator(⌘W·⌘A·⌘Z …)를 끈다.
+  // 그래야 그 조합들이 기능을 실행하지 않고 순수 키 입력으로 들어온다.
+  useEffect(() => {
+    window.settings.setHotkeyRecording(recording !== null);
+  }, [recording]);
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
+      // 수식키 없는 ESC — 녹화 중이면 녹화만 취소하고, 아니면 창을 닫는다.
+      // (⌘ESC 등 수식키 조합은 단축키로 지정 가능해야 하므로 여기서 걸러낸다)
+      if (e.key === 'Escape' && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        if (recording !== null) setRecording(null);
+        else window.settings.close();
+        return;
+      }
+
+      if (recording === null) return;
       e.preventDefault();
       const accelerator = toAccelerator(e);
       if (!accelerator) return;
@@ -125,7 +158,35 @@ export default function Settings(): JSX.Element {
     return () => window.removeEventListener('keydown', onKey);
   }, [recording]);
 
+  // 녹화 중 다른 앱으로 전환하면 녹화를 끝낸다 — 그대로 두면 창 밖에서 전역 단축키가
+  // 해제된 채로 남는다 (main 의 setHotkeyRecording(false) 로 곧바로 복구된다).
+  useEffect(() => {
+    if (recording === null) return undefined;
+
+    const onBlur = (): void => {
+      setRecording(null);
+    };
+
+    window.addEventListener('blur', onBlur);
+    return () => window.removeEventListener('blur', onBlur);
+  }, [recording]);
+
+  // 같은 조합이 두 곳 이상에 지정되면 등록 자체가 실패한다 — main 의 _register 는
+  // 실패 시 이미 등록한 것까지 전부 해제하고 throw 한다(main/shortcuts.ts:90).
+  // 저장 전에 막아야 "모든 단축키가 죽는" 상태를 피할 수 있다.
+  const acceleratorCounts = new Map<string, number>();
+  for (const field of HOTKEY_FIELDS) {
+    const accelerator = hotkeys[field];
+    acceleratorCounts.set(accelerator, (acceleratorCounts.get(accelerator) ?? 0) + 1);
+  }
+  const conflicts = new Set(
+    [...acceleratorCounts].filter(([, count]) => count > 1).map(([accelerator]) => accelerator),
+  );
+
   const handleSave = (): void => {
+    // 버튼이 disabled 지만 한 번 더 막는다 — 중복 저장은 전역 단축키 전체 해제로 이어진다.
+    if (conflicts.size > 0) return;
+
     Promise.all([
       window.settings.set(hotkeys),
       window.settings.setMisc(misc),
@@ -137,6 +198,9 @@ export default function Settings(): JSX.Element {
   };
 
   const handleReset = (): void => {
+    // 녹화 중에 눌러도 기본값이 남도록 녹화를 먼저 끈다 —
+    // 안 그러면 다음 키 입력이 방금 되돌린 값을 곧바로 덮어쓴다.
+    setRecording(null);
     setHotkeys(DEFAULT);
     setSaved(false);
   };
@@ -154,6 +218,12 @@ export default function Settings(): JSX.Element {
   return (
     <div className="settings">
       <h1 className="settings__title">{t.title}</h1>
+
+      {running.length > 0 ? (
+        <p className="settings__notice settings__notice--info" role="status">
+          {t.runningWarning(running.map((feature) => t.runningFeatureLabels[feature]).join(', '))}
+        </p>
+      ) : null}
 
       <section className="settings__section">
         <h2 className="settings__section-title">{t.languageSection}</h2>
@@ -288,26 +358,41 @@ export default function Settings(): JSX.Element {
 
       <section className="settings__section">
         <h2 className="settings__section-title">{t.hotkeySection}</h2>
+        {conflicts.size > 0 ? (
+          <p className="settings__notice settings__notice--warn" role="alert">
+            {t.conflictWarning([...conflicts].map(toDisplayString).join(', '))}
+          </p>
+        ) : null}
         <table className="hotkey-table">
           <tbody>
-            {HOTKEY_FIELDS.map((field) => (
-              <tr key={field} className="hotkey-row">
-                <td className="hotkey-row__label">{t.hotkeyLabels[field]}</td>
-                <td className="hotkey-row__input">
-                  <button
-                    type="button"
-                    className={`hotkey-btn ${recording === field ? 'hotkey-btn--recording' : ''}`}
-                    onClick={(): void => {
-                      setRecording(recording === field ? null : field);
-                    }}
-                  >
-                    {recording === field
-                      ? t.recordingHint
-                      : toDisplayString(hotkeys[field])}
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {HOTKEY_FIELDS.map((field) => {
+              const conflicted = conflicts.has(hotkeys[field]);
+              return (
+                <tr key={field} className="hotkey-row">
+                  <td className="hotkey-row__label">{t.hotkeyLabels[field]}</td>
+                  <td className="hotkey-row__input">
+                    {conflicted ? (
+                      <span className="hotkey-row__badge">{t.conflictBadge}</span>
+                    ) : null}
+                    <button
+                      type="button"
+                      className={[
+                        'hotkey-btn',
+                        recording === field ? 'hotkey-btn--recording' : '',
+                        conflicted ? 'hotkey-btn--conflict' : '',
+                      ].filter(Boolean).join(' ')}
+                      onClick={(): void => {
+                        setRecording(recording === field ? null : field);
+                      }}
+                    >
+                      {recording === field
+                        ? t.recordingHint
+                        : toDisplayString(hotkeys[field])}
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </section>
@@ -316,7 +401,12 @@ export default function Settings(): JSX.Element {
         <button type="button" className="btn btn--secondary" onClick={handleReset}>
           {t.reset}
         </button>
-        <button type="button" className="btn btn--primary" onClick={handleSave}>
+        <button
+          type="button"
+          className="btn btn--primary"
+          onClick={handleSave}
+          disabled={conflicts.size > 0}
+        >
           {saved ? t.saved : t.save}
         </button>
       </div>

@@ -1,6 +1,7 @@
 import { type ElectronAPI } from '@electron-toolkit/preload';
 import type { HotkeyConfig, MiscConfig } from '../main/settings';
 import type { Language } from '../shared/i18n/language';
+import type { RunningFeature } from '../shared/running-features';
 
 type Rect = {
   x: number;
@@ -97,6 +98,9 @@ type SettingsAPI = {
   pickFolder: () => Promise<string | null>;
   getMisc: () => Promise<MiscConfig>;
   setMisc: (misc: MiscConfig) => Promise<void>;
+  close: () => void;
+  setHotkeyRecording: (active: boolean) => void;
+  getRunningFeatures: () => Promise<RunningFeature[]>;
 };
 
 type HistoryEntry = {

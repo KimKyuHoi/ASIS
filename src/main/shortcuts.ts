@@ -44,6 +44,8 @@ export type ShortcutHandlers = {
 export class ShortcutManager {
   private registered: string[] = [];
   private savedHandlers: ShortcutHandlers | null = null;
+  /** 환경설정에서 단축키를 녹화하는 동안 true — 이 동안에는 재등록하지 않는다. */
+  private paused = false;
 
   start(handlers: ShortcutHandlers): void {
     if (this.registered.length > 0) {
@@ -56,7 +58,28 @@ export class ShortcutManager {
   reload(): void {
     if (!this.savedHandlers) return;
     this.stop();
+    // 녹화 중이면 등록을 되살리지 않는다 — resume() 이 책임진다.
+    // (녹화 중 저장 → settings:set → reload 경로에서 단축키가 되살아나는 것을 막음)
+    if (this.paused) return;
     this._register(this.savedHandlers);
+  }
+
+  /**
+   * 단축키 녹화 동안 전역 단축키를 일시 해제한다.
+   * 해제하지 않으면 ⌘⇧A 를 누르는 순간 영역 캡처가 실행돼 그 조합을 지정할 수 없다.
+   * 중복 호출은 무시 — 이미 해제된 상태를 그대로 둔다.
+   */
+  pause(): void {
+    if (this.paused) return;
+    this.paused = true;
+    this.stop();
+  }
+
+  /** 녹화 종료 — 해제했던 전역 단축키를 다시 등록한다. */
+  resume(): void {
+    if (!this.paused) return;
+    this.paused = false;
+    this.reload();
   }
 
   stop(): void {
