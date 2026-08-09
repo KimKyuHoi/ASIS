@@ -40,9 +40,10 @@ import { tMain } from '../i18n/strings';
  * 상태 변화를 외부(트레이/HUD)에 알리기 위해 onStateChange 콜백을 받는다.
  */
 
-/** 스텝 가이드 GIF 인코딩 fps — 느리게 재생되도록 5 고정.
+/** 스텝 가이드 GIF 의 *목표 캡처* fps — 5 고정(프레임 간격 200ms).
  *  misc.gifFps(GIF 녹화 전용 15)는 여기서 재사용하지 않는다: 스텝 가이드 GIF 는
- *  "동작을 천천히 보여주는" 용도라 느린 편이 낫다. (실측: 5fps → 프레임당 200ms delay.) */
+ *  "동작을 천천히 보여주는" 용도라 성기게 찍는 편이 낫다.
+ *  재생 fps 는 이 값이 아니라 실측 캡처 속도다 — sequenceCapture.playbackFps 참고. */
 const GIF_FPS = 5;
 
 /** GIF 캡처 영역 — [GIF 시작] 시점 커서 디스플레이 bounds(DIP) + scaleFactor. */
