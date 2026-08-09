@@ -89,6 +89,47 @@ body {
   animation: pulse 1s infinite;
 }
 
+/* 같은 조합이 여러 기능에 지정된 행 — 저장 차단 사유를 행 단위로 보여준다. */
+.hotkey-btn--conflict,
+.hotkey-btn--conflict:hover {
+  border-color: #ff9f0a;
+  background: #3a2a10;
+  color: #ffc46b;
+}
+
+.hotkey-row__badge {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #ff9f0a;
+  color: #1e1e1e;
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+/* 경고/안내 배너 — info 는 진행 중 기능, warn 은 단축키 중복. */
+.settings__notice {
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.settings__notice--info {
+  background: #14283d;
+  border: 1px solid #235783;
+  color: #9ccbf5;
+}
+
+.settings__notice--warn {
+  background: #3a2a10;
+  border: 1px solid #7a5a18;
+  color: #ffc46b;
+  margin-bottom: 12px;
+}
+
 @keyframes pulse {
   0%,
   100% {
@@ -211,4 +252,12 @@ body {
 
 .btn--primary:hover {
   background: #0066dd;
+}
+
+/* 중복 단축키가 있으면 저장을 막는다 — 눌러도 소용없음을 시각적으로 알린다. */
+.btn:disabled,
+.btn:disabled:hover {
+  background: #2f2f2f;
+  color: #777;
+  cursor: not-allowed;
 }

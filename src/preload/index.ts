@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import { electronAPI } from '@electron-toolkit/preload';
 import type { HotkeyConfig, MiscConfig } from '../main/settings';
+import type { RunningFeature } from '../shared/running-features';
 import type { PatchNote } from '../main/patch-notes/patchNotes';
 import type { Language } from '../shared/i18n/language';
 
@@ -230,6 +231,8 @@ const timeMachineHud = {
  *  - pickFolder(): 네이티브 폴더 선택 다이얼로그
  *  - getMisc(): GIF fps/소리/로그인 등 기타 설정 반환
  *  - setMisc(misc): 저장 + 즉시 적용 (openAtLogin 등)
+ *  - close(): ESC — 환경설정 창 닫기
+ *  - setHotkeyRecording(active): 녹화 동안 전역 단축키·메뉴 accelerator 억제 토글
  */
 const settings = {
   get: (): Promise<HotkeyConfig> => ipcRenderer.invoke('settings:get'),
@@ -239,6 +242,11 @@ const settings = {
   pickFolder: (): Promise<string | null> => ipcRenderer.invoke('settings:pick-folder'),
   getMisc: (): Promise<MiscConfig> => ipcRenderer.invoke('settings:get-misc'),
   setMisc: (misc: MiscConfig): Promise<void> => ipcRenderer.invoke('settings:set-misc', misc),
+  close: (): void => ipcRenderer.send('settings:close'),
+  getRunningFeatures: (): Promise<RunningFeature[]> =>
+    ipcRenderer.invoke('settings:get-running-features'),
+  setHotkeyRecording: (active: boolean): void =>
+    ipcRenderer.send('settings:hotkey-recording', active),
 };
 
 type HistoryEntry = {

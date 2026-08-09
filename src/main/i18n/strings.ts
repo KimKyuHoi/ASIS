@@ -1,4 +1,5 @@
 import { defineDict, getLanguage } from '../../shared/i18n/language';
+import type { RunningFeature } from '../../shared/running-features';
 
 /**
  * main process UI 문자열 사전.
@@ -35,6 +36,19 @@ export const mainStrings = defineDict({
       timeMachineStatusSaving: '⟳ 타임머신 구간 저장 중…',
       timeMachineStatusSaved: '✓ 타임머신 구간 저장됨',
       timeMachineStatusIdle: '○ 타임머신 꺼짐',
+      /** 녹화 중 상태 헤더 — 알약이 안 보이는 전체화면 녹화에서 유일한 시각 단서. */
+      recordingStatus: (feature: string) => `● ${feature} 진행 중`,
+      videoStop: '화면 녹화 정지',
+      gifStop: 'GIF 녹화 정지',
+      stepGuideStop: '스텝 가이드 녹화 정지',
+      scrollCaptureStop: '스크롤 캡처 정지',
+      recordingNames: {
+        timeMachine: '타임머신 녹화',
+        gif: 'GIF 녹화',
+        video: '화면 녹화',
+        stepGuide: '스텝 가이드 녹화',
+        scrollCapture: '스크롤 캡처',
+      } as Record<RunningFeature, string>,
       clipboardPin: '클립보드를 핀으로',
       disableClickThrough: '모든 핀 click-through 해제',
       closeAllPins: '모든 핀 닫기',
@@ -201,6 +215,18 @@ export const mainStrings = defineDict({
       timeMachineStatusSaving: '⟳ Saving Time Machine clip…',
       timeMachineStatusSaved: '✓ Time Machine clip saved',
       timeMachineStatusIdle: '○ Time Machine off',
+      recordingStatus: (feature: string) => `● ${feature} in progress`,
+      videoStop: 'Stop Screen Recording',
+      gifStop: 'Stop GIF Recording',
+      stepGuideStop: 'Stop Step Guide Recording',
+      scrollCaptureStop: 'Stop Scrolling Capture',
+      recordingNames: {
+        timeMachine: 'Time Machine recording',
+        gif: 'GIF recording',
+        video: 'Screen recording',
+        stepGuide: 'Step Guide recording',
+        scrollCapture: 'Scrolling capture',
+      } as Record<RunningFeature, string>,
       clipboardPin: 'Pin Clipboard Image',
       disableClickThrough: 'Disable Click-Through on All Pins',
       closeAllPins: 'Close All Pins',

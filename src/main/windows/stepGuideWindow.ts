@@ -38,6 +38,12 @@ export class StepGuideWindowManager {
   private win: BrowserWindow | null = null;
   private guide = new StepGuideManager();
 
+  /**
+   * 녹화 시작/종료 시 호출 — 트레이 메뉴바 인디케이터 갱신용.
+   * 진짜 옵셔널이다: 미설정이면 통지 없이 동작한다 (timeMachine.onEarlyExit 과 같은 결).
+   */
+  onActiveChange: (() => void) | null = null;
+
   /** 녹화 중(HUD 떠있음) 인지 — 트레이/단축키 toggle 판단용. */
   isActive(): boolean {
     return this.guide.isActive();
@@ -131,6 +137,7 @@ export class StepGuideWindowManager {
     // 태워 IPC 리스너까지 해제한다.
     try {
       this.startGuide(notifiers);
+      this.onActiveChange?.();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error('[asis] stepGuide start failed', err);
@@ -211,5 +218,6 @@ export class StepGuideWindowManager {
   private closeWindow(): void {
     if (this.win && !this.win.isDestroyed()) this.win.close();
     this.win = null;
+    this.onActiveChange?.();
   }
 }

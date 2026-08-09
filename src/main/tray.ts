@@ -1,8 +1,9 @@
-import { Tray, Menu, app, nativeImage } from 'electron';
+import { Tray, Menu, app, nativeImage, type MenuItemConstructorOptions } from 'electron';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import devIconPath from '../../resources/trayTemplate.png?asset';
 import { tMain } from './i18n/strings';
+import type { RunningFeature } from '../shared/running-features';
 
 // extraResources 경로가 실제로 존재하면 사용, 아니면 ?asset 경로(dev 또는 asarUnpack fallback).
 function resolveIconPath(): string {
@@ -54,6 +55,12 @@ export type TrayMenuState = {
   timeMachineSavePhase: () => 'saving' | 'saved' | null;
   /** 유지 중인 버퍼 길이(초) — 상태 헤더에 "최근 N초 유지" 로 표시. */
   timeMachineBufferSeconds: () => number;
+  /**
+   * 지금 진행 중인 녹화·캡처. null = 없음.
+   * 전체화면을 녹화하면 알약이 뜰 자리가 없어 숨겨진다(recorderPlacement.ts) —
+   * 그때 "지금 녹화 중" 을 알 수 있는 유일한 상시 단서가 메뉴바다.
+   */
+  activeRecording: () => RunningFeature | null;
 };
 
 /**
@@ -72,12 +79,15 @@ function timeMachineStatusLabel(state: TrayMenuState): string {
 }
 
 /*
- * 메뉴바 아이콘 옆 텍스트(Tray.setTitle) 는 쓰지 않는다.
- * 상태 표시가 필요하긴 하지만, 메뉴바는 이미 상태 아이콘으로 포화 상태이고
- * 왼쪽 앱 메뉴가 길어지면 오른쪽부터 잘려 나간다 — 정작 봐야 할 때 안 보인다.
- * 상시 표시는 화면 위 알약(timeMachineHudWindow) 이 맡고, 트레이는 메뉴를 열었을
- * 때의 상태 헤더만 담당한다.
+ * 메뉴바 아이콘 옆 텍스트(Tray.setTitle) 는 *녹화 중 점 하나* 로만 쓴다.
+ *
+ * 원래는 아예 쓰지 않았다 — 메뉴바는 이미 상태 아이콘으로 포화 상태이고, 왼쪽
+ * 앱 메뉴가 길어지면 오른쪽부터 잘려 나가기 때문이다. 다만 전체화면을 녹화하면
+ * 알약이 뜰 자리가 없어 숨겨지고(recorderPlacement.ts), 화면 위 HUD 도 없어
+ * "지금 녹화 중인지" 를 알 방법이 사라진다. 그래서 폭을 거의 안 먹는 '●' 만
+ * 붙인다. 문구는 넣지 않는다 — 상세는 메뉴를 열었을 때의 상태 헤더가 담당한다.
  */
+const RECORDING_INDICATOR = ' ●';
 
 export class TrayManager {
   private tray: Tray | null = null;
@@ -105,6 +115,7 @@ export class TrayManager {
     this.tray = new Tray(image);
     this.tray.setToolTip(tMain().tray.tooltip);
     this.tray.setContextMenu(this.buildContextMenu(handlers, state));
+    this.applyRecordingIndicator(state);
   }
 
   stop(): void {
@@ -122,13 +133,27 @@ export class TrayManager {
     if (!this.tray || !this.handlers || !this.state) return;
     this.tray.setToolTip(tMain().tray.tooltip);
     this.tray.setContextMenu(this.buildContextMenu(this.handlers, this.state));
+    this.applyRecordingIndicator(this.state);
+  }
+
+  /** 메뉴바 아이콘 옆 녹화 인디케이터 갱신. setTitle 은 macOS 전용이라 가드한다. */
+  private applyRecordingIndicator(state: TrayMenuState): void {
+    if (!this.tray || process.platform !== 'darwin') return;
+    this.tray.setTitle(state.activeRecording() ? RECORDING_INDICATOR : '');
   }
 
   private buildContextMenu(handlers: TrayMenuHandlers, state: TrayMenuState): Menu {
     const t = tMain().tray;
+    const recording = state.activeRecording();
     return Menu.buildFromTemplate([
       // 헤더 — 비활성 라벨로 앱 정체성 표시 (CleanShot/Shottr 결).
       { label: 'ASIS', enabled: false },
+      // 녹화 중이면 그 사실을 맨 위에 — 알약이 숨겨진 전체화면 녹화에서 특히 중요.
+      ...(recording
+        ? ([
+          { label: t.recordingStatus(t.recordingNames[recording]), enabled: false },
+        ] as MenuItemConstructorOptions[])
+        : []),
       { type: 'separator' },
 
       // 캡처 항목 — accelerator 옵션으로 macOS 가 자동 ⌘⇧F 우측 정렬·표시.
@@ -170,7 +195,8 @@ export class TrayManager {
         click: handlers.onRuler,
       },
       {
-        label: t.scrollCapture,
+        // 각 핸들러는 이미 "실행 중이면 정지" 토글이라(index.ts) 라벨만 바꾸면 된다.
+        label: recording === 'scrollCapture' ? t.scrollCaptureStop : t.scrollCapture,
         accelerator: 'CommandOrControl+Shift+J',
         click: handlers.onScrollCapture,
       },
@@ -178,17 +204,17 @@ export class TrayManager {
       { type: 'separator' },
 
       {
-        label: t.video,
+        label: recording === 'video' ? t.videoStop : t.video,
         accelerator: 'CommandOrControl+Shift+E',
         click: handlers.onVideo,
       },
       {
-        label: t.gif,
+        label: recording === 'gif' ? t.gifStop : t.gif,
         accelerator: 'CommandOrControl+Shift+G',
         click: handlers.onGif,
       },
       {
-        label: t.stepGuide,
+        label: recording === 'stepGuide' ? t.stepGuideStop : t.stepGuide,
         accelerator: 'CommandOrControl+Shift+U',
         click: handlers.onStepGuide,
       },

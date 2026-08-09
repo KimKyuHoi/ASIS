@@ -47,12 +47,11 @@ export class RecorderWindowManager {
     }
 
     // 알약 위치 fitting — rect 와 안 겹치는 가장자리 자동 선택.
-    // 후보 모두 실패 (rect 가 화면 거의 전체) 면 알약을 *안 띄우고* 시작 알림으로
-    // 단축키 안내. 정지는 ⌘⇧G toggle.
-    const display = screen.getPrimaryDisplay();
+    // 보조 모니터가 있으면 그쪽으로 피하고, 단일 모니터 전체화면처럼 피할 곳이
+    // 아예 없으면 알약을 *안 띄우고* 알림 + 트레이 메뉴로 정지를 안내한다.
     const winW = 320;
     const winH = 38;
-    const placement = pickRecorderPlacement(rect, winW, winH, display);
+    const placement = pickRecorderPlacement(rect, winW, winH, screen.getAllDisplays());
 
     const win = new BrowserWindow({
       width: winW,

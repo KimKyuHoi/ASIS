@@ -62,10 +62,11 @@ export class ScrollCaptureWindowManager {
       return Promise.resolve({ kind: 'canceled' });
     }
 
-    const display = screen.getPrimaryDisplay();
+    // 전체 디스플레이를 넘긴다 — primary 만 넘기면 보조 모니터의 영역을 캡처할 때
+    // 후보 좌표가 전부 primary 밖이라 자리가 남아 있어도 hidden 이 된다.
     const winW = 360;
     const winH = 38;
-    const placement = pickRecorderPlacement(rect, winW, winH, display);
+    const placement = pickRecorderPlacement(rect, winW, winH, screen.getAllDisplays());
 
     const win = new BrowserWindow({
       width: winW,
