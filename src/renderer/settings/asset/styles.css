@@ -97,6 +97,40 @@ body {
   color: #ffc46b;
 }
 
+.hotkey-btn--empty {
+  color: #777;
+  font-style: italic;
+}
+
+/* 행 단위 해제 버튼 — 값이 있을 때만 렌더된다. */
+.hotkey-row__clear {
+  margin-left: 6px;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #888;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.hotkey-row__clear:hover {
+  border-color: #666;
+  background: #333;
+  color: #eee;
+}
+
+/* 섹션 제목 아래 짧은 설명. */
+.settings__section-hint {
+  margin: -4px 0 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #888;
+}
+
 .hotkey-row__badge {
   display: inline-block;
   margin-right: 8px;

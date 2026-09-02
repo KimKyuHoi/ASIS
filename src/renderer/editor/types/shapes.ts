@@ -1,22 +1,13 @@
+import type { EditorTool } from '../../../shared/editor-hotkeys';
+
 /**
  * 어노테이션 에디터 도형/도구 타입.
  * 모든 도형은 자기 좌표·스타일을 *Stage 좌표계 (이미지 픽셀)* 로 보관한다.
  * 화면 표시 시 react-konva Stage 의 scale 로 줄여 렌더한다 (Retina 별개).
  */
 
-export type Tool =
-  | 'select' |
-  'rect' |
-  'ellipse' |
-  'arrow' |
-  'line' |
-  'pen' |
-  'text' |
-  'highlight' |
-  'blur' |
-  'mosaic' |
-  'eraser' |
-  'step';
+/** 도구 종류 — 단축키 설정과 공유하는 shared/editor-hotkeys.ts 의 목록이 원본. */
+export type Tool = EditorTool;
 
 /** 자유 픽셀 단위 — 슬라이더/단계 모두 호환. */
 export type StrokeWidth = number;

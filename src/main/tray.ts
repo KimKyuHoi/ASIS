@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import devIconPath from '../../resources/trayTemplate.png?asset';
 import { tMain } from './i18n/strings';
 import type { RunningFeature } from '../shared/running-features';
+import { loadHotkeys } from './settings';
+import { HOTKEY_DISABLED } from '../shared/editor-hotkeys';
 
 // extraResources 경로가 실제로 존재하면 사용, 아니면 ?asset 경로(dev 또는 asarUnpack fallback).
 function resolveIconPath(): string {
@@ -89,6 +91,15 @@ function timeMachineStatusLabel(state: TrayMenuState): string {
  */
 const RECORDING_INDICATOR = ' ●';
 
+/**
+ * 메뉴 항목 accelerator — 환경설정의 현재 값을 표시한다.
+ * 해제('')된 단축키는 undefined 를 돌려 메뉴에 키 표기가 붙지 않게 한다 —
+ * 빈 문자열은 유효한 accelerator 가 아니므로 MenuItem 에 넘기지 않는다(옵셔널 필드).
+ */
+function acceleratorFor(accelerator: string): string | undefined {
+  return accelerator === HOTKEY_DISABLED ? undefined : accelerator;
+}
+
 export class TrayManager {
   private tray: Tray | null = null;
   private handlers: TrayMenuHandlers | null = null;
@@ -145,6 +156,8 @@ export class TrayManager {
   private buildContextMenu(handlers: TrayMenuHandlers, state: TrayMenuState): Menu {
     const t = tMain().tray;
     const recording = state.activeRecording();
+    // 환경설정에서 바꾼 단축키를 그대로 표시한다 — settings:set 이 refresh() 를 부른다.
+    const hotkeys = loadHotkeys();
     return Menu.buildFromTemplate([
       // 헤더 — 비활성 라벨로 앱 정체성 표시 (CleanShot/Shottr 결).
       { label: 'ASIS', enabled: false },
@@ -159,45 +172,46 @@ export class TrayManager {
       // 캡처 항목 — accelerator 옵션으로 macOS 가 자동 ⌘⇧F 우측 정렬·표시.
       // 실제 글로벌 단축키 binding 은 ShortcutManager 가 별도 처리하므로
       // 여기 accelerator 는 *시각 표시 + 메뉴 열린 동안의 키보드 navigation* 전용.
+      // 값은 환경설정(settingsStore.hotkeys)에서 읽는다 — 해제된 항목은 표기 없음.
       {
         label: t.fullscreen,
-        accelerator: 'CommandOrControl+Shift+F',
+        accelerator: acceleratorFor(hotkeys.fullscreen),
         click: handlers.onFullscreen,
       },
       {
         label: t.window,
-        accelerator: 'CommandOrControl+Shift+W',
+        accelerator: acceleratorFor(hotkeys.window),
         click: handlers.onWindow,
       },
       {
         label: t.region,
-        accelerator: 'CommandOrControl+Shift+A',
+        accelerator: acceleratorFor(hotkeys.region),
         click: handlers.onRegion,
       },
       {
         label: t.delayedFullscreen,
-        accelerator: 'CommandOrControl+Shift+D',
+        accelerator: acceleratorFor(hotkeys.delayedFullscreen),
         click: handlers.onDelayedFullscreen,
       },
       {
         label: t.delayedRegion,
-        accelerator: 'CommandOrControl+Shift+Alt+D',
+        accelerator: acceleratorFor(hotkeys.delayedRegion),
         click: handlers.onDelayedRegion,
       },
       {
         label: t.ocr,
-        accelerator: 'CommandOrControl+Shift+O',
+        accelerator: acceleratorFor(hotkeys.ocr),
         click: handlers.onOcr,
       },
       {
         label: t.ruler,
-        accelerator: 'CommandOrControl+Shift+L',
+        accelerator: acceleratorFor(hotkeys.ruler),
         click: handlers.onRuler,
       },
       {
         // 각 핸들러는 이미 "실행 중이면 정지" 토글이라(index.ts) 라벨만 바꾸면 된다.
         label: recording === 'scrollCapture' ? t.scrollCaptureStop : t.scrollCapture,
-        accelerator: 'CommandOrControl+Shift+J',
+        accelerator: acceleratorFor(hotkeys.scrollCapture),
         click: handlers.onScrollCapture,
       },
 
@@ -205,17 +219,17 @@ export class TrayManager {
 
       {
         label: recording === 'video' ? t.videoStop : t.video,
-        accelerator: 'CommandOrControl+Shift+E',
+        accelerator: acceleratorFor(hotkeys.video),
         click: handlers.onVideo,
       },
       {
         label: recording === 'gif' ? t.gifStop : t.gif,
-        accelerator: 'CommandOrControl+Shift+G',
+        accelerator: acceleratorFor(hotkeys.gif),
         click: handlers.onGif,
       },
       {
         label: recording === 'stepGuide' ? t.stepGuideStop : t.stepGuide,
-        accelerator: 'CommandOrControl+Shift+U',
+        accelerator: acceleratorFor(hotkeys.stepGuide),
         click: handlers.onStepGuide,
       },
       { type: 'separator' },
@@ -228,12 +242,12 @@ export class TrayManager {
       // (토글 완료·조기 사망)에서 refresh() 를 불러 메뉴를 재빌드해야 반영된다.
       {
         label: state.isTimeMachineRunning() ? t.timeMachineStop : t.timeMachineStart,
-        accelerator: 'CommandOrControl+Shift+T',
+        accelerator: acceleratorFor(hotkeys.timeMachineToggle),
         click: handlers.onTimeMachineToggle,
       },
       {
         label: t.timeMachineSave,
-        accelerator: 'CommandOrControl+Shift+S',
+        accelerator: acceleratorFor(hotkeys.timeMachineSave),
         // 미실행 상태의 저장은 "실행 중이 아닙니다" 알림만 띄우는 헛동작 —
         // 누를 수 없게 해서 상태를 메뉴 자체로 드러낸다.
         enabled: state.isTimeMachineRunning(),
@@ -245,7 +259,7 @@ export class TrayManager {
       // 클립보드 이미지 → 바로 Pin (Snipaste F3 결).
       {
         label: t.clipboardPin,
-        accelerator: 'CommandOrControl+Shift+V',
+        accelerator: acceleratorFor(hotkeys.clipboardPin),
         click: handlers.onClipboardPin,
       },
 
@@ -255,7 +269,7 @@ export class TrayManager {
       // 글로벌 단축키 또는 이 메뉴가 유일한 회수 경로.
       {
         label: t.disableClickThrough,
-        accelerator: 'CommandOrControl+Shift+X',
+        accelerator: acceleratorFor(hotkeys.disableClickThrough),
         click: handlers.onDisableClickThrough,
       },
       {

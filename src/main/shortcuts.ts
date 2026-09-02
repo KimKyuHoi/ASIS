@@ -1,5 +1,6 @@
 import { globalShortcut } from 'electron';
 import { loadHotkeys } from './settings';
+import { HOTKEY_DISABLED } from '../shared/editor-hotkeys';
 
 export type ShortcutHandlers = {
   onRegion: () => void;
@@ -111,6 +112,8 @@ export class ShortcutManager {
     ];
 
     for (const [accelerator, callback] of bindings) {
+      // 환경설정에서 해제한 단축키('') — 등록하지 않는다. 트레이 메뉴로만 실행 가능.
+      if (accelerator === HOTKEY_DISABLED) continue;
       const ok = globalShortcut.register(accelerator, callback);
       if (!ok) {
         // null-safety.md — 등록 실패를 silent 하게 무시하지 않는다.

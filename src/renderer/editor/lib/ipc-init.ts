@@ -1,4 +1,5 @@
 import { useEditorStore } from './store';
+import { setEditorHotkeys } from './editor-hotkeys';
 
 /**
  * Editor 윈도우의 IPC bridge 초기화 — *모듈 스코프 single init*.
@@ -32,6 +33,14 @@ export function ensureEditorIpcBridge(): void {
     // 차단되고, cross-origin 이미지는 canvas 를 taint 시켜 export 를 깨뜨리므로.
     console.info(`[asis editor] onLoadImage bytes=${dataUrl.length} w=${w} h=${h}`);
     useEditorStore.getState().loadImage(dataUrl, w, h);
+  });
+
+  // 도구 단축키 표 — 저장값을 한 번 받고, 이후 환경설정 저장 push 를 반영한다.
+  // onLoadImage 와 같은 이유로 cleanup 은 의도적으로 버린다 (윈도우 수명 = 리스너 수명).
+  api.onHotkeysChanged(setEditorHotkeys);
+  api.getHotkeys().then(setEditorHotkeys).catch((err: unknown) => {
+    // 실패하면 기본 표(V/R/O …)가 그대로 남는다 — 에디터 자체는 계속 쓸 수 있다.
+    console.error('[asis editor] getHotkeys 실패 — 기본 도구 단축키 사용', err);
   });
 
   // listener 등록 *후* main 에 ready 신호 — race 방지.
