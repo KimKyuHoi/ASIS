@@ -1,5 +1,6 @@
 import {
   app,
+  BrowserWindow,
   clipboard,
   dialog,
   ipcMain,
@@ -18,7 +19,8 @@ import devAppIconPath from '../../resources/icon.png?asset';
 import { TrayManager } from './tray';
 import { ShortcutManager } from './shortcuts';
 import { installAppMenu } from './menu';
-import { settingsStore, loadHotkeys, loadMisc } from './settings';
+import { settingsStore, loadHotkeys, loadMisc, loadEditorHotkeys } from './settings';
+import type { EditorHotkeyConfig } from '../shared/editor-hotkeys';
 import type { HotkeyConfig, MiscConfig } from './settings';
 import {
   captureRegion,
@@ -546,6 +548,17 @@ ipcMain.on('settings:hotkey-recording', (event, active: boolean) => {
 ipcMain.handle('settings:set', (_event, hotkeys: HotkeyConfig) => {
   settingsStore.set('hotkeys', hotkeys);
   shortcutManager.reload();
+  // 트레이 메뉴의 accelerator 표기가 저장값을 읽으므로 재빌드.
+  trayManager.refresh();
+});
+
+// 에디터 도구 단축키 — 열려 있는 에디터 창에도 즉시 반영한다 (창을 다시 열 필요 없음).
+ipcMain.handle('settings:get-editor-hotkeys', () => loadEditorHotkeys());
+ipcMain.handle('settings:set-editor-hotkeys', (_event, hotkeys: EditorHotkeyConfig) => {
+  settingsStore.set('editorHotkeys', hotkeys);
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send('settings:editor-hotkeys-changed', hotkeys);
+  }
 });
 
 ipcMain.handle('settings:get-folder', () => settingsStore.get('saveFolderPath'));

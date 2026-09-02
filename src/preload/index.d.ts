@@ -2,6 +2,7 @@ import { type ElectronAPI } from '@electron-toolkit/preload';
 import type { HotkeyConfig, MiscConfig } from '../main/settings';
 import type { Language } from '../shared/i18n/language';
 import type { RunningFeature } from '../shared/running-features';
+import type { EditorHotkeyConfig } from '../shared/editor-hotkeys';
 
 type Rect = {
   x: number;
@@ -41,6 +42,8 @@ type EditorAPI = {
   pin: (dataUrl: string, w: number, h: number) => Promise<void>;
   save: (dataUrl: string) => Promise<{ saved: boolean; path?: string }>;
   saveFolder: (dataUrl: string) => Promise<{ path: string }>;
+  getHotkeys: () => Promise<EditorHotkeyConfig>;
+  onHotkeysChanged: (callback: (hotkeys: EditorHotkeyConfig) => void) => () => void;
 };
 
 type PinAPI = {
@@ -101,6 +104,8 @@ type SettingsAPI = {
   close: () => void;
   setHotkeyRecording: (active: boolean) => void;
   getRunningFeatures: () => Promise<RunningFeature[]>;
+  getEditorHotkeys: () => Promise<EditorHotkeyConfig>;
+  setEditorHotkeys: (hotkeys: EditorHotkeyConfig) => Promise<void>;
 };
 
 type HistoryEntry = {

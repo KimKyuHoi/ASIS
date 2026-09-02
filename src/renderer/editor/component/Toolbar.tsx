@@ -1,5 +1,7 @@
 import type { JSX } from 'react';
-import type { DashStyle, TextAlign, Tool } from '../types/shapes';
+import type { DashStyle, TextAlign } from '../types/shapes';
+import { EDITOR_TOOLS, HOTKEY_DISABLED } from '../../../shared/editor-hotkeys';
+import { useEditorHotkeys } from '../hook/useEditorHotkeys';
 import { useLanguage } from '../../../shared/i18n/use-language';
 import { editorStrings } from '../lib/strings';
 import { DASH_STYLES, dashPattern } from '../lib/dash';
@@ -17,21 +19,8 @@ import {
 } from '../lib/store';
 import { hexToRgba } from '../lib/color-utils';
 
-// 라벨은 lib/strings.ts 의 tool 사전이 담당한다 (Tool 종류가 키).
-const TOOL_ITEMS: { tool: Tool; key: string }[] = [
-  { tool: 'select', key: 'V' },
-  { tool: 'rect', key: 'R' },
-  { tool: 'ellipse', key: 'O' },
-  { tool: 'arrow', key: 'A' },
-  { tool: 'line', key: 'L' },
-  { tool: 'pen', key: 'P' },
-  { tool: 'text', key: 'T' },
-  { tool: 'step', key: 'S' },
-  { tool: 'highlight', key: 'H' },
-  { tool: 'blur', key: 'B' },
-  { tool: 'mosaic', key: 'M' },
-  { tool: 'eraser', key: 'E' },
-];
+// 도구 목록·순서는 shared/editor-hotkeys.ts 의 EDITOR_TOOLS, 라벨은 lib/strings.ts 의
+// tool 사전, 단축키 표기는 환경설정 값(useEditorHotkeys)이 담당한다.
 
 export function Toolbar({
   onCopy,
@@ -47,6 +36,7 @@ export function Toolbar({
   onSaveFolder: () => void;
 }): JSX.Element {
   const t = editorStrings[useLanguage()];
+  const hotkeys = useEditorHotkeys();
   const tool = useEditorStore((s) => s.tool);
   const color = useEditorStore((s) => s.color);
   const strokeWidth = useEditorStore((s) => s.strokeWidth);
@@ -233,13 +223,13 @@ export function Toolbar({
       }}
     >
       <div className="toolbar__group">
-        {TOOL_ITEMS.map((item) => (
+        {EDITOR_TOOLS.map((item) => (
           <ToolButton
-            key={item.tool}
-            label={t.tool[item.tool]}
-            shortcut={item.key}
-            active={tool === item.tool}
-            onClick={(): void => setTool(item.tool)}
+            key={item}
+            label={t.tool[item]}
+            shortcut={hotkeys[item]}
+            active={tool === item}
+            onClick={(): void => setTool(item)}
           />
         ))}
       </div>
@@ -530,19 +520,22 @@ function ToolButton({
   onClick,
 }: {
   label: string;
+  /** 키 이름('V' …). HOTKEY_DISABLED('') 면 해제된 도구 — 표기 없이 라벨만. */
   shortcut: string;
   active: boolean;
   onClick: () => void;
 }): JSX.Element {
+  const hasShortcut = shortcut !== HOTKEY_DISABLED;
   return (
     <button
       type="button"
       className={`tool ${active ? 'tool--active' : ''}`}
       onClick={onClick}
-      title={`${label} (${shortcut})`}
+      title={hasShortcut ? `${label} (${shortcut})` : label}
     >
       <span className="tool__label">{label}</span>
-      <span className="tool__shortcut">{shortcut}</span>
+      {/* 해제돼도 빈 span 을 유지해 버튼 높이가 다른 버튼과 같게 둔다. */}
+      <span className="tool__shortcut">{hasShortcut ? shortcut : '\u00a0'}</span>
     </button>
   );
 }

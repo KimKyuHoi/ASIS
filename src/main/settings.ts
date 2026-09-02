@@ -1,6 +1,12 @@
 import ElectronStore from 'electron-store';
 import type { Language } from '../shared/i18n/language';
+import { DEFAULT_EDITOR_HOTKEYS } from '../shared/editor-hotkeys';
+import type { EditorHotkeyConfig } from '../shared/editor-hotkeys';
 
+/**
+ * 전역 단축키 — 값은 Electron accelerator 문자열.
+ * 빈 문자열('', shared/editor-hotkeys.ts 의 HOTKEY_DISABLED)은 "해제" — 등록하지 않는다.
+ */
 export type HotkeyConfig = {
   region: string;
   fullscreen: string;
@@ -47,6 +53,8 @@ export type Settings = {
   lastLaunchedVersion: string;
   /** UI 언어. '' = 첫 실행에서 아직 선택 안 함 → onboarding 언어 선택 창 표시. */
   language: Language | '';
+  /** 에디터 도구 전환 키(V/R/O …). '' = 해제. */
+  editorHotkeys: EditorHotkeyConfig;
 };
 
 export const DEFAULT_HOTKEYS: HotkeyConfig = {
@@ -85,6 +93,7 @@ export const settingsStore = new ElectronStore<Settings>({
     misc: DEFAULT_MISC,
     lastLaunchedVersion: '',
     language: '',
+    editorHotkeys: DEFAULT_EDITOR_HOTKEYS,
   },
 });
 
@@ -102,4 +111,9 @@ export function loadHotkeys(): HotkeyConfig {
 /** misc 도 hotkeys 와 같은 이유로 읽는 시점에 DEFAULT_MISC 와 병합한다. */
 export function loadMisc(): MiscConfig {
   return { ...DEFAULT_MISC, ...settingsStore.get('misc') };
+}
+
+/** editorHotkeys 도 같은 이유로 DEFAULT_EDITOR_HOTKEYS 와 병합한다 (도구가 새로 추가될 때). */
+export function loadEditorHotkeys(): EditorHotkeyConfig {
+  return { ...DEFAULT_EDITOR_HOTKEYS, ...settingsStore.get('editorHotkeys') };
 }

@@ -3,9 +3,17 @@ import type { JSX } from 'react';
 import { isLanguage } from '../../../shared/i18n/language';
 import type { RunningFeature } from '../../../shared/running-features';
 import { useLanguage } from '../../../shared/i18n/use-language';
+import {
+  DEFAULT_EDITOR_HOTKEYS,
+  EDITOR_TOOLS,
+  HOTKEY_DISABLED,
+} from '../../../shared/editor-hotkeys';
+import type { EditorHotkeyConfig, EditorTool } from '../../../shared/editor-hotkeys';
+import { codeToKeyName, isEditorToolKeyName } from '../../../shared/key-name';
 import { toAccelerator, toDisplayString } from '../lib/keyboard-utils';
 import { settingsStrings } from '../lib/strings';
 
+/** 전역 단축키 — 값은 accelerator, HOTKEY_DISABLED('') 는 해제. */
 type HotkeyConfig = {
   region: string;
   fullscreen: string;
@@ -83,13 +91,39 @@ const HOTKEY_FIELDS: Array<keyof HotkeyConfig> = [
   'scrollCapture',
 ];
 
+/**
+ * 지금 키 입력을 기다리는 행 — 전역 단축키 표와 에디터 도구 표 중 하나.
+ * 두 표는 받아들이는 키가 다르다(전역: 수식키 조합 / 에디터: 수식키 없는 단일 키).
+ */
+type Recording =
+  | { kind: 'global'; field: keyof HotkeyConfig } |
+  { kind: 'editor'; tool: EditorTool };
+
+/** 수식키 없는 ⌫/Delete — 녹화 중이면 "해제" 명령. */
+function isClearKey(e: KeyboardEvent): boolean {
+  return (
+    (e.code === 'Backspace' || e.code === 'Delete') &&
+    !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey
+  );
+}
+
+/** 같은 값이 두 곳 이상에 지정된 값 집합. 해제('')는 여러 곳에 있어도 중복이 아니다. */
+function findDuplicates(values: string[]): Set<string> {
+  const counts = new Map<string, number>();
+  for (const value of values) {
+    if (value === HOTKEY_DISABLED) continue;
+    counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+  return new Set([...counts].filter(([, count]) => count > 1).map(([value]) => value));
+}
+
 export default function Settings(): JSX.Element {
   const lang = useLanguage();
   const t = settingsStrings[lang];
   const [hotkeys, setHotkeys] = useState<HotkeyConfig>(DEFAULT);
+  const [editorHotkeys, setEditorHotkeys] = useState<EditorHotkeyConfig>(DEFAULT_EDITOR_HOTKEYS);
   const [misc, setMisc] = useState<MiscConfig>(DEFAULT_MISC);
-  const [recording, setRecording] = useState<keyof HotkeyConfig | null>(null);
-  const [saved, setSaved] = useState(false);
+  const [recording, setRecording] = useState<Recording | null>(null);
   const [folderPath, setFolderPath] = useState<string>('');
   const [running, setRunning] = useState<RunningFeature[]>([]);
 
@@ -98,6 +132,11 @@ export default function Settings(): JSX.Element {
       setHotkeys(cfg);
     }).catch((err: unknown) => {
       console.error('[asis settings] get failed', err);
+    });
+    window.settings.getEditorHotkeys().then((cfg) => {
+      setEditorHotkeys(cfg);
+    }).catch((err: unknown) => {
+      console.error('[asis settings] getEditorHotkeys failed', err);
     });
     window.settings.getFolder().then((p) => {
       setFolderPath(p);
@@ -130,6 +169,7 @@ export default function Settings(): JSX.Element {
 
   // 녹화 중에는 main 이 전역 단축키(⌘⇧A …)와 앱 메뉴 accelerator(⌘W·⌘A·⌘Z …)를 끈다.
   // 그래야 그 조합들이 기능을 실행하지 않고 순수 키 입력으로 들어온다.
+  // 에디터 도구 키 녹화는 수식키가 없어 사실상 무관하지만, 같은 경로를 타도 해가 없다.
   useEffect(() => {
     window.settings.setHotkeyRecording(recording !== null);
   }, [recording]);
@@ -147,11 +187,29 @@ export default function Settings(): JSX.Element {
 
       if (recording === null) return;
       e.preventDefault();
-      const accelerator = toAccelerator(e);
-      if (!accelerator) return;
-      setHotkeys((prev) => ({ ...prev, [recording]: accelerator }));
+
+      if (recording.kind === 'global') {
+        const { field } = recording;
+        // ⌫ — 이 기능의 단축키를 해제한다. 저장 후 main 은 이 항목을 등록하지 않는다.
+        const next = isClearKey(e) ? HOTKEY_DISABLED : toAccelerator(e);
+        if (next === null) return;
+        setHotkeys((prev) => ({ ...prev, [field]: next }));
+      } else {
+        const { tool } = recording;
+        let next: string;
+        if (isClearKey(e)) {
+          next = HOTKEY_DISABLED;
+        } else {
+          // 수식키 조합은 받지 않는다 — 에디터의 ⌘C/⌘Z 같은 명령과 겹치기 때문.
+          // 수식키 자체를 누른 keydown(e.code 'ShiftLeft' 등)도 codeToKeyName 이 null 을 준다.
+          if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+          const keyName = codeToKeyName(e.code);
+          if (keyName === null || !isEditorToolKeyName(keyName)) return;
+          next = keyName;
+        }
+        setEditorHotkeys((prev) => ({ ...prev, [tool]: next }));
+      }
       setRecording(null);
-      setSaved(false);
     };
 
     window.addEventListener('keydown', onKey);
@@ -172,26 +230,25 @@ export default function Settings(): JSX.Element {
   }, [recording]);
 
   // 같은 조합이 두 곳 이상에 지정되면 등록 자체가 실패한다 — main 의 _register 는
-  // 실패 시 이미 등록한 것까지 전부 해제하고 throw 한다(main/shortcuts.ts:90).
+  // 실패 시 이미 등록한 것까지 전부 해제하고 throw 한다(main/shortcuts.ts:_register).
   // 저장 전에 막아야 "모든 단축키가 죽는" 상태를 피할 수 있다.
-  const acceleratorCounts = new Map<string, number>();
-  for (const field of HOTKEY_FIELDS) {
-    const accelerator = hotkeys[field];
-    acceleratorCounts.set(accelerator, (acceleratorCounts.get(accelerator) ?? 0) + 1);
-  }
-  const conflicts = new Set(
-    [...acceleratorCounts].filter(([, count]) => count > 1).map(([accelerator]) => accelerator),
-  );
+  const conflicts = findDuplicates(HOTKEY_FIELDS.map((field) => hotkeys[field]));
+  // 에디터 도구 키 중복 — 등록 실패는 아니지만 먼저 매칭된 도구만 동작해 혼란스럽다.
+  const editorConflicts = findDuplicates(EDITOR_TOOLS.map((tool) => editorHotkeys[tool]));
+  const hasConflict = conflicts.size > 0 || editorConflicts.size > 0;
 
   const handleSave = (): void => {
     // 버튼이 disabled 지만 한 번 더 막는다 — 중복 저장은 전역 단축키 전체 해제로 이어진다.
-    if (conflicts.size > 0) return;
+    if (hasConflict) return;
 
     Promise.all([
       window.settings.set(hotkeys),
+      window.settings.setEditorHotkeys(editorHotkeys),
       window.settings.setMisc(misc),
     ]).then(() => {
-      setSaved(true);
+      // 저장이 끝나면 창을 닫는다 — ESC 와 같은 경로(settings:close → SettingsWindowManager.stop).
+      // 실패하면 닫지 않고 콘솔에 남긴다. 사용자가 다시 시도할 수 있어야 한다.
+      window.settings.close();
     }).catch((err: unknown) => {
       console.error('[asis settings] save failed', err);
     });
@@ -202,7 +259,17 @@ export default function Settings(): JSX.Element {
     // 안 그러면 다음 키 입력이 방금 되돌린 값을 곧바로 덮어쓴다.
     setRecording(null);
     setHotkeys(DEFAULT);
-    setSaved(false);
+    setEditorHotkeys(DEFAULT_EDITOR_HOTKEYS);
+  };
+
+  const handleClearGlobal = (field: keyof HotkeyConfig): void => {
+    setRecording(null);
+    setHotkeys((prev) => ({ ...prev, [field]: HOTKEY_DISABLED }));
+  };
+
+  const handleClearEditor = (tool: EditorTool): void => {
+    setRecording(null);
+    setEditorHotkeys((prev) => ({ ...prev, [tool]: HOTKEY_DISABLED }));
   };
 
   const handlePickFolder = (): void => {
@@ -275,7 +342,6 @@ export default function Settings(): JSX.Element {
             value={misc.gifFps}
             onChange={(e): void => {
               setMisc((prev) => ({ ...prev, gifFps: Number(e.target.value) }));
-              setSaved(false);
             }}
           >
             {[5, 10, 15, 20, 24, 30].map((fps) => (
@@ -295,7 +361,6 @@ export default function Settings(): JSX.Element {
             value={Math.round(misc.pinDefaultOpacity * 100)}
             onChange={(e): void => {
               setMisc((prev) => ({ ...prev, pinDefaultOpacity: Number(e.target.value) / 100 }));
-              setSaved(false);
             }}
           />
           <span className="misc-row__value">{Math.round(misc.pinDefaultOpacity * 100)}%</span>
@@ -309,7 +374,6 @@ export default function Settings(): JSX.Element {
               checked={misc.captureSound}
               onChange={(e): void => {
                 setMisc((prev) => ({ ...prev, captureSound: e.target.checked }));
-                setSaved(false);
               }}
             />
             {t.captureSound}
@@ -324,7 +388,6 @@ export default function Settings(): JSX.Element {
               checked={misc.openAtLogin}
               onChange={(e): void => {
                 setMisc((prev) => ({ ...prev, openAtLogin: e.target.checked }));
-                setSaved(false);
               }}
             />
             {t.openAtLogin}
@@ -347,7 +410,6 @@ export default function Settings(): JSX.Element {
                 ...prev,
                 timeMachineBufferSeconds: Number(e.target.value),
               }));
-              setSaved(false);
             }}
           />
           <span className="misc-row__value">
@@ -358,6 +420,7 @@ export default function Settings(): JSX.Element {
 
       <section className="settings__section">
         <h2 className="settings__section-title">{t.hotkeySection}</h2>
+        <p className="settings__section-hint">{t.hotkeyHint}</p>
         {conflicts.size > 0 ? (
           <p className="settings__notice settings__notice--warn" role="alert">
             {t.conflictWarning([...conflicts].map(toDisplayString).join(', '))}
@@ -366,7 +429,10 @@ export default function Settings(): JSX.Element {
         <table className="hotkey-table">
           <tbody>
             {HOTKEY_FIELDS.map((field) => {
-              const conflicted = conflicts.has(hotkeys[field]);
+              const value = hotkeys[field];
+              const isRecording = recording?.kind === 'global' && recording.field === field;
+              const isDisabled = value === HOTKEY_DISABLED;
+              const conflicted = conflicts.has(value);
               return (
                 <tr key={field} className="hotkey-row">
                   <td className="hotkey-row__label">{t.hotkeyLabels[field]}</td>
@@ -378,17 +444,86 @@ export default function Settings(): JSX.Element {
                       type="button"
                       className={[
                         'hotkey-btn',
-                        recording === field ? 'hotkey-btn--recording' : '',
+                        isRecording ? 'hotkey-btn--recording' : '',
                         conflicted ? 'hotkey-btn--conflict' : '',
+                        isDisabled && !isRecording ? 'hotkey-btn--empty' : '',
                       ].filter(Boolean).join(' ')}
                       onClick={(): void => {
-                        setRecording(recording === field ? null : field);
+                        setRecording(isRecording ? null : { kind: 'global', field });
                       }}
                     >
-                      {recording === field
+                      {isRecording
                         ? t.recordingHint
-                        : toDisplayString(hotkeys[field])}
+                        : isDisabled ? t.hotkeyNone : toDisplayString(value)}
                     </button>
+                    {!isDisabled && !isRecording ? (
+                      <button
+                        type="button"
+                        className="hotkey-row__clear"
+                        aria-label={t.clearHotkey}
+                        title={t.clearHotkey}
+                        onClick={(): void => handleClearGlobal(field)}
+                      >
+                        ✕
+                      </button>
+                    ) : null}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </section>
+
+      <section className="settings__section">
+        <h2 className="settings__section-title">{t.editorHotkeySection}</h2>
+        <p className="settings__section-hint">{t.editorHotkeyHint}</p>
+        {editorConflicts.size > 0 ? (
+          <p className="settings__notice settings__notice--warn" role="alert">
+            {t.editorConflictWarning([...editorConflicts].join(', '))}
+          </p>
+        ) : null}
+        <table className="hotkey-table">
+          <tbody>
+            {EDITOR_TOOLS.map((tool) => {
+              const value = editorHotkeys[tool];
+              const isRecording = recording?.kind === 'editor' && recording.tool === tool;
+              const isDisabled = value === HOTKEY_DISABLED;
+              const conflicted = editorConflicts.has(value);
+              return (
+                <tr key={tool} className="hotkey-row">
+                  <td className="hotkey-row__label">{t.editorToolLabels[tool]}</td>
+                  <td className="hotkey-row__input">
+                    {conflicted ? (
+                      <span className="hotkey-row__badge">{t.conflictBadge}</span>
+                    ) : null}
+                    <button
+                      type="button"
+                      className={[
+                        'hotkey-btn',
+                        isRecording ? 'hotkey-btn--recording' : '',
+                        conflicted ? 'hotkey-btn--conflict' : '',
+                        isDisabled && !isRecording ? 'hotkey-btn--empty' : '',
+                      ].filter(Boolean).join(' ')}
+                      onClick={(): void => {
+                        setRecording(isRecording ? null : { kind: 'editor', tool });
+                      }}
+                    >
+                      {isRecording
+                        ? t.editorRecordingHint
+                        : isDisabled ? t.hotkeyNone : value}
+                    </button>
+                    {!isDisabled && !isRecording ? (
+                      <button
+                        type="button"
+                        className="hotkey-row__clear"
+                        aria-label={t.clearHotkey}
+                        title={t.clearHotkey}
+                        onClick={(): void => handleClearEditor(tool)}
+                      >
+                        ✕
+                      </button>
+                    ) : null}
                   </td>
                 </tr>
               );
@@ -405,9 +540,9 @@ export default function Settings(): JSX.Element {
           type="button"
           className="btn btn--primary"
           onClick={handleSave}
-          disabled={conflicts.size > 0}
+          disabled={hasConflict}
         >
-          {saved ? t.saved : t.save}
+          {t.save}
         </button>
       </div>
     </div>

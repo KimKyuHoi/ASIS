@@ -4,6 +4,7 @@ import type { HotkeyConfig, MiscConfig } from '../main/settings';
 import type { RunningFeature } from '../shared/running-features';
 import type { PatchNote } from '../main/patch-notes/patchNotes';
 import type { Language } from '../shared/i18n/language';
+import type { EditorHotkeyConfig } from '../shared/editor-hotkeys';
 
 type Rect = {
   x: number;
@@ -98,6 +99,16 @@ const editor = {
     ipcRenderer.invoke('editor:save', dataUrl),
   saveFolder: (dataUrl: string): Promise<{ path: string }> =>
     ipcRenderer.invoke('editor:save-folder', dataUrl),
+  /** 도구 전환 키 표(V/R/O …). 환경설정에서 바꾸면 onHotkeysChanged 로 push 된다. */
+  getHotkeys: (): Promise<EditorHotkeyConfig> =>
+    ipcRenderer.invoke('settings:get-editor-hotkeys'),
+  onHotkeysChanged: (callback: (hotkeys: EditorHotkeyConfig) => void): (() => void) => {
+    const handler = (_event: IpcRendererEvent, hotkeys: EditorHotkeyConfig): void => {
+      callback(hotkeys);
+    };
+    ipcRenderer.on('settings:editor-hotkeys-changed', handler);
+    return () => ipcRenderer.removeListener('settings:editor-hotkeys-changed', handler);
+  },
 };
 
 /**
@@ -247,6 +258,10 @@ const settings = {
     ipcRenderer.invoke('settings:get-running-features'),
   setHotkeyRecording: (active: boolean): void =>
     ipcRenderer.send('settings:hotkey-recording', active),
+  getEditorHotkeys: (): Promise<EditorHotkeyConfig> =>
+    ipcRenderer.invoke('settings:get-editor-hotkeys'),
+  setEditorHotkeys: (hotkeys: EditorHotkeyConfig): Promise<void> =>
+    ipcRenderer.invoke('settings:set-editor-hotkeys', hotkeys),
 };
 
 type HistoryEntry = {

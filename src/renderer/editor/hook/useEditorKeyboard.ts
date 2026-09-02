@@ -1,8 +1,10 @@
 import { useEffect } from 'react';
 import type { RefObject } from 'react';
 import type Konva from 'konva';
-import type { Shape, Tool } from '../types/shapes';
+import type { Shape } from '../types/shapes';
+import { codeToKeyName } from '../../../shared/key-name';
 import { useEditorStore } from '../lib/store';
+import { toolForKeyName } from '../lib/editor-hotkeys';
 import { cancelEditor, copyToClipboard, savePngFile } from '../lib/editor-actions';
 import { addImageFromSource } from '../lib/image-utils';
 
@@ -131,21 +133,9 @@ export function useEditorKeyboard(
         e.preventDefault();
         st.deleteSelected();
       } else if (!isMeta && !e.shiftKey) {
-        const map: Partial<Record<string, Tool>> = {
-          KeyV: 'select',
-          KeyR: 'rect',
-          KeyO: 'ellipse',
-          KeyA: 'arrow',
-          KeyL: 'line',
-          KeyP: 'pen',
-          KeyT: 'text',
-          KeyH: 'highlight',
-          KeyB: 'blur',
-          KeyM: 'mosaic',
-          KeyE: 'eraser',
-          KeyS: 'step',
-        };
-        const next = map[e.code];
+        // 도구 전환 — 환경설정의 표(lib/editor-hotkeys)를 조회한다. 해제된 도구는 매칭 안 됨.
+        const keyName = codeToKeyName(e.code);
+        const next = keyName === null ? null : toolForKeyName(keyName);
         if (next) st.setTool(next);
       }
     };
