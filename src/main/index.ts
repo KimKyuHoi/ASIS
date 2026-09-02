@@ -673,6 +673,14 @@ app.whenReady().then(() => {
   }
   settingsStore.set('lastLaunchedVersion', current);
 
+  // 업데이트 체크 — 앱 시작 5초 후 첫 체크, 이후 3일마다 반복.
+  // electron-updater 가 백그라운드 다운로드 → 완료 후 설치 확인 다이얼로그를 처리한다.
+  // 트레이·단축키 초기화보다 *먼저* 예약한다 — 그쪽에서 예외가 나더라도 자동 업데이트
+  // 경로는 살아 있어야 고장난 버전에서 빠져나올 수 있다 (v0.7.2 시작 실패 교훈).
+  const CHECK_INTERVAL_MS = 3 * 24 * 60 * 60 * 1000; // 3일
+  setTimeout(() => checkForUpdates(), 5000);
+  setInterval(() => checkForUpdates(), CHECK_INTERVAL_MS);
+
   // 로그인 항목 재단언 — 과거 dev 실행이나 옛 번들이 잘못된 경로(휴지통의 백업
   // 번들 등)로 등록했거나 등록이 유실된 경우를 저장된 설정 기준으로 복구한다.
   // status: not-registered | enabled | requires-approval | not-found (macOS 13+).
@@ -857,7 +865,29 @@ app.whenReady().then(() => {
   // 스텝 가이드는 show() 가 void 라 종료 시점을 Promise 로 못 받는다 — 콜백으로 통지받아
   // 메뉴바 인디케이터를 내린다 (GIF·영상·스크롤 캡처는 show() 의 finally 에서 처리).
   stepGuideWindow.onActiveChange = (): void => trayManager.refresh();
-  shortcutManager.start(handlers);
+
+  // 단축키 등록 실패(손상된 저장값·다른 앱 선점)는 항목별로 알리고 나머지는 계속 등록한다.
+  // 손상값은 ShortcutManager 가 '해제' 로 복구해 저장하므로 설정 창에도 그대로 반영된다.
+  shortcutManager.onFailures = (failures): void => {
+    log.warn('[shortcuts] registration failures', failures);
+    const t = tMain().shortcuts;
+    const lines = failures.map((f) =>
+      f.kind === 'invalid'
+        ? t.invalidRepaired(t.names[f.key])
+        : t.taken(t.names[f.key], f.accelerator),
+    );
+    notifyError(t.someFailed(lines));
+    // 해제로 복구된 항목의 accelerator 표기를 트레이 메뉴에서도 지운다.
+    trayManager.refresh();
+  };
+  try {
+    shortcutManager.start(handlers);
+  } catch (err: unknown) {
+    // 단축키는 트레이 메뉴로 대체 가능한 부가 경로 — 앱 시작 전체를 실패시키지 않는다.
+    const message = err instanceof Error ? err.message : String(err);
+    log.error('[shortcuts] start failed', err);
+    notifyError(tMain().shortcuts.startFailed(message));
+  }
 
   // ffmpeg 가 스스로 죽으면(권한 거부 등) 토글을 거치지 않는다 — 알약이 "녹화 중"인
   // 채 남지 않도록 컨트롤러가 표시를 내리고 사유를 알린다.
@@ -874,12 +904,6 @@ app.whenReady().then(() => {
   checkPermissionsOnLaunch().catch((err: unknown) => {
     console.error('[asis] permission check failed', err);
   });
-
-  // 업데이트 체크 — 앱 시작 5초 후 첫 체크, 이후 3일마다 반복.
-  // electron-updater 가 백그라운드 다운로드 → 완료 후 설치 확인 다이얼로그를 처리한다.
-  const CHECK_INTERVAL_MS = 3 * 24 * 60 * 60 * 1000; // 3일
-  setTimeout(() => checkForUpdates(), 5000);
-  setInterval(() => checkForUpdates(), CHECK_INTERVAL_MS);
 }).catch((err: unknown) => {
   // app.whenReady() 체인의 미처리 에러가 조용히 삼켜지는 걸 방지.
   console.error('[asis] app initialization failed', err);

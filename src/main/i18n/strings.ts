@@ -1,5 +1,6 @@
 import { defineDict, getLanguage } from '../../shared/i18n/language';
 import type { RunningFeature } from '../../shared/running-features';
+import type { HotkeyKey } from '../shortcuts';
 
 /**
  * main process UI 문자열 사전.
@@ -75,6 +76,32 @@ export const mainStrings = defineDict({
     app: {
       startFailedTitle: 'ASIS 시작 실패',
       updateComplete: (version: string) => `ASIS ${version} 업데이트 완료!`,
+    },
+    shortcuts: {
+      names: {
+        region: '영역 캡처',
+        fullscreen: '전체 화면 캡처',
+        window: '윈도우 캡처',
+        delayedFullscreen: '지연 전체화면 캡처',
+        delayedRegion: '지연 영역 캡처',
+        disableClickThrough: '핀 click-through 해제',
+        gif: 'GIF 녹화',
+        video: '화면 녹화',
+        ocr: '텍스트 추출 (OCR)',
+        clipboardPin: '클립보드를 핀으로',
+        ruler: '화면 자',
+        timeMachineToggle: '타임머신 녹화 토글',
+        timeMachineSave: '타임머신 구간 저장',
+        stepGuide: '스텝 가이드 녹화',
+        scrollCapture: '스크롤 캡처',
+      } as Record<HotkeyKey, string>,
+      invalidRepaired: (name: string) =>
+        `${name} — 저장된 단축키 값이 손상되어 해제했습니다. 환경설정에서 다시 지정해 주세요.`,
+      taken: (name: string, accelerator: string) =>
+        `${name} (${accelerator}) — 다른 앱이 이미 사용 중인 단축키라 등록하지 못했습니다.`,
+      someFailed: (lines: string[]) => `일부 단축키를 등록하지 못했습니다.\n${lines.join('\n')}`,
+      startFailed: (message: string) =>
+        `단축키 등록에 실패했습니다: ${message}\n트레이 메뉴로는 계속 사용할 수 있습니다.`,
     },
     capture: {
       labelFullscreen: '전체화면 캡처',
@@ -253,6 +280,32 @@ export const mainStrings = defineDict({
     app: {
       startFailedTitle: 'ASIS Failed to Start',
       updateComplete: (version: string) => `Updated to ASIS ${version}!`,
+    },
+    shortcuts: {
+      names: {
+        region: 'Area Capture',
+        fullscreen: 'Full Screen Capture',
+        window: 'Window Capture',
+        delayedFullscreen: 'Delayed Full Screen Capture',
+        delayedRegion: 'Delayed Area Capture',
+        disableClickThrough: 'Disable Pin Click-through',
+        gif: 'GIF Recording',
+        video: 'Screen Recording',
+        ocr: 'Extract Text (OCR)',
+        clipboardPin: 'Clipboard to Pin',
+        ruler: 'Screen Ruler',
+        timeMachineToggle: 'Toggle Time Machine',
+        timeMachineSave: 'Save Time Machine Clip',
+        stepGuide: 'Step Guide Recording',
+        scrollCapture: 'Scrolling Capture',
+      } as Record<HotkeyKey, string>,
+      invalidRepaired: (name: string) =>
+        `${name} — the saved shortcut was corrupted and has been cleared. Set it again in Settings.`,
+      taken: (name: string, accelerator: string) =>
+        `${name} (${accelerator}) — another app already uses this shortcut, so it was not registered.`,
+      someFailed: (lines: string[]) => `Some shortcuts could not be registered.\n${lines.join('\n')}`,
+      startFailed: (message: string) =>
+        `Shortcut registration failed: ${message}\nYou can keep using ASIS from the menu bar.`,
     },
     capture: {
       labelFullscreen: 'Full Screen Capture',

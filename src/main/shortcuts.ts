@@ -1,6 +1,20 @@
 import { globalShortcut } from 'electron';
-import { loadHotkeys } from './settings';
+import log from 'electron-log/main';
+import { loadHotkeys, settingsStore, type HotkeyConfig } from './settings';
 import { HOTKEY_DISABLED } from '../shared/editor-hotkeys';
+
+export type HotkeyKey = keyof HotkeyConfig;
+
+/**
+ * 전역 단축키 등록 실패 한 건. main 이 알림으로 사용자에게 전달한다.
+ *
+ * - invalid: Electron 이 파싱하지 못하는 값(빈 문자열·손상된 JSON 값 등).
+ *   저장값을 '해제'(HOTKEY_DISABLED) 로 복구해 다음 실행에서 반복되지 않게 한다.
+ * - taken: 문법은 맞지만 다른 앱(또는 우리 자신의 중복 항목)이 이미 선점해 register 가 false.
+ */
+export type ShortcutFailure =
+  | { kind: 'invalid'; key: HotkeyKey; accelerator: unknown } |
+  { kind: 'taken'; key: HotkeyKey; accelerator: string };
 
 export type ShortcutHandlers = {
   onRegion: () => void;
@@ -47,9 +61,17 @@ export class ShortcutManager {
   private savedHandlers: ShortcutHandlers | null = null;
   /** 환경설정에서 단축키를 녹화하는 동안 true — 이 동안에는 재등록하지 않는다. */
   private paused = false;
+  /**
+   * 등록 실패가 하나라도 있으면 등록 라운드마다 한 번 호출된다 (start/reload 모두).
+   * main 이 알림으로 연결한다. 기본값은 로그만 — silent 하게 사라지지는 않는다.
+   */
+  onFailures: (failures: ShortcutFailure[]) => void = (failures) => {
+    log.warn('[shortcuts] registration failures (no handler attached)', failures);
+  };
 
   start(handlers: ShortcutHandlers): void {
-    if (this.registered.length > 0) {
+    // registered 길이로 판단하면 모든 단축키가 해제/실패한 경우 이중 start 를 놓친다.
+    if (this.savedHandlers) {
       throw new Error('ShortcutManager.start() called twice — already running');
     }
     this.savedHandlers = handlers;
@@ -93,34 +115,68 @@ export class ShortcutManager {
   private _register(handlers: ShortcutHandlers): void {
     // 저장값에 새로 추가된 키가 없을 수 있어 DEFAULT_HOTKEYS 로 병합 (loadHotkeys).
     const hotkeys = loadHotkeys();
-    const bindings: Array<[string, () => void]> = [
-      [hotkeys.region, handlers.onRegion],
-      [hotkeys.fullscreen, handlers.onFullscreen],
-      [hotkeys.window, handlers.onWindow],
-      [hotkeys.delayedFullscreen, handlers.onDelayedFullscreen],
-      [hotkeys.delayedRegion, handlers.onDelayedRegion],
-      [hotkeys.disableClickThrough, handlers.onDisableClickThrough],
-      [hotkeys.gif, handlers.onGif],
-      [hotkeys.video, handlers.onVideo],
-      [hotkeys.ocr, handlers.onOcr],
-      [hotkeys.clipboardPin, handlers.onClipboardPin],
-      [hotkeys.ruler, handlers.onRuler],
-      [hotkeys.timeMachineToggle, handlers.onTimeMachineToggle],
-      [hotkeys.timeMachineSave, handlers.onTimeMachineSave],
-      [hotkeys.stepGuide, handlers.onStepGuide],
-      [hotkeys.scrollCapture, handlers.onScrollCapture],
+    const bindings: Array<[HotkeyKey, () => void]> = [
+      ['region', handlers.onRegion],
+      ['fullscreen', handlers.onFullscreen],
+      ['window', handlers.onWindow],
+      ['delayedFullscreen', handlers.onDelayedFullscreen],
+      ['delayedRegion', handlers.onDelayedRegion],
+      ['disableClickThrough', handlers.onDisableClickThrough],
+      ['gif', handlers.onGif],
+      ['video', handlers.onVideo],
+      ['ocr', handlers.onOcr],
+      ['clipboardPin', handlers.onClipboardPin],
+      ['ruler', handlers.onRuler],
+      ['timeMachineToggle', handlers.onTimeMachineToggle],
+      ['timeMachineSave', handlers.onTimeMachineSave],
+      ['stepGuide', handlers.onStepGuide],
+      ['scrollCapture', handlers.onScrollCapture],
     ];
 
-    for (const [accelerator, callback] of bindings) {
+    const failures: ShortcutFailure[] = [];
+    // 손상된 값을 '해제' 로 되돌려 저장할 항목. 기본값으로 되돌리지 않는 이유 —
+    // 기본값이 사용자가 다른 기능에 지정한 조합과 충돌해 연쇄 실패를 낳을 수 있다.
+    const repaired: Partial<HotkeyConfig> = {};
+
+    for (const [key, callback] of bindings) {
+      // 설정 JSON 이 손으로 편집됐거나 구버전이 남긴 값일 수 있어 string 을 가정하지 않는다.
+      const accelerator: unknown = hotkeys[key];
       // 환경설정에서 해제한 단축키('') — 등록하지 않는다. 트레이 메뉴로만 실행 가능.
       if (accelerator === HOTKEY_DISABLED) continue;
-      const ok = globalShortcut.register(accelerator, callback);
+      if (typeof accelerator !== 'string') {
+        log.warn('[shortcuts] non-string accelerator — disabling', { key, accelerator });
+        failures.push({ kind: 'invalid', key, accelerator });
+        repaired[key] = HOTKEY_DISABLED;
+        continue;
+      }
+
+      let ok: boolean;
+      try {
+        ok = globalShortcut.register(accelerator, callback);
+      } catch (err: unknown) {
+        // Electron 은 파싱할 수 없는 accelerator 에 throw 한다
+        // ("Error processing argument at index 0, conversion failure from …").
+        // 한 항목 때문에 앱 시작 전체가 실패하면 자동 업데이트까지 막히므로(v0.7.2),
+        // 해당 항목만 해제로 복구하고 나머지는 계속 등록한다.
+        log.warn('[shortcuts] invalid accelerator — disabling', { key, accelerator, err });
+        failures.push({ kind: 'invalid', key, accelerator });
+        repaired[key] = HOTKEY_DISABLED;
+        continue;
+      }
+
       if (!ok) {
-        // null-safety.md — 등록 실패를 silent 하게 무시하지 않는다.
-        this.stop();
-        throw new Error(`globalShortcut.register failed for ${accelerator}`);
+        // null-safety.md — 등록 실패를 silent 하게 무시하지 않는다. 다만 throw 로
+        // 전체를 되감는 대신 실패 목록으로 모아 사용자에게 알린다.
+        log.warn('[shortcuts] accelerator already taken', { key, accelerator });
+        failures.push({ kind: 'taken', key, accelerator });
+        continue;
       }
       this.registered.push(accelerator);
     }
+
+    if (Object.keys(repaired).length > 0) {
+      settingsStore.set('hotkeys', { ...hotkeys, ...repaired });
+    }
+    if (failures.length > 0) this.onFailures(failures);
   }
 }
