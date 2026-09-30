@@ -1,34 +1,146 @@
-/* eslint-disable @stylistic/quote-props */
-/* eslint-disable @typescript-eslint/explicit-function-return-type */
-/* eslint-disable @typescript-eslint/no-empty-function */
-/* eslint-disable @typescript-eslint/no-require-imports */
-/* eslint-disable no-restricted-syntax, require-await */
-const assert = require('node:assert/strict');
-const { EventEmitter } = require('node:events');
-const fs = require('node:fs');
-const path = require('node:path');
-const test = require('node:test');
-const vm = require('node:vm');
-const ts = require('typescript');
+import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { setImmediate } from 'node:timers';
+import { test } from 'node:test';
+import * as vm from 'node:vm';
+import * as ts from 'typescript';
 
-const repoRoot = path.resolve(__dirname, '..');
+type Point = {
+  x: number;
+  y: number;
+};
+
+type Bounds = Point & {
+  width: number;
+  height: number;
+};
+
+type DisplayLike = {
+  id: number;
+  bounds: Bounds;
+  scaleFactor: number;
+};
+
+type Rect = Point & {
+  w: number;
+  h: number;
+  windowId?: number;
+};
+
+type SelectionResult =
+  { kind: 'selected'; rect: Rect } |
+  { kind: 'canceled' };
+
+type WindowInfoLike = Point & {
+  id: number;
+  name: string;
+  w: number;
+  h: number;
+};
+
+type SenderEvent = {
+  sender: MockWebContents;
+};
+
+type SentMessage = {
+  channel: string;
+  args: unknown[];
+};
+
+type BrowserWindowOptions = Partial<Bounds> & {
+  [key: string]: unknown;
+};
+
+type Listener = (...args: unknown[]) => void;
+type Handler = (...args: unknown[]) => unknown;
+
+type ListenerEntry = {
+  listener: Listener;
+  once: boolean;
+};
+
+type IpcMainMock = {
+  on(channel: string, listener: Listener): IpcMainMock;
+  once(channel: string, listener: Listener): IpcMainMock;
+  removeListener(channel: string, listener: Listener): IpcMainMock;
+  removeAllListeners(channel: string): IpcMainMock;
+  handle(channel: string, handler: Handler): void;
+  handleOnce(channel: string, handler: Handler): void;
+  removeHandler(channel: string): void;
+  emit(channel: string, ...args: unknown[]): boolean;
+  invoke(channel: string, ...args: unknown[]): Promise<unknown>;
+  listenerCount(channel: string): number;
+  hasHandler(channel: string): boolean;
+};
+
+type TimerCallback = (...args: unknown[]) => void;
+
+type TimerRecord = {
+  callback: TimerCallback;
+  delay: number | undefined;
+  args: unknown[];
+  cleared: boolean;
+};
+
+type ElementAtProviderMock = (event: SenderEvent, x: number, y: number) => WindowInfoLike | null;
+
+type LoadSelectionOverlayOptions = {
+  displays?: DisplayLike[];
+  cursor?: Point;
+  windows?: WindowInfoLike[];
+  elementAt?: (x: number, y: number) => WindowInfoLike | null;
+};
+
+type SelectionOverlayManagerLike = {
+  show(): Promise<SelectionResult>;
+  stop(): void;
+};
+
+type SelectionOverlayModule = {
+  SelectionOverlayManager: new () => SelectionOverlayManagerLike;
+};
+
+type LoadedSelectionOverlay = {
+  SelectionOverlayManager: new () => SelectionOverlayManagerLike;
+  backgroundCalls: Array<{
+    win: MockBrowserWindow;
+    display: DisplayLike;
+    logPerf: boolean | undefined;
+  }>;
+  displays: DisplayLike[];
+  elementAtProvider: ElementAtProviderMock | null;
+  intervals: TimerRecord[];
+  timeouts: TimerRecord[];
+  ipcMain: IpcMainMock;
+  pressEscape(): void;
+  setCursor(point: Point): void;
+  setWindows(nextWindows: WindowInfoLike[]): void;
+  stopTimers(): void;
+  runTimeouts(delay: number): Promise<void>;
+  stopped: boolean;
+  windows: MockBrowserWindow[];
+};
+
+const repoRoot = path.resolve(import.meta.dirname, '..');
 const sourcePath = path.join(repoRoot, 'src/main/windows/selectionOverlay.ts');
 
-const DISPLAYS = [
+const DISPLAYS: DisplayLike[] = [
   { id: 1, bounds: { x: -1280, y: 0, width: 1280, height: 720 }, scaleFactor: 1 },
   { id: 2, bounds: { x: 0, y: 0, width: 1440, height: 900 }, scaleFactor: 2 },
   { id: 3, bounds: { x: 1440, y: -320, width: 1024, height: 768 }, scaleFactor: 1.5 },
 ];
 
-function flushPromises() {
+function flushPromises(): Promise<void> {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
-function plain(value) {
-  return JSON.parse(JSON.stringify(value));
+function plain(value: unknown): unknown {
+  return JSON.parse(JSON.stringify(value)) as unknown;
 }
 
-function pointInBounds(point, bounds) {
+function pointInBounds(point: Point, bounds: Bounds): boolean {
   return (
     point.x >= bounds.x &&
     point.x < bounds.x + bounds.width &&
@@ -37,87 +149,120 @@ function pointInBounds(point, bounds) {
   );
 }
 
-function displayForPoint(displays, point) {
+function displayForPoint(displays: DisplayLike[], point: Point): DisplayLike {
   return displays.find((display) => pointInBounds(point, display.bounds)) ?? displays[0];
 }
 
+function isSelectionOverlayModule(value: unknown): value is SelectionOverlayModule {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'SelectionOverlayManager' in value &&
+    typeof value.SelectionOverlayManager === 'function'
+  );
+}
+
+function numberOption(options: BrowserWindowOptions, key: keyof Bounds): number {
+  const value = options[key];
+  if (typeof value !== 'number') {
+    throw new TypeError(`BrowserWindow option ${key} must be numeric`);
+  }
+  return value;
+}
+
+function expectNoIpcReturn(value: unknown): void {
+  assert.equal(value, undefined);
+}
+
 class MockWebContents extends EventEmitter {
-  constructor(owner) {
+  readonly owner: MockBrowserWindow;
+  readonly sent: SentMessage[] = [];
+  focusCalls = 0;
+
+  constructor(owner: MockBrowserWindow) {
     super();
     this.owner = owner;
-    this.sent = [];
-    this.focusCalls = 0;
   }
 
-  send(channel, ...args) {
+  send(channel: string, ...args: unknown[]): void {
     this.sent.push({ channel, args });
   }
 
-  focus() {
+  focus(): void {
     this.focusCalls += 1;
   }
 }
 
 class MockBrowserWindow extends EventEmitter {
-  static instances = [];
+  static instances: MockBrowserWindow[] = [];
 
-  static reset() {
+  readonly options: BrowserWindowOptions;
+  readonly webContents: MockWebContents;
+  bounds: Bounds;
+  destroyed = false;
+  closeCalls = 0;
+  focusCalls = 0;
+  showCalls = 0;
+  showInactiveCalls = 0;
+  alwaysOnTopCalls = 0;
+  allWorkspacesCalls = 0;
+  opacity = 1;
+  ignoreMouseEvents = false;
+
+  static reset(): void {
     MockBrowserWindow.instances = [];
   }
 
-  constructor(options) {
+  constructor(options: BrowserWindowOptions) {
     super();
     this.options = structuredClone(options);
     this.bounds = {
-      x: options.x,
-      y: options.y,
-      width: options.width,
-      height: options.height,
+      x: numberOption(options, 'x'),
+      y: numberOption(options, 'y'),
+      width: numberOption(options, 'width'),
+      height: numberOption(options, 'height'),
     };
-    this.destroyed = false;
-    this.closeCalls = 0;
-    this.focusCalls = 0;
-    this.showCalls = 0;
-    this.showInactiveCalls = 0;
-    this.opacity = 1;
-    this.ignoreMouseEvents = false;
     this.webContents = new MockWebContents(this);
     MockBrowserWindow.instances.push(this);
   }
 
-  setIgnoreMouseEvents(value) {
+  setIgnoreMouseEvents(value: boolean): void {
     this.ignoreMouseEvents = value;
   }
 
-  setOpacity(value) {
+  setOpacity(value: number): void {
     this.opacity = value;
   }
 
-  showInactive() {
+  showInactive(): void {
     this.showInactiveCalls += 1;
   }
 
-  show() {
+  show(): void {
     this.showCalls += 1;
   }
 
-  focus() {
+  focus(): void {
     this.focusCalls += 1;
   }
 
-  setBounds(bounds) {
+  setBounds(bounds: Bounds): void {
     this.bounds = { ...bounds };
   }
 
-  setAlwaysOnTop() {}
+  setAlwaysOnTop(_flag: boolean, _level?: string): void {
+    this.alwaysOnTopCalls += 1;
+  }
 
-  setVisibleOnAllWorkspaces() {}
+  setVisibleOnAllWorkspaces(_flag: boolean, _options?: Record<string, unknown>): void {
+    this.allWorkspacesCalls += 1;
+  }
 
-  isDestroyed() {
+  isDestroyed(): boolean {
     return this.destroyed;
   }
 
-  close() {
+  close(): void {
     this.closeCalls += 1;
     if (this.destroyed) return;
     this.destroyed = true;
@@ -125,43 +270,46 @@ class MockBrowserWindow extends EventEmitter {
   }
 }
 
-function createIpcMain() {
-  const listeners = new Map();
-  const handlers = new Map();
+function createIpcMain(): IpcMainMock {
+  const listeners = new Map<string, ListenerEntry[]>();
+  const handlers = new Map<string, { handler: Handler; once: boolean }>();
 
-  const getListeners = (channel) => {
-    if (!listeners.has(channel)) listeners.set(channel, []);
-    return listeners.get(channel);
+  const getListeners = (channel: string): ListenerEntry[] => {
+    const current = listeners.get(channel);
+    if (current) return current;
+    const next: ListenerEntry[] = [];
+    listeners.set(channel, next);
+    return next;
   };
 
-  return {
-    on(channel, listener) {
+  const ipcMain: IpcMainMock = {
+    on(channel: string, listener: Listener): IpcMainMock {
       getListeners(channel).push({ listener, once: false });
       return this;
     },
-    once(channel, listener) {
+    once(channel: string, listener: Listener): IpcMainMock {
       getListeners(channel).push({ listener, once: true });
       return this;
     },
-    removeListener(channel, listener) {
+    removeListener(channel: string, listener: Listener): IpcMainMock {
       const next = getListeners(channel).filter((entry) => entry.listener !== listener);
       listeners.set(channel, next);
       return this;
     },
-    removeAllListeners(channel) {
+    removeAllListeners(channel: string): IpcMainMock {
       listeners.set(channel, []);
       return this;
     },
-    handle(channel, handler) {
+    handle(channel: string, handler: Handler): void {
       handlers.set(channel, { handler, once: false });
     },
-    handleOnce(channel, handler) {
+    handleOnce(channel: string, handler: Handler): void {
       handlers.set(channel, { handler, once: true });
     },
-    removeHandler(channel) {
+    removeHandler(channel: string): void {
       handlers.delete(channel);
     },
-    emit(channel, ...args) {
+    emit(channel: string, ...args: unknown[]): boolean {
       const current = [...getListeners(channel)];
       for (const entry of current) {
         entry.listener(...args);
@@ -169,117 +317,140 @@ function createIpcMain() {
       }
       return current.length > 0;
     },
-    async invoke(channel, ...args) {
+    invoke(channel: string, ...args: unknown[]): Promise<unknown> {
       const entry = handlers.get(channel);
-      if (!entry) throw new Error(`No handler registered for ${channel}`);
+      if (!entry) return Promise.reject(new Error(`No handler registered for ${channel}`));
       if (entry.once) handlers.delete(channel);
-      return entry.handler(...args);
+      return Promise.resolve(entry.handler(...args));
     },
-    listenerCount(channel) {
+    listenerCount(channel: string): number {
       return getListeners(channel).length;
     },
-    hasHandler(channel) {
+    hasHandler(channel: string): boolean {
       return handlers.has(channel);
     },
   };
+
+  return ipcMain;
 }
 
 function loadSelectionOverlay({
   displays = DISPLAYS,
   cursor = { x: 10, y: 10 },
   windows = [],
-  elementAt = null,
-} = {}) {
+  elementAt = undefined,
+}: LoadSelectionOverlayOptions = {}): LoadedSelectionOverlay {
   MockBrowserWindow.reset();
 
   const ipcMain = createIpcMain();
-  const backgroundCalls = [];
-  const registeredShortcuts = new Map();
-  const timeouts = [];
-  const intervals = [];
+  const backgroundCalls: LoadedSelectionOverlay['backgroundCalls'] = [];
+  const registeredShortcuts = new Map<string, () => void>();
+  const timeouts: TimerRecord[] = [];
+  const intervals: TimerRecord[] = [];
+  const accessibilityPermissionChecks: boolean[] = [];
+  const logEntries: Array<{ level: string; args: unknown[] }> = [];
   let stopped = false;
   let cursorPoint = { ...cursor };
   let windowsList = windows;
-  let elementAtProvider = null;
+  let elementAtProvider: ElementAtProviderMock | null = null;
+  let spaceUnsubscribeCalls = 0;
 
   const screen = {
-    getCursorScreenPoint() {
+    getCursorScreenPoint(): Point {
       return { ...cursorPoint };
     },
-    getDisplayNearestPoint(point) {
+    getDisplayNearestPoint(point: Point): DisplayLike {
       return displayForPoint(displays, point);
     },
-    getAllDisplays() {
+    getAllDisplays(): DisplayLike[] {
       return displays;
     },
   };
 
-  const moduleMocks = {
-    electron: {
+  const moduleMocks: Record<string, unknown> = {
+    'electron': {
       BrowserWindow: MockBrowserWindow,
       globalShortcut: {
-        register(accelerator, callback) {
+        register(accelerator: string, callback: () => void): boolean {
           registeredShortcuts.set(accelerator, callback);
           return true;
         },
-        unregister(accelerator) {
+        unregister(accelerator: string): void {
           registeredShortcuts.delete(accelerator);
         },
       },
       ipcMain,
       Notification: class {
-        constructor(options) {
+        readonly options: unknown;
+        shown = false;
+
+        constructor(options: unknown) {
           this.options = options;
         }
 
-        show() {}
+        show(): void {
+          this.shown = true;
+        }
       },
       screen,
     },
     'electron-log/main': {
-      info() {},
-      warn() {},
-      error() {},
+      info(...args: unknown[]): void {
+        logEntries.push({ level: 'info', args });
+      },
+      warn(...args: unknown[]): void {
+        logEntries.push({ level: 'warn', args });
+      },
+      error(...args: unknown[]): void {
+        logEntries.push({ level: 'error', args });
+      },
     },
     './common': {
-      clearElementAtProvider(provider) {
+      clearElementAtProvider(provider: ElementAtProviderMock): void {
         if (elementAtProvider === provider) elementAtProvider = null;
       },
-      loadRendererPage() {
+      loadRendererPage(): Promise<void> {
         return Promise.resolve();
       },
-      preloadPath() {
+      preloadPath(): string {
         return '/mock/preload.js';
       },
-      setElementAtProvider(provider) {
+      setElementAtProvider(provider: ElementAtProviderMock): void {
         elementAtProvider = provider;
       },
     },
     '../capture/displaySnapshot': {
-      sendBackgroundSnapshot(win, display, logPerf) {
+      sendBackgroundSnapshot(
+        win: MockBrowserWindow,
+        display: DisplayLike,
+        logPerf?: boolean,
+      ): Promise<void> {
         backgroundCalls.push({ win, display, logPerf });
         return Promise.resolve();
       },
     },
     '../windowsInfo': {
-      ensureAccessibilityPermission() {
+      ensureAccessibilityPermission(prompt?: boolean): boolean {
+        accessibilityPermissionChecks.push(prompt === true);
         return true;
       },
-      getDockItems() {
+      getDockItems(): WindowInfoLike[] {
         return [];
       },
-      getElementBoundsAtPoint(x, y) {
+      getElementBoundsAtPoint(x: number, y: number): WindowInfoLike | null {
         return elementAt ? elementAt(x, y) : null;
       },
-      listWindows() {
+      listWindows(): Promise<WindowInfoLike[]> {
         return Promise.resolve(windowsList);
       },
-      onSpaceChange() {
-        return () => {};
+      onSpaceChange(_callback: () => void): () => void {
+        return (): void => {
+          spaceUnsubscribeCalls += 1;
+        };
       },
     },
     '../i18n/strings': {
-      tMain() {
+      tMain(): unknown {
         return {
           accessibility: {
             title: 'Accessibility',
@@ -300,86 +471,96 @@ function loadSelectionOverlay({
     fileName: sourcePath,
   }).outputText;
 
-  const exports = {};
+  const moduleObject = { exports: {} as Record<string, unknown> };
   const sandbox = {
     Buffer,
     console,
-    exports,
-    module: { exports },
+    exports: moduleObject.exports,
+    module: moduleObject,
     process,
-    require(id) {
-      if (Object.prototype.hasOwnProperty.call(moduleMocks, id)) return moduleMocks[id];
-      return require(id);
+    require(id: string): unknown {
+      if (Object.hasOwn(moduleMocks, id)) return moduleMocks[id];
+      throw new Error(`Unexpected module dependency in selectionOverlay test: ${id}`);
     },
     setImmediate,
     clearImmediate,
-    setTimeout(callback, delay, ...args) {
+    setTimeout(callback: TimerCallback, delay?: number, ...args: unknown[]): TimerRecord {
       const timer = { callback, delay, args, cleared: false };
       timeouts.push(timer);
       return timer;
     },
-    clearTimeout(timer) {
+    clearTimeout(timer?: TimerRecord): void {
       if (timer) timer.cleared = true;
     },
-    setInterval(callback, delay, ...args) {
+    setInterval(callback: TimerCallback, delay?: number, ...args: unknown[]): TimerRecord {
       const timer = { callback, delay, args, cleared: false };
       intervals.push(timer);
       return timer;
     },
-    clearInterval(timer) {
+    clearInterval(timer?: TimerRecord): void {
       if (timer) timer.cleared = true;
     },
   };
 
   vm.runInNewContext(transpiled, sandbox, { filename: sourcePath });
 
+  if (!isSelectionOverlayModule(moduleObject.exports)) {
+    throw new TypeError('selectionOverlay module did not export SelectionOverlayManager');
+  }
+
   return {
-    SelectionOverlayManager: sandbox.module.exports.SelectionOverlayManager,
+    SelectionOverlayManager: moduleObject.exports.SelectionOverlayManager,
     backgroundCalls,
     displays,
-    get elementAtProvider() {
+    get elementAtProvider(): ElementAtProviderMock | null {
       return elementAtProvider;
     },
-    get intervals() {
+    get intervals(): TimerRecord[] {
       return intervals;
     },
-    get timeouts() {
+    get timeouts(): TimerRecord[] {
       return timeouts;
     },
     ipcMain,
-    pressEscape() {
+    pressEscape(): void {
       const callback = registeredShortcuts.get('Escape');
-      assert.equal(typeof callback, 'function', 'Escape shortcut should be registered');
+      if (typeof callback !== 'function') {
+        throw new TypeError('Escape shortcut should be registered');
+      }
       callback();
     },
-    setCursor(point) {
+    setCursor(point: Point): void {
       cursorPoint = { ...point };
     },
-    setWindows(nextWindows) {
+    setWindows(nextWindows: WindowInfoLike[]): void {
       windowsList = nextWindows;
     },
-    stopTimers() {
+    stopTimers(): void {
       stopped = true;
       for (const timer of timeouts) timer.cleared = true;
       for (const timer of intervals) timer.cleared = true;
+      if (spaceUnsubscribeCalls < 0) throw new Error('unreachable unsubscribe counter state');
     },
-    async runTimeouts(delay) {
+    runTimeouts(delay: number): Promise<void> {
       for (const timer of timeouts) {
         if (!timer.cleared && timer.delay === delay) {
           timer.cleared = true;
           timer.callback(...timer.args);
         }
       }
-      await flushPromises();
+      return flushPromises();
     },
-    get stopped() {
+    get stopped(): boolean {
       return stopped;
     },
     windows: MockBrowserWindow.instances,
   };
 }
 
-function findWindowForDisplay(windows, display) {
+function findWindowForDisplay(
+  windows: MockBrowserWindow[],
+  display: DisplayLike,
+): MockBrowserWindow | undefined {
   return windows.find((win) => (
     win.bounds.x === display.bounds.x &&
     win.bounds.y === display.bounds.y &&
@@ -388,22 +569,28 @@ function findWindowForDisplay(windows, display) {
   ));
 }
 
-function senderEvent(win) {
+function senderEvent(win: MockBrowserWindow): SenderEvent {
   return { sender: win.webContents };
 }
 
-function ready(ipcMain, win) {
+function ready(ipcMain: IpcMainMock, win: MockBrowserWindow): void {
   ipcMain.emit('capture:ready', senderEvent(win));
 }
 
-function windowsPayload(win) {
+function windowsPayload(win: MockBrowserWindow): unknown {
   const sent = win.webContents.sent.filter((entry) => entry.channel === 'capture:windows');
   assert.ok(sent.length > 0, 'expected capture:windows payload');
-  return sent.at(-1).args[0];
+  const last = sent.at(-1);
+  assert.ok(last);
+  return last.args[0];
 }
 
-async function select(ipcMain, win, rect) {
-  return ipcMain.invoke('capture:region', senderEvent(win), rect);
+function select(
+  ipcMain: IpcMainMock,
+  win: MockBrowserWindow,
+  rect: Rect,
+): Promise<void> {
+  return ipcMain.invoke('capture:region', senderEvent(win), rect).then(expectNoIpcReturn);
 }
 
 test('show creates one overlay window per display using display DIP bounds', async () => {
@@ -431,9 +618,11 @@ test('show creates one overlay window per display using display DIP bounds', asy
   }
 
   for (const win of visibleWindows) ready(harness.ipcMain, win);
+  const target = findWindowForDisplay(visibleWindows, DISPLAYS[1]);
+  assert.ok(target);
   await select(
     harness.ipcMain,
-    findWindowForDisplay(visibleWindows, DISPLAYS[1]),
+    target,
     { x: 1, y: 2, w: 3, h: 4 },
   );
   await resultPromise;
@@ -482,10 +671,10 @@ test('windows payload and element-at results are translated into each sender win
   const globalWindow = { id: 99, name: 'Left App', x: -1260, y: 12, w: 300, h: 200 };
   const harness = loadSelectionOverlay({
     windows: [globalWindow],
-    elementAt(x, y) {
+    elementAt(x: number, y: number): WindowInfoLike {
       assert.equal(x, DISPLAYS[0].bounds.x + 40);
       assert.equal(y, DISPLAYS[0].bounds.y + 50);
-      return { x: -1240, y: 20, w: 90, h: 40, name: 'Button' };
+      return { x: -1240, y: 20, w: 90, h: 40, name: 'Button', id: 100 };
     },
   });
   const manager = new harness.SelectionOverlayManager();
@@ -506,8 +695,11 @@ test('windows payload and element-at results are translated into each sender win
     },
   ]);
 
-  assert.equal(typeof harness.elementAtProvider, 'function');
-  assert.deepEqual(plain(harness.elementAtProvider(senderEvent(left), 40, 50)), {
+  const elementAtProvider = harness.elementAtProvider;
+  if (!elementAtProvider) {
+    throw new TypeError('element-at provider should be registered');
+  }
+  assert.deepEqual(plain(elementAtProvider(senderEvent(left), 40, 50)), {
     x: 40,
     y: 20,
     w: 90,
@@ -552,6 +744,7 @@ test('cancel ignores unrelated senders, while active sender cancel and Escape se
 
   const firstResult = manager.show();
   const active = findWindowForDisplay(harness.windows, DISPLAYS[1]);
+  assert.ok(active);
   const standby = new MockBrowserWindow({ x: 0, y: 0, width: 1, height: 1 });
 
   harness.ipcMain.emit('capture:cancel', senderEvent(standby));
@@ -597,6 +790,7 @@ test('ready from standby sender does not activate or feed the active session', a
 
   const resultPromise = manager.show();
   const active = findWindowForDisplay(harness.windows, DISPLAYS[1]);
+  assert.ok(active);
   const standby = new MockBrowserWindow({ x: 0, y: 0, width: 1, height: 1 });
 
   ready(harness.ipcMain, standby);

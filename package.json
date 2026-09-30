@@ -19,11 +19,13 @@
     "build:linux": "electron-vite build && electron-builder --linux",
     "lint": "eslint --cache .",
     "lint:fix": "eslint --cache --fix .",
+    "test": "node --test tests/*.test.mts",
     "changelog": "changelogen --output CHANGELOG.md",
     "format": "prettier --write \"**/*.{md,json,yaml,yml,css,html}\" --ignore-path .prettierignore",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
-    "typecheck": "pnpm typecheck:node && pnpm typecheck:web",
+    "typecheck:tests": "tsc --noEmit -p tsconfig.tests.json",
+    "typecheck": "pnpm typecheck:node && pnpm typecheck:web && pnpm typecheck:tests",
     "commitlint": "commitlint --edit",
     "hermes:up": "docker compose up -d",
     "hermes:down": "docker compose down",
@@ -33,7 +35,7 @@
     "prepare": "husky"
   },
   "lint-staged": {
-    "*.{ts,tsx,js,jsx,mjs,cjs}": [
+    "*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}": [
       "eslint --cache --fix"
     ],
     "*.{md,json,yaml,yml,css,html}": [
