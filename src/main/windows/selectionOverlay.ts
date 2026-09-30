@@ -1,5 +1,5 @@
 import { BrowserWindow, globalShortcut, ipcMain, Notification, screen } from 'electron';
-import type { IpcMainEvent } from 'electron';
+import type { Display, IpcMainEvent } from 'electron';
 import log from 'electron-log/main';
 import {
   clearElementAtProvider,
@@ -36,6 +36,13 @@ const CHANNEL_CANCEL = 'capture:cancel';
 const CHANNEL_WINDOWS = 'capture:windows';
 const CHANNEL_READY = 'capture:ready';
 
+type DisplayOverlay = {
+  win: BrowserWindow;
+  display: Display;
+  ready: boolean;
+  fromStandby: boolean;
+};
+
 /**
  * 영역 선택 오버레이 — 풀스크린 transparent BrowserWindow lifecycle 관리.
  *
@@ -56,6 +63,7 @@ const CHANNEL_READY = 'capture:ready';
  */
 export class SelectionOverlayManager {
   private win: BrowserWindow | null = null;
+  private overlays: DisplayOverlay[] = [];
   private prewarmed: BrowserWindow | null = null;
   /** prewarm 된 renderer 가 capture:ready 를 이미 보냈는지 추적. */
   private prewarmedReady = false;
@@ -141,76 +149,47 @@ export class SelectionOverlayManager {
       }).show();
     }
 
-    // 커서가 있는 디스플레이만 덮는다.
-    const cursor = screen.getCursorScreenPoint();
-    const display = screen.getDisplayNearestPoint(cursor);
-    const minX = display.bounds.x;
-    const minY = display.bounds.y;
-    const totalWidth = display.bounds.width;
-    const totalHeight = display.bounds.height;
-
+    // 모니터별 독립 창을 띄우되 완료/취소는 하나의 선택 세션으로 처리한다.
+    // 기존 standby 창은 커서가 있는 모니터에 재사용한다.
+    const cursorDisplay = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+    const displays = screen.getAllDisplays();
     const shownAt = Date.now();
-    // [perf] 어떤 경로로 오버레이가 떴는지 — 첫 실행 콜드스타트 진단용.
     const perfPath = this.prewarmed
       ? (this.prewarmedReady ? 'prewarmed-ready' : 'prewarmed-loading')
       : 'cold';
-    log.info(`[perf] selectionOverlay show (${perfPath})`);
+    log.info(`[perf] selectionOverlay show (${perfPath}, ${displays.length} displays)`);
 
-    let win: BrowserWindow;
-    let skipReadyWait: boolean;
-    /** prewarm 의 invisible standby 에서 온 창인지 — 표시 방법이 갈린다. */
-    let fromStandby: boolean;
+    const overlays = displays.map((display): DisplayOverlay => {
+      const fromStandby = display.id === cursorDisplay.id && this.prewarmed !== null;
+      let win: BrowserWindow;
+      let ready = false;
+      if (fromStandby && this.prewarmed) {
+        win = this.prewarmed;
+        ready = this.prewarmedReady;
+        this.prewarmed = null;
+        this.prewarmedReady = false;
+        win.setBounds(display.bounds);
+      } else {
+        win = createOverlayWindow(display.bounds);
+        loadRendererPage(win, 'selection').catch((err: unknown) => {
+          console.error('[asis] selectionOverlay load failed', err);
+        });
+      }
+      return { win, display, ready, fromStandby };
+    });
+    this.overlays = overlays;
+    const focused = overlays.find((overlay) => overlay.display.id === cursorDisplay.id);
+    if (!focused) throw new Error('selectionOverlay: cursor display is unavailable');
+    this.win = focused.win;
 
-    if (this.prewarmed) {
-      win = this.prewarmed;
-      skipReadyWait = this.prewarmedReady;
-      fromStandby = true;
-      this.prewarmed = null;
-      this.prewarmedReady = false;
-      // pre-warm 시점과 다른 디스플레이일 수 있으므로 bounds 갱신.
-      win.setBounds({ x: minX, y: minY, width: totalWidth, height: totalHeight });
-    } else {
-      // pre-warm 이 완료되기 전에 단축키를 눌렀을 때 폴백 경로.
-      win = createOverlayWindow();
-      skipReadyWait = false;
-      fromStandby = false;
-      loadRendererPage(win, 'selection').catch((err: unknown) => {
-        console.error('[asis] selectionOverlay load failed', err);
+    // 어느 오버레이도 표시되기 전에 모니터별 배경 캡처를 시작한다.
+    for (const { win, display } of overlays) {
+      sendBackgroundSnapshot(win, display, true).then(() => {
+        log.info(`[perf] selectionOverlay background ${display.id} +${Date.now() - shownAt}ms`);
+      }).catch((err: unknown) => {
+        console.warn('[asis] background 캡처 실패 (color picker 비활성):', err);
       });
     }
-
-    this.win = win;
-
-    win.webContents.on('did-fail-load', (_e, code, desc, url) => {
-      console.error(
-        `[asis] selectionOverlay did-fail-load code=${code} desc=${desc} url=${url}`,
-      );
-    });
-
-    // background 캡처를 표시보다 먼저 시작 — CG 캡처는 .async 디스패치 후 ~1ms 내
-    // worker 에서 프레임을 잡고, 아래 opacity/show 커밋은 다음 컴포지터 프레임에
-    // 반영되므로 캡처에 오버레이 dim 이 찍히지 않는다.
-    const displayRef = {
-      id: display.id,
-      bounds: { x: minX, y: minY, width: totalWidth, height: totalHeight },
-    };
-    sendBackgroundSnapshot(win, displayRef, true).then(() => {
-      log.info(`[perf] selectionOverlay background 캡처 완료 +${Date.now() - shownAt}ms`);
-    }).catch((err: unknown) => {
-      console.warn('[asis] background 캡처 실패 (color picker 비활성):', err);
-    });
-
-    // 오버레이 표시 — standby 는 이미 order-in 상태라 opacity 복원(컴포지터 속성
-    // 변경 1프레임)만으로 즉시 뜬다. cold 폴백만 일반 show() 경로.
-    if (fromStandby) {
-      win.setIgnoreMouseEvents(false);
-      win.setOpacity(1);
-      win.focus();
-    } else {
-      win.show();
-      win.focus();
-    }
-    win.webContents.focus();
 
     // 다음 회차 pre-warm — BrowserWindow 동기 생성이 bg 캡처 완료 콜백보다 먼저
     // main thread 를 점유하지 않도록 캡처가 끝난 뒤(~300ms)로 미룬다. overlay 가
@@ -219,67 +198,27 @@ export class SelectionOverlayManager {
     const REPREWARM_DELAY_MS = 300;
     setTimeout(() => this.prewarm(), REPREWARM_DELAY_MS);
 
-    // macOS 26β 에서 transparent+alwaysOnTop 윈도우가 자동 focus 못 받는 회귀.
-    win.once('ready-to-show', () => {
-      win.focus();
-      win.webContents.focus();
-    });
-
-    // windows 목록 전송 전략:
-    //   - 캐시 있음 + renderer ready → 즉시 전송 (0ms 지연)
-    //   - 캐시 없음 or renderer not ready → ready 대기 후 전송
-    // 전송 이후 백그라운드에서 fresh 조회 → 갱신 전송 (windoslist 변동 반영).
-    // 전역 스크린 좌표 → 오버레이 로컬 좌표 변환.
-    // CHANNEL_ELEMENT_AT 가 이미 minX/minY 를 빼듯, windows 도 동일하게 보정한다.
-    // 다중 디스플레이에서 왼쪽/위 디스플레이의 창이 음수 좌표로 오면
-    // 렌더러 pointer(로컬)와 비교할 때 완전히 불일치하는 버그를 방지.
-    const toLocal = (w: WindowInfo): WindowInfo => ({
-      ...w,
-      x: w.x - minX,
-      y: w.y - minY,
-    });
-
+    // 전역 윈도우 좌표를 각 모니터의 로컬 CSS 좌표로 변환한다.
     const sendWindows = (windows: WindowInfo[]): void => {
-      if (!win.isDestroyed()) {
-        // Dock 아이콘들도 함께 — 단, 매 전송마다 AX IPC(getDockItems)를 돌면
-        // show 직후 main thread 를 점유해 bg 캡처 완료 콜백을 밀어내므로
-        // listWindows 갱신 시점에 함께 캐시해 둔 값을 쓴다.
-        win.webContents.send(
-          CHANNEL_WINDOWS,
-          [...windows, ...this.cachedDock].map(toLocal),
-        );
+      for (const { win, display, ready } of overlays) {
+        if (win.isDestroyed() || !ready) continue;
+        win.webContents.send(CHANNEL_WINDOWS, [...windows, ...this.cachedDock].map((w) => ({
+          ...w,
+          x: w.x - display.bounds.x,
+          y: w.y - display.bounds.y,
+        })));
       }
     };
 
-    // 이 세션 창의 ready 리스너 해제 함수 — settle 에서 정확히 이것만 지운다.
-    // removeAllListeners(CHANNEL_READY) 를 쓰면 재-prewarm 의 ready 리스너까지
-    // 지워져 다음 show 가 prewarmed-loading 으로 오판된다.
-    let removeShowReadyListener: (() => void) | null = null;
-
-    if (skipReadyWait && this.cachedWindows) {
-      // 가장 빠른 경로: 캐시된 목록을 즉시 전송.
-      sendWindows(this.cachedWindows);
-    } else {
-      // renderer ready 를 기다린 뒤 전송 — *이 창의 sender* 로만 판정
-      // (prewarm 창의 ready 가 먼저 와도 오인하지 않도록).
-      const readyPromise: Promise<void> = skipReadyWait
-        ? Promise.resolve()
-        : new Promise<void>((resolve) => {
-          const onReady = (event: IpcMainEvent): void => {
-            if (event.sender !== win.webContents) return;
-            ipcMain.removeListener(CHANNEL_READY, onReady);
-            resolve();
-          };
-          ipcMain.on(CHANNEL_READY, onReady);
-          removeShowReadyListener = () => ipcMain.removeListener(CHANNEL_READY, onReady);
-        });
-      readyPromise.then(() => {
-        log.info(`[perf] selectionOverlay renderer ready +${Date.now() - shownAt}ms (${perfPath})`);
-        if (this.cachedWindows) sendWindows(this.cachedWindows);
-      }).catch((err: unknown) => {
-        console.warn('[asis] selectionOverlay ready wait 실패:', err);
-      });
-    }
+    // 현재 세션의 ready 리스너만 해제한다. 다음 standby 의 리스너는 유지한다.
+    const onReady = (event: IpcMainEvent): void => {
+      const overlay = overlays.find(({ win }) => event.sender === win.webContents);
+      if (!overlay || overlay.win.isDestroyed()) return;
+      overlay.ready = true;
+      if (this.cachedWindows) sendWindows(this.cachedWindows);
+    };
+    ipcMain.on(CHANNEL_READY, onReady);
+    if (this.cachedWindows) sendWindows(this.cachedWindows);
 
     // 백그라운드에서 fresh windows 조회 → 갱신 전송.
     // listWindows() 의 동기 FFI 가 bg 캡처 파이프라인(child close → readFile →
@@ -287,7 +226,7 @@ export class SelectionOverlayManager {
     // 시점(~150ms) 이후로 지연한다. 그동안 스냅 UI 는 위의 캐시본으로 동작한다.
     const FRESH_WINDOWS_DELAY_MS = 150;
     setTimeout(() => {
-      if (win.isDestroyed()) return;
+      if (overlays.every(({ win }) => win.isDestroyed())) return;
       listWindows().then((windows) => {
         this.cachedWindows = windows;
         this.cachedDock = getDockItems() ?? [];
@@ -307,7 +246,7 @@ export class SelectionOverlayManager {
     const BG_POLL_MS = 2500;
 
     const windowsPoll = setInterval(() => {
-      if (win.isDestroyed()) {
+      if (overlays.every(({ win }) => win.isDestroyed())) {
         clearInterval(windowsPoll);
         return;
       }
@@ -323,9 +262,9 @@ export class SelectionOverlayManager {
     // Space 전환 애니메이션(~300ms) 직후에 listWindows 가 새 Space 의 창을
     // 반환하므로 350ms delay 추가 호출도 한다.
     const unsubSpaceChange = onSpaceChange(() => {
-      if (win.isDestroyed()) return;
+      if (overlays.every(({ win }) => win.isDestroyed())) return;
       const refresh = (): void => {
-        if (win.isDestroyed()) return;
+        if (overlays.every(({ win }) => win.isDestroyed())) return;
         listWindows().then((updated) => {
           this.cachedWindows = updated;
           this.cachedDock = getDockItems() ?? [];
@@ -336,8 +275,12 @@ export class SelectionOverlayManager {
       setTimeout(refresh, 350);
       // background 도 같이 — Space 전환 직후 magnifier 픽셀 stale 방지.
       setTimeout(() => {
-        if (win.isDestroyed()) return;
-        sendBackgroundSnapshot(win, displayRef).catch(() => { /* bgPoll 이 복구 */ });
+        if (overlays.every(({ win }) => win.isDestroyed())) return;
+        for (const { win, display } of overlays) {
+          if (!win.isDestroyed()) {
+            sendBackgroundSnapshot(win, display).catch(() => { /* bgPoll 이 복구 */ });
+          }
+        }
       }, 350);
     });
 
@@ -348,13 +291,14 @@ export class SelectionOverlayManager {
     let bgCaptureInFlight = false;
     let bgPollFailureLogged = false;
     const bgPoll = setInterval(() => {
-      if (win.isDestroyed()) {
+      if (overlays.every(({ win }) => win.isDestroyed())) {
         clearInterval(bgPoll);
         return;
       }
       if (bgCaptureInFlight) return;
       bgCaptureInFlight = true;
-      sendBackgroundSnapshot(win, displayRef)
+      Promise.all(overlays.filter(({ win }) => !win.isDestroyed())
+        .map(({ win, display }) => sendBackgroundSnapshot(win, display)))
         .catch((err: unknown) => {
           if (!bgPollFailureLogged) {
             console.warn('[asis] background polling 실패 (이후 silent):', err);
@@ -370,7 +314,9 @@ export class SelectionOverlayManager {
     // element-at 는 전역 핸들러 + provider 교체 (common.ts) — 이 세션 창의
     // invoke 만 응답하고, standby/종료 직후 잔여 invoke 는 null 로 조용히 처리.
     const elementAtProvider: ElementAtProvider = (event, x, y) => {
-      if (event.sender !== win.webContents) return null;
+      const overlay = overlays.find(({ win }) => event.sender === win.webContents);
+      if (!overlay || overlay.win.isDestroyed()) return null;
+      const { x: minX, y: minY } = overlay.display.bounds;
       const result = getElementBoundsAtPoint(x + minX, y + minY);
       if (!result) return null;
       return {
@@ -390,17 +336,18 @@ export class SelectionOverlayManager {
         settled = true;
         ipcMain.removeHandler(CHANNEL_REGION);
         clearElementAtProvider(elementAtProvider);
-        ipcMain.removeAllListeners(CHANNEL_CANCEL);
+        ipcMain.removeListener(CHANNEL_CANCEL, onCancel);
         // 이 세션 창의 ready 리스너만 해제 — removeAllListeners 금지 (위 주석 참고).
-        removeShowReadyListener?.();
+        ipcMain.removeListener(CHANNEL_READY, onReady);
         globalShortcut.unregister(ESC_ACCEL);
         clearInterval(windowsPoll);
         clearInterval(bgPoll);
         unsubSpaceChange();
-        if (!win.isDestroyed()) {
-          win.close();
-        }
         this.win = null;
+        this.overlays = [];
+        for (const { win } of overlays) {
+          if (!win.isDestroyed()) win.close();
+        }
         resolve(result);
       };
 
@@ -413,18 +360,48 @@ export class SelectionOverlayManager {
         );
       }
 
-      ipcMain.handleOnce(CHANNEL_REGION, (_event, rect: Rect) => {
-        settle({ kind: 'selected', rect: { ...rect, x: rect.x + minX, y: rect.y + minY } });
+      // standby 의 무관한 IPC 가 핸들러를 소모하지 않도록 sender 를 확인한다.
+      ipcMain.handle(CHANNEL_REGION, (event, rect: Rect) => {
+        const overlay = overlays.find(({ win }) => event.sender === win.webContents);
+        if (!overlay || overlay.win.isDestroyed()) return;
+        const { x, y, width, height } = overlay.display.bounds;
+        // 일반 드래그는 한 모니터 안으로 제한한다. 윈도우 스냅은 기존 동작을 유지한다.
+        const left = Math.max(0, Math.min(rect.x, width));
+        const top = Math.max(0, Math.min(rect.y, height));
+        const right = Math.max(left, Math.min(rect.x + rect.w, width));
+        const bottom = Math.max(top, Math.min(rect.y + rect.h, height));
+        const localRect = rect.windowId !== undefined
+          ? rect
+          : { ...rect, x: left, y: top, w: right - left, h: bottom - top };
+        if (localRect.w <= 0 || localRect.h <= 0) return;
+        settle({ kind: 'selected', rect: { ...localRect, x: localRect.x + x, y: localRect.y + y } });
       });
 
-      ipcMain.once(CHANNEL_CANCEL, () => {
-        settle({ kind: 'canceled' });
-      });
+      const onCancel = (event: IpcMainEvent): void => {
+        if (overlays.some(({ win }) => event.sender === win.webContents)) {
+          settle({ kind: 'canceled' });
+        }
+      };
+      ipcMain.on(CHANNEL_CANCEL, onCancel);
 
-      win.on('closed', () => {
-        this.win = null;
-        settle({ kind: 'canceled' });
-      });
+      // 모든 핸들러 등록 후 표시하고, 커서가 있는 모니터의 창에만 focus 한다.
+      for (const { win, fromStandby } of overlays) {
+        win.on('closed', () => settle({ kind: 'canceled' }));
+        win.once('ready-to-show', () => {
+          if (this.win === win && !win.isDestroyed()) {
+            win.focus();
+            win.webContents.focus();
+          }
+        });
+        if (fromStandby) {
+          win.setIgnoreMouseEvents(false);
+          win.setOpacity(1);
+        } else {
+          win.showInactive();
+        }
+      }
+      focused.win.focus();
+      focused.win.webContents.focus();
     });
   }
 
@@ -434,10 +411,10 @@ export class SelectionOverlayManager {
       this.prewarmed.close();
     }
     this.prewarmed = null;
-    if (!this.win) return;
-    if (!this.win.isDestroyed()) {
-      this.win.close();
+    for (const { win } of this.overlays) {
+      if (!win.isDestroyed()) win.close();
     }
+    this.overlays = [];
     this.win = null;
   }
 
@@ -458,10 +435,10 @@ export class SelectionOverlayManager {
  * prewarm / cold-start 양쪽에서 동일한 옵션으로 생성한다.
  * show: false — 명시적 win.show() 전까지 숨김 (prewarm 상태 유지).
  */
-function createOverlayWindow(): BrowserWindow {
-  const cursor = screen.getCursorScreenPoint();
-  const display = screen.getDisplayNearestPoint(cursor);
-  const { x, y, width, height } = display.bounds;
+function createOverlayWindow(
+  bounds = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).bounds,
+): BrowserWindow {
+  const { x, y, width, height } = bounds;
 
   const win = new BrowserWindow({
     x,
