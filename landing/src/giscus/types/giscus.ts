@@ -16,8 +16,11 @@ export type GiscusConfig = {
 export const GISCUS_REPO = 'KimKyuHoi/ASIS';
 export const GISCUS_REPO_ID = 'R_kgDOSQhz7A';
 
-/** 사이트가 다크 단색 배경(#0d0d0f)이라 투명 다크 테마로 자연스럽게 녹인다. */
-export const GISCUS_THEME = 'transparent_dark';
+/** 사이트 테마(라이트/다크)별 giscus 테마. 다크는 배경이 비치는 투명 다크로 녹인다. */
+export const GISCUS_THEMES = {
+  light: 'light',
+  dark: 'transparent_dark',
+} as const;
 
 /**
  * 아래 term 은 giscus Discussion 스레드에 매핑되는 "식별자"다(mapping='specific').

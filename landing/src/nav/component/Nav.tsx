@@ -4,11 +4,15 @@ import { NAV_ITEMS, type Route } from '../types/route';
 import { NAV_STRINGS } from '../lib/strings';
 import { useLanguage } from '../../i18n/hook/useLanguage';
 import { setLanguage } from '../../i18n/lib/language';
+import { useResolvedTheme } from '../../theme/hook/useTheme';
+import { setThemePreference } from '../../theme/lib/theme';
 
 export function Nav({ route }: { route: Route }): React.JSX.Element {
   const [scrolled, setScrolled] = useState(false);
   const lang = useLanguage();
   const t = NAV_STRINGS[lang];
+  const theme = useResolvedTheme();
+  const themeLabel = theme === 'dark' ? t.themeToLight : t.themeToDark;
 
   useEffect(() => {
     const handler = (): void => setScrolled(window.scrollY > 48);
@@ -53,6 +57,24 @@ export function Nav({ route }: { route: Route }): React.JSX.Element {
           <span className={`nav-lang-opt${lang === 'ko' ? ' nav-lang-opt--active' : ''}`}>KO</span>
           <span className="nav-lang-sep">/</span>
           <span className={`nav-lang-opt${lang === 'en' ? ' nav-lang-opt--active' : ''}`}>EN</span>
+        </button>
+        <button
+          type="button"
+          className="nav-theme"
+          onClick={() => setThemePreference(theme === 'dark' ? 'light' : 'dark')}
+          aria-label={themeLabel}
+          title={themeLabel}
+        >
+          {theme === 'dark' ? (
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <circle cx="8" cy="8" r="3.2" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          ) : (
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M13.5 9.6A5.6 5.6 0 0 1 6.4 2.5a5.6 5.6 0 1 0 7.1 7.1z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+            </svg>
+          )}
         </button>
         <a
           href="https://github.com/KimKyuHoi/ASIS"

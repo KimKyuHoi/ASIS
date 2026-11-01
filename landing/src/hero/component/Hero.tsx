@@ -8,54 +8,62 @@ type HeroProps = {
   version: string
 };
 
-function AppMockup({ label }: { label: string }): React.JSX.Element {
+// 툴바 아이콘 순서는 앱 에디터 툴바(src/shared/editor-hotkeys.ts EDITOR_TOOLS)와 같다.
+const TOOL_ICONS = ['↖', '□', '○', '→', '╱', '✎', 'T', '①', '▬', '◌', '▦', '⌫'];
+const ACTIVE_TOOL = 1;
+// 목업 속 "캡처된 화면" 의 코드 줄 — 너비(%)와 강조 종류만 데코로 고정한다.
+const CODE_LINES: [number, string][] = [
+  [45, 'accent'], [70, ''], [55, ''], [80, ''], [30, 'green'],
+  [65, ''], [50, ''], [75, ''], [40, 'red'], [60, ''],
+];
+
+type AppMockupProps = { label: string; title: string; copy: string };
+
+function AppMockup({ label, title, copy }: AppMockupProps): React.JSX.Element {
   return (
     <div className="mockup">
       <div className="mockup-chrome">
-        <span className="dot dot-red" />
-        <span className="dot dot-yellow" />
-        <span className="dot dot-green" />
-        <div className="mockup-tools-row">
-          {['↖', '□', '○', '→', 'T', '✏', '◎', '⌫'].map((icon) => (
-            <span key={icon} className="tool-icon">{icon}</span>
-          ))}
-        </div>
+        <span className="traffic">
+          <span className="dot dot-red" />
+          <span className="dot dot-yellow" />
+          <span className="dot dot-green" />
+        </span>
+        <span className="mockup-title">{title}</span>
       </div>
-      <div className="mockup-body">
-        <div className="mockup-toolbar">
-          {['↖', '□', '○', '╱', '→', 'T', '✏', '◉', '▦', '⌫'].map((icon, i) => (
-            <span key={i} className={`sidebar-tool${i === 1 ? ' sidebar-tool--active' : ''}`}>
+      <div className="mockup-toolbar">
+        <div className="mockup-tools">
+          {TOOL_ICONS.map((icon, i) => (
+            <span key={icon} className={`mockup-tool${i === ACTIVE_TOOL ? ' mockup-tool--active' : ''}`}>
               {icon}
             </span>
           ))}
         </div>
-        <div className="mockup-canvas">
-          <div className="mock-screenshot">
-            <div className="mock-ss-topbar">
-              <div className="mock-dot" /><div className="mock-dot" /><div className="mock-dot" />
-            </div>
-            <div className="mock-ss-body">
-              <div className="mock-code-line" style={{ width: '45%', background: '#58a6ff33' }} />
-              <div className="mock-code-line" style={{ width: '70%', background: '#e8e8f015' }} />
-              <div className="mock-code-line" style={{ width: '55%', background: '#e8e8f015' }} />
-              <div className="mock-code-line" style={{ width: '80%', background: '#e8e8f015' }} />
-              <div className="mock-code-line" style={{ width: '30%', background: '#3fb95033' }} />
-              <div className="mock-code-line" style={{ width: '65%', background: '#e8e8f015' }} />
-              <div className="mock-code-line" style={{ width: '50%', background: '#e8e8f015' }} />
-              <div className="mock-code-line" style={{ width: '75%', background: '#e8e8f015' }} />
-              <div className="mock-code-line" style={{ width: '40%', background: '#ff453a33' }} />
-              <div className="mock-code-line" style={{ width: '60%', background: '#e8e8f015' }} />
-            </div>
+        <span className="mockup-action">📌</span>
+        <span className="mockup-action mockup-action--primary">{copy}</span>
+      </div>
+      <div className="mockup-canvas">
+        <div className="mock-screenshot">
+          <div className="mock-ss-topbar">
+            <div className="mock-dot" /><div className="mock-dot" /><div className="mock-dot" />
           </div>
-          <div className="anno-rect" />
-          <div className="anno-arrow">
-            <svg viewBox="0 0 80 40" fill="none">
-              <path d="M4 20 L60 20 M48 8 L62 20 L48 32" stroke="#5ea2ff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+          <div className="mock-ss-body">
+            {CODE_LINES.map(([width, tone], i) => (
+              <div
+                key={i}
+                className={`mock-code-line${tone ? ` mock-code-line--${tone}` : ''}`}
+                style={{ width: `${width}%` }}
+              />
+            ))}
           </div>
-          <div className="anno-label">{label}</div>
-          <div className="anno-number">1</div>
         </div>
+        <div className="anno-rect" />
+        <div className="anno-arrow">
+          <svg viewBox="0 0 80 40" fill="none">
+            <path d="M4 20 L60 20 M48 8 L62 20 L48 32" stroke="var(--anno-red)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </div>
+        <div className="anno-label">{label}</div>
+        <div className="anno-number">1</div>
       </div>
     </div>
   );
@@ -160,7 +168,7 @@ export function Hero({ downloadHref, version }: HeroProps): React.JSX.Element {
           transition={{ duration: 0.9, delay: 0.5, ease: [0.32, 0.72, 0, 1] }}
         >
           <div className="mockup-glow" />
-          <AppMockup label={t.mockupLabel} />
+          <AppMockup label={t.mockupLabel} title={t.mockupTitle} copy={t.mockupCopy} />
         </motion.div>
       </motion.div>
     </section>

@@ -37,7 +37,7 @@
     transform 0.2s var(--ease);
 }
 .fd-card:hover {
-  border-color: rgba(94, 162, 255, 0.3);
+  border-color: var(--accent-line);
   transform: translateY(-2px);
 }
 .fd-card-head {
@@ -55,7 +55,7 @@
   justify-content: center;
   border-radius: 9px;
   background: var(--accent-dim);
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 18px;
 }
 .fd-card-heading {
@@ -83,7 +83,7 @@
   padding-left: 16px;
   font-size: 14px;
   line-height: 1.55;
-  color: rgba(232, 232, 240, 0.82);
+  color: var(--text-2);
 }
 .fd-card-details li::before {
   content: '';
@@ -134,7 +134,7 @@
 }
 .fd-table-action {
   font-size: 14px;
-  color: rgba(232, 232, 240, 0.85);
+  color: var(--text-2);
 }
 
 .fd-perm-list {

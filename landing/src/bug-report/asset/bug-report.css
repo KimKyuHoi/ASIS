@@ -34,8 +34,8 @@
   flex-shrink: 0;
   border-radius: 50%;
   background: var(--accent-dim);
-  border: 1px solid rgba(94, 162, 255, 0.25);
-  color: var(--accent);
+  border: 1px solid var(--accent-line);
+  color: var(--accent-text);
   font-size: 12px;
   font-weight: 700;
   display: flex;
@@ -62,7 +62,7 @@
   color: var(--muted);
 }
 .bug-link {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .bug-link:hover {
   text-decoration: underline;

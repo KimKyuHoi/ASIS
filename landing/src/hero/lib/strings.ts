@@ -11,31 +11,37 @@ type HeroStrings = {
   downloadLabel: string
   githubLabel: string
   compat: string
-  /** 데코용 목업 안의 어노테이션 라벨. */
+  /** 데코용 목업 안의 어노테이션 라벨·창 제목·복사 버튼. */
   mockupLabel: string
+  mockupTitle: string
+  mockupCopy: string
 };
 
 export const HERO_STRINGS = defineDict<HeroStrings>({
   ko: {
-    badge: '무료 · 오픈소스 · macOS 전용',
-    titleLine1: ['스크린샷을'],
-    titleLine2: ['더', '빠르게.'],
-    subLine1: '캡처하고, 그 위에 바로 화살표·도형·텍스트를 그리고,',
-    subLine2: '클립보드로 복사하거나 화면에 핀으로 고정하세요.',
+    badge: '무료 · 오픈소스 · macOS 전용 · 한국어/English',
+    titleLine1: ['보여주고', '싶은', '화면을,'],
+    titleLine2: ['있는', '그대로.'],
+    subLine1: '캡처·GIF·스텝 가이드를 찍고, 그 위에 바로 주석을 달아',
+    subLine2: '클립보드로 복사하거나 공유하거나 화면에 핀으로 고정하세요.',
     downloadLabel: 'macOS 다운로드',
     githubLabel: 'GitHub에서 보기 →',
     compat: 'macOS 13 Ventura 이상 · Apple Silicon & Intel',
     mockupLabel: 'API 수정 필요',
+    mockupTitle: 'ASIS — 주석',
+    mockupCopy: '복사',
   },
   en: {
-    badge: 'Free · Open source · macOS only',
-    titleLine1: ['Screenshots,'],
-    titleLine2: ['done', 'faster.'],
-    subLine1: 'Capture, then draw arrows, shapes, and text right on top —',
-    subLine2: 'copy it to your clipboard or pin it on top of your screen.',
+    badge: 'Free · Open source · macOS only · English/한국어',
+    titleLine1: ['Show', 'your', 'screen'],
+    titleLine2: ['as', 'it', 'is.'],
+    subLine1: 'Capture screenshots, GIFs, and step guides, mark them up,',
+    subLine2: 'then copy, share, or pin them on top of your screen.',
     downloadLabel: 'Download for macOS',
     githubLabel: 'View on GitHub →',
     compat: 'macOS 13 Ventura or later · Apple Silicon & Intel',
     mockupLabel: 'Fix the API',
+    mockupTitle: 'ASIS — Annotate',
+    mockupCopy: 'Copy',
   },
 });
