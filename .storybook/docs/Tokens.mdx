@@ -1,0 +1,94 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Guides/Tokens" />
+
+# 토큰 사용 규칙
+
+파일: `src/renderer/design-system/asset/tokens.css` — 값을 정의하는 곳은 이 파일 **하나뿐**이다.
+도메인 `styles.css` 는 맨 위에서 `@import '../../design-system/asset/base.css';` 한 줄만 쓴다.
+
+## 3단 구조
+
+<table>
+  <thead><tr><th>층</th><th>접두사</th><th>누가 쓰나</th><th>예</th></tr></thead>
+  <tbody>
+    <tr><td>Primitive</td><td>`--p-*`</td><td>tokens.css 안에서만</td><td>`--p-orange-500`, `--p-aqua-label`, `--p-darkaqua-window`</td></tr>
+    <tr><td>Semantic</td><td>용도 이름</td><td>**도메인 CSS**</td><td>`--text-secondary`, `--surface-window`, `--accent`, `--space-3`</td></tr>
+    <tr><td>Component</td><td>`--btn-*`, `--toggle-*` …</td><td>디자인 시스템 컴포넌트 CSS</td><td>`--btn-primary-bg`, `--slider-fill`</td></tr>
+  </tbody>
+</table>
+
+라이트와 다크는 시맨틱 층에서 `light-dark(라이트값, 다크값)` 으로 고른다. 이 함수는 **사용 지점의 `color-scheme`** 으로 풀린다.
+그래서 `data-appearance="dark"` 를 아무 요소에 걸어도 그 아래는 다크가 된다. HUD 컴포넌트는 스스로 `color-scheme: dark` 를 건다.
+
+## 무엇을 토큰으로 쓰나 — 날값 금지 목록
+
+<table>
+  <thead><tr><th>속성</th><th>써야 하는 토큰</th></tr></thead>
+  <tbody>
+    <tr><td>색 (color, background, border, shadow 색)</td><td>`--text-*`, `--surface-*`, `--border-*`, `--accent*`, `--danger*`/`--success*`/`--warning*`, `--hud-*`, 시스템 색 `--red` …</td></tr>
+    <tr><td>font-size</td><td>`--text-title1/2/3`, `--text-body`, `--text-callout`, `--text-subhead`, `--text-footnote`</td></tr>
+    <tr><td>font-weight</td><td>`--weight-regular/medium/semibold/bold`</td></tr>
+    <tr><td>font-family</td><td>`--font-ui`, `--font-mono`</td></tr>
+    <tr><td>line-height</td><td>`--leading-body`, `--leading-tight`, `--leading-relaxed`</td></tr>
+    <tr><td>margin / padding / gap</td><td>`--space-0`, `--space-half`(2) `--space-1`(4) … `--space-10`(40)</td></tr>
+    <tr><td>컨트롤 높이·아이콘 크기</td><td>`--size-control-sm/…/lg`, `--size-icon-*`, `--size-row`, `--size-titlebar`, `--size-hit-min`</td></tr>
+    <tr><td>border-radius</td><td>`--radius-chip` < `--radius-control` < `--radius-group` < `--radius-window`, `--radius-capsule`, `--radius-round`</td></tr>
+    <tr><td>선 두께</td><td>`--border-hairline`(0.5) `--border-thin`(1) `--border-thick`(2)</td></tr>
+    <tr><td>box-shadow</td><td>`--shadow-raised`, `--shadow-floating`, `--hud-shadow`</td></tr>
+    <tr><td>opacity</td><td>`--opacity-disabled`, `--opacity-muted`</td></tr>
+    <tr><td>z-index</td><td>`--z-raised` < `--z-sticky` < `--z-popover` < `--z-overlay` < `--z-toast` < `--z-tooltip`</td></tr>
+    <tr><td>transition / animation</td><td>`--duration-fast/mid/slow`, `--ease-mac`</td></tr>
+    <tr><td>포커스</td><td>`--focus-ring`, `--focus-ring-width` — `:focus-visible` 은 base.css 가 이미 처리</td></tr>
+  </tbody>
+</table>
+
+## 색 고르기
+
+- 글자색은 `--text-*` 만 쓴다. `--label-secondary` 처럼 AppKit 이름을 그대로 딴 토큰은 원값이다. 라이트에서 4.5:1 이 안 나오므로 새 코드에는 쓰지 않는다.
+- `--danger`·`--success`·`--warning`·`--accent` 는 **면·아이콘용**이다. 글자에는 `--text-danger`·`--text-link`·`--accent-tint-text` 를 쓴다.
+- 강조색 면 위 글자는 `--accent-text`(흰색)다. 당근처럼 브랜드 오렌지를 그대로 살리려고 대비보다 색을 우선했다(흰 글자 2.8:1, AA 의도적 미적용). 진한 글자가 꼭 필요한 곳은 `--p-ink`(6.3:1)를 쓸 수 있다.
+- 바탕·라벨·채움은 **따뜻한 중립**이다. 크림빛 흰 바탕과 갈색 기운 회색을 쓴다(`--p-warm-*`). AppKit 실측 회색(`--p-aqua-*`)은 참고용으로만 남긴다.
+- 하위 요소에서 시맨틱 토큰을 덮어쓸 때는 그 요소에 `data-ds-scope` 를 붙인다. 그래야 컴포넌트 토큰(`--btn-*` …)이 그 범위에서 다시 풀린다. 커스텀 속성의 var() 는 선언된 요소에서 풀리기 때문이다.
+- 오렌지는 **선택·켜짐·기본 동작**에만 쓴다. 넓게 칠해야 하면 `--accent-tint` 를 쓴다.
+
+## 오렌지 램프
+
+<table>
+  <thead><tr><th>단계</th><th>값</th><th>용도</th></tr></thead>
+  <tbody>
+    <tr><td>100</td><td>`#ffe6d4`</td><td>라이트 틴트 면 (눌린 도구·배지·선택 행)</td></tr>
+    <tr><td>400</td><td>`#ff8f4a`</td><td>다크 글자색 (링크·틴트 위 글자) — 다크 바탕 7.4:1</td></tr>
+    <tr><td>500</td><td>`#ff6f0f`</td><td>브랜드 기준색 — 기본 버튼 면(흰 글자)·체크·스위치·슬라이더·포커스 링 (라이트·다크 공통)</td></tr>
+    <tr><td>600</td><td>`#ef6410`</td><td>눌린 기본 버튼</td></tr>
+    <tr><td>700</td><td>`#d9530b`</td><td>(예비)</td></tr>
+    <tr><td>800</td><td>`#c2470a`</td><td>진한 주황이 필요한 곳 (예비)</td></tr>
+    <tr><td>900</td><td>`#a63c0a`</td><td>라이트 글자색 (링크·틴트 위 글자) — 흰 바탕 6.4:1</td></tr>
+  </tbody>
+</table>
+
+## 대비 검증
+
+Storybook **Foundations → Contrast** 는 각 판 안에서 토큰을 실제로 풀어 WCAG 2.1 대비를 계산한다
+(`lib/contrast.ts`, `lib/contrast-pairs.ts`). "예외"는 AppKit 대비를 일부러 유지한 장식용 경계선이다.
+**대비 증가** 모드에서는 이 경계선이 3:1 이상으로 올라간다.
+
+## 토큰 감사 — 날값을 기계로 잡는다
+
+```bash
+node src/renderer/design-system/lib/token-audit.mts            # renderer 전체 보고
+node src/renderer/design-system/lib/token-audit.mts --strict   # error 가 있으면 exit 1
+node src/renderer/design-system/lib/token-audit.mts src/renderer/settings
+```
+
+- **error**: 색 리터럴(hex·rgb·이름), font-size·weight·family, radius, box-shadow, z-index, duration
+- **warn**: line-height, 이징 리터럴, opacity, 2px 이상 날 간격
+- 정말 필요한 날값은 같은 줄이나 윗줄에 `/* token-ok: 이유 */` 를 단다 (예: 슬라이더 최소 폭).
+- `var(--x)` 참조와 `url(...)` 안은 검사하지 않는다. 지역 변수 정의(`--foo: …`)도 통과한다. 지역 변수에 날값을 숨기는 것은 리뷰에서 잡는다.
+
+## 컴포넌트 규칙
+
+- 도메인은 `design-system/component` 의 `index.ts` 에서만 import 한다. 각 컴포넌트는 자기 CSS 를 스스로 import 한다.
+- 모든 컴포넌트에 키보드 포커스 링(`:focus-visible`)과 `prefers-reduced-motion` 처리가 있다. 이름이 필요한 컨트롤은 prop 으로 강제한다 (`IconButton.label`, `Toolbar.label`, `SegmentedControl.label`).
+- 섹션 제목은 문장형으로 쓴다. 대문자에 자간을 넓히는 스타일은 macOS 관례가 아니어서 쓰지 않는다.
+- 문구는 동작 이름 그대로 쓴다. "복사" 버튼을 누르면 "복사했습니다" 를 띄운다. 오류에는 무엇이 틀렸고 어떻게 고치는지를 쓴다.

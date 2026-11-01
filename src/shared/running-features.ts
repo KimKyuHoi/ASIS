@@ -7,8 +7,7 @@
  * 진행 중인 녹화를 단축키로 제어할 수 없다는 사실을 미리 알리기 위한 것이다.
  */
 export type RunningFeature =
-  | 'timeMachine' |
-  'gif' |
+  | 'gif' |
   'video' |
   'stepGuide' |
   'scrollCapture';

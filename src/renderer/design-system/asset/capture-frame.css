@@ -1,0 +1,75 @@
+.ds-frame {
+  --ds-frame-color: var(--frame-line);
+
+  position: relative;
+}
+
+.ds-frame--accent {
+  --ds-frame-color: var(--frame-committed);
+}
+
+.ds-frame--recording {
+  --ds-frame-color: var(--frame-recording);
+}
+
+.ds-frame--measure {
+  --ds-frame-color: var(--frame-measure);
+}
+
+/* 얇은 선 — 밝은 배경에서도 보이도록 바깥에 어두운 가장자리를 한 겹 더 */
+.ds-frame__line {
+  position: absolute;
+  inset: 0;
+  border: var(--border-thin) solid var(--ds-frame-color);
+  box-shadow: 0 0 0 var(--border-thin) var(--frame-line-edge);
+  pointer-events: none;
+}
+
+.ds-frame__bracket {
+  position: absolute;
+  width: var(--frame-bracket-length);
+  height: var(--frame-bracket-length);
+  border: 0 solid var(--ds-frame-color);
+  filter: drop-shadow(0 0 var(--border-thin) var(--frame-line-edge));
+  pointer-events: none;
+}
+
+.ds-frame__bracket--tl {
+  top: calc(var(--frame-bracket) * -1 + var(--border-thin));
+  left: calc(var(--frame-bracket) * -1 + var(--border-thin));
+  border-top-width: var(--frame-bracket);
+  border-left-width: var(--frame-bracket);
+}
+
+.ds-frame__bracket--tr {
+  top: calc(var(--frame-bracket) * -1 + var(--border-thin));
+  right: calc(var(--frame-bracket) * -1 + var(--border-thin));
+  border-top-width: var(--frame-bracket);
+  border-right-width: var(--frame-bracket);
+}
+
+.ds-frame__bracket--bl {
+  bottom: calc(var(--frame-bracket) * -1 + var(--border-thin));
+  left: calc(var(--frame-bracket) * -1 + var(--border-thin));
+  border-bottom-width: var(--frame-bracket);
+  border-left-width: var(--frame-bracket);
+}
+
+.ds-frame__bracket--br {
+  right: calc(var(--frame-bracket) * -1 + var(--border-thin));
+  bottom: calc(var(--frame-bracket) * -1 + var(--border-thin));
+  border-right-width: var(--frame-bracket);
+  border-bottom-width: var(--frame-bracket);
+}
+
+.ds-frame__size {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  left: 50%;
+  padding: var(--space-half) var(--space-2);
+  border-radius: var(--radius-capsule);
+  background: var(--hud-bg);
+  color: var(--hud-label);
+  font-size: var(--text-callout);
+  transform: translateX(-50%);
+}

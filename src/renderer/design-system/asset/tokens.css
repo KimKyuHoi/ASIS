@@ -1,0 +1,609 @@
+/*
+ * ASIS 디자인 토큰 — 모든 renderer 도메인의 styles.css 는 base.css(→ 이 파일)를 맨 위에서 @import 한다.
+ *
+ * 3단 구조
+ *   1) Primitive (--p-*)   : 원시 값. 외형(aqua/darkAqua)별로 따로 둔다. 도메인 CSS 에서 직접 쓰지 않는다.
+ *   2) Semantic            : 용도 이름. light-dark() 로 외형에 따라 primitive 를 고른다. 도메인 CSS 는 여기만 쓴다.
+ *   3) Component (--btn-* …): 디자인 시스템 컴포넌트 전용. 컴포넌트 CSS 만 쓴다.
+ *
+ * 색 출처: 시스템 색(--red 등)·선택색은 macOS 26.3 AppKit NSColor 실측 (aqua / darkAqua 각각
+ * performAsCurrentDrawingAppearance 로 sRGB 변환). 바탕·라벨·채움은 눈이 편하도록 그 실측값을 기준으로
+ * 따뜻한 기운을 넣은 --p-warm-* / --p-warmdark-* 를 쓴다 (AppKit 원값 --p-aqua-* 는 참고용으로 남김).
+ * "실측 아님" 주석이 붙은 값은 손으로 고른 것이다.
+ *
+ * 외형(appearance)
+ *   - 기본: 시스템 라이트/다크를 따른다 — color-scheme: light dark + light-dark().
+ *   - [data-appearance="dark" | "light"]: 그 요소(보통 <html>) 아래를 강제. 하위 요소에도 걸 수 있다
+ *     (light-dark() 는 사용 지점의 color-scheme 으로 풀리므로 부분 다크가 된다).
+ *   - 캡처 오버레이·HUD 는 항상 다크 → <html data-appearance="dark"> 또는 --hud-* 토큰.
+ *
+ * 대비: WCAG 2.1 1.4.3(텍스트 4.5) / 1.4.11(UI 3). AppKit 원값이 기준에 못 미치는 "텍스트" 용도만
+ * --text-* 시맨틱에서 보정했다(원값 --label-* 는 그대로 둠). 측정표는 Storybook "Foundations/Contrast".
+ * 시스템 "대비 증가"(prefers-contrast: more) 또는 [data-contrast="more"] 에서 경계선·보조 텍스트를 올린다.
+ *
+ * 브랜드 색 = ASIS 오렌지 (--p-orange-*, 기준 500 #ff6f0f). 당근 느낌을 그대로 살리는 것을 대비보다 우선한다
+ * (사용자 결정 2026-11-01): 버튼·체크·스위치·슬라이더·포커스 링 모두 500 + 흰 글자.
+ *   흰 글자 2.8:1, 흰 바탕 위 표식 2.8:1 — WCAG AA(4.5 / 3) 의도적 미적용. Foundations/Contrast 에 "예외"로 표시.
+ *   글자색(링크·plain 버튼) 라이트 900 / 다크 400 — 4.5:1 이상
+ *   부드러운 면(눌린 도구·배지 바탕) 100 / 다크는 500 20% 틴트
+ * --accent 를 다른 색으로 덮어쓰려면 --accent-fill·--accent-text 도 같이 덮어써야 한다
+ * (lib/accent.ts 의 accentOverrides()).
+ */
+
+/* ======================================================================
+ * 1) PRIMITIVE
+ * ==================================================================== */
+:root {
+  /* ---- AppKit 라벨·채움 (aqua) ---- */
+  --p-aqua-label: rgba(0, 0, 0, 0.847);
+  --p-aqua-label-secondary: rgba(0, 0, 0, 0.498);
+  --p-aqua-label-tertiary: rgba(0, 0, 0, 0.259);
+  --p-aqua-label-quaternary: rgba(0, 0, 0, 0.098);
+  --p-aqua-separator: rgba(0, 0, 0, 0.098);
+  --p-aqua-fill: rgba(0, 0, 0, 0.098);
+  --p-aqua-fill-secondary: rgba(0, 0, 0, 0.078);
+  --p-aqua-fill-tertiary: rgba(0, 0, 0, 0.047);
+  --p-aqua-fill-quaternary: rgba(0, 0, 0, 0.027);
+  --p-aqua-window: #ffffff;
+  --p-aqua-under-page: #e9e9e9;
+  --p-aqua-control-bg: #ffffff;
+  --p-aqua-control: #ffffff;
+  --p-aqua-selection: #0064e1;
+  --p-aqua-selection-unemphasized: #dcdcdc;
+
+  /* ---- AppKit 라벨·채움 (darkAqua) ---- */
+  --p-darkaqua-label: rgba(255, 255, 255, 0.847);
+  --p-darkaqua-label-secondary: rgba(255, 255, 255, 0.549);
+  --p-darkaqua-label-tertiary: rgba(255, 255, 255, 0.247);
+  --p-darkaqua-label-quaternary: rgba(255, 255, 255, 0.098);
+  --p-darkaqua-separator: rgba(255, 255, 255, 0.098);
+  --p-darkaqua-fill: rgba(255, 255, 255, 0.098);
+  --p-darkaqua-fill-secondary: rgba(255, 255, 255, 0.078);
+  --p-darkaqua-fill-tertiary: rgba(255, 255, 255, 0.047);
+  --p-darkaqua-fill-quaternary: rgba(255, 255, 255, 0.027);
+  --p-darkaqua-window: #1e1e1e;
+  --p-darkaqua-under-page: #282828;
+  --p-darkaqua-control-bg: #1e1e1e;
+  --p-darkaqua-control: rgba(255, 255, 255, 0.247);
+  --p-darkaqua-selection: #0059d1;
+  --p-darkaqua-selection-unemphasized: #464646;
+
+  /* ---- 시스템 색 (aqua / darkAqua) ---- */
+  --p-aqua-red: #ff383c;
+  --p-aqua-orange: #ff8d28;
+  --p-aqua-yellow: #ffcc00;
+  --p-aqua-green: #34c759;
+  --p-aqua-teal: #00c3d0;
+  --p-aqua-blue: #0088ff;
+  --p-aqua-indigo: #6155f5;
+  --p-aqua-purple: #cb30e0;
+  --p-aqua-pink: #ff2d55;
+  --p-aqua-gray: #8e8e93;
+  --p-darkaqua-red: #ff4245;
+  --p-darkaqua-orange: #ff9230;
+  --p-darkaqua-yellow: #ffd600;
+  --p-darkaqua-green: #30d158;
+  --p-darkaqua-teal: #00d2e0;
+  --p-darkaqua-blue: #0091ff;
+  --p-darkaqua-indigo: #6d7cff;
+  --p-darkaqua-purple: #db34f2;
+  --p-darkaqua-pink: #ff375f;
+  --p-darkaqua-gray: #98989d;
+
+  /* ---- 보정용 원시 값 (실측 아님 — WCAG 계산으로 고름, 근거는 Foundations/Contrast) ---- */
+  --p-aqua-text-secondary: rgba(
+    0,
+    0,
+    0,
+    0.58
+  ); /* AppKit 0.498 → 흰 바탕 3.95:1 이라 올림 */
+  --p-aqua-text-tertiary: rgba(0, 0, 0, 0.45); /* 플레이스홀더·메타 — 3:1 이상 */
+  --p-darkaqua-text-tertiary: rgba(255, 255, 255, 0.45);
+  --p-aqua-border-control: rgba(0, 0, 0, 0.16);
+  --p-darkaqua-border-control: rgba(255, 255, 255, 0.14);
+  --p-aqua-border-strong: rgba(0, 0, 0, 0.45); /* 대비 증가 모드 — 3:1 */
+  --p-darkaqua-border-strong: rgba(255, 255, 255, 0.45);
+  --p-aqua-elevated: #ffffff; /* 툴팁·팝오버 면 (실측 아님) */
+  --p-darkaqua-elevated: #2c2c2e;
+
+  /* ---- ASIS 오렌지 램프 (브랜드, 실측 아님 — 대비 계산으로 단계별 용도를 정함) ---- */
+  --p-orange-50: #fff4ec;
+  --p-orange-100: #ffe6d4;
+  --p-orange-200: #ffc9a3;
+  --p-orange-300: #ffa066;
+  --p-orange-400: #ff8f4a;
+  --p-orange-500: #ff6f0f; /* 브랜드 기준색 */
+  --p-orange-600: #ef6410;
+  --p-orange-700: #d9530b;
+  --p-orange-800: #c2470a;
+  --p-orange-900: #a63c0a;
+
+  /* ---- 따뜻한 중립 (aqua 기반, 실측 아님 — 눈이 편한 크림빛 바탕·갈색 기운 회색) ---- */
+  --p-warm-label: rgba(36, 24, 14, 0.88);
+  --p-warm-label-secondary: rgba(36, 24, 14, 0.62);
+  --p-warm-label-tertiary: rgba(36, 24, 14, 0.3);
+  --p-warm-label-quaternary: rgba(60, 40, 20, 0.1);
+  --p-warm-separator: rgba(60, 40, 20, 0.12);
+  --p-warm-fill: rgba(60, 40, 20, 0.1);
+  --p-warm-fill-secondary: rgba(60, 40, 20, 0.08);
+  --p-warm-fill-tertiary: rgba(60, 40, 20, 0.05);
+  --p-warm-fill-quaternary: rgba(60, 40, 20, 0.03);
+  --p-warm-window: #fffcf8;
+  --p-warm-under-page: #f4efe9;
+  --p-warm-control-bg: #ffffff;
+  --p-warm-control: #ffffff;
+  --p-warm-selection-unemphasized: #ece4dc;
+  --p-warm-text-secondary: rgba(36, 24, 14, 0.66);
+  --p-warm-text-tertiary: rgba(36, 24, 14, 0.5);
+  --p-warm-border-control: rgba(60, 40, 20, 0.18);
+  --p-warm-border-strong: rgba(60, 40, 20, 0.52);
+  --p-warm-elevated: #ffffff;
+
+  /* ---- 따뜻한 중립 (darkAqua 기반, 실측 아님) ---- */
+  --p-warmdark-label: rgba(255, 248, 240, 0.87);
+  --p-warmdark-label-secondary: rgba(255, 248, 240, 0.58);
+  --p-warmdark-label-tertiary: rgba(255, 248, 240, 0.26);
+  --p-warmdark-label-quaternary: rgba(255, 248, 240, 0.1);
+  --p-warmdark-separator: rgba(255, 248, 240, 0.1);
+  --p-warmdark-fill: rgba(255, 248, 240, 0.1);
+  --p-warmdark-fill-secondary: rgba(255, 248, 240, 0.08);
+  --p-warmdark-fill-tertiary: rgba(255, 248, 240, 0.05);
+  --p-warmdark-fill-quaternary: rgba(255, 248, 240, 0.03);
+  --p-warmdark-window: #1f1c1a;
+  --p-warmdark-under-page: #292522;
+  --p-warmdark-control-bg: #1f1c1a;
+  --p-warmdark-control: rgba(255, 248, 240, 0.22);
+  --p-warmdark-selection-unemphasized: #4a443f;
+  --p-warmdark-text-secondary: rgba(255, 248, 240, 0.6);
+  --p-warmdark-text-tertiary: rgba(255, 248, 240, 0.46);
+  --p-warmdark-border-control: rgba(255, 248, 240, 0.16);
+  --p-warmdark-border-strong: rgba(255, 248, 240, 0.46);
+  --p-warmdark-elevated: #2e2a27;
+
+  /* ---- 외형 무관 ---- */
+  --p-ink: #191919; /* 진한 글자가 필요할 때 (오렌지 면 위 6.3:1) — 현재 미사용 */
+  --p-white: #ffffff;
+  --p-black: #000000;
+  --p-ink-on-light: rgba(0, 0, 0, 0.847); /* 밝은 강조색(노랑 등) 위 글자 */
+  --p-hud-surface: rgba(30, 30, 30, 0.88);
+  --p-hud-border: rgba(255, 255, 255, 0.12);
+  --p-hud-label: rgba(255, 255, 255, 0.92);
+  --p-hud-label-secondary: rgba(255, 255, 255, 0.55);
+  --p-hud-fill: rgba(255, 255, 255, 0.1);
+  --p-hud-fill-hover: rgba(255, 255, 255, 0.16);
+  --p-hud-fill-active: rgba(255, 255, 255, 0.24);
+  --p-shadow-key: rgba(0, 0, 0, 0.12);
+  --p-shadow-key-dark: rgba(0, 0, 0, 0.4);
+  --p-shadow-ambient: rgba(0, 0, 0, 0.18);
+  --p-shadow-ambient-dark: rgba(0, 0, 0, 0.5);
+  --p-shadow-rim-dark: rgba(255, 255, 255, 0.08);
+  --p-scrim: rgba(0, 0, 0, 0.45);
+  --p-scrim-subtle: rgba(0, 0, 0, 0.28);
+  --p-scrim-strong: rgba(0, 0, 0, 0.6);
+  --p-shadow-on-media: rgba(0, 0, 0, 0.8);
+}
+
+/* ======================================================================
+ * 2) SEMANTIC — 도메인 CSS 는 이 층만 쓴다
+ * ==================================================================== */
+:root {
+  color-scheme: light dark;
+
+  /* ---- 타이포 (SF Pro + Apple SD Gothic Neo 는 -apple-system 이 고른다) ---- */
+  --font-ui:
+    -apple-system, BlinkMacSystemFont, system-ui, 'Apple SD Gothic Neo', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
+  /* macOS 텍스트 스타일 크기 (NSFont.preferredFont(forTextStyle:) 기준) */
+  --text-display: 34px; /* 카운트다운 숫자처럼 한 글자로 읽히는 큰 수 */
+  --text-title1: 22px;
+  --text-title2: 17px;
+  --text-title3: 15px;
+  --text-body: 13px;
+  --text-callout: 12px;
+  --text-subhead: 11px;
+  --text-footnote: 10px;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+  --leading-tight: 1.2;
+  --leading-body: 16px;
+  --leading-relaxed: 1.45;
+  --tracking-normal: 0;
+  --tracking-tight: -0.01em; /* title1 처럼 큰 글자만 */
+
+  /* ---- 간격 — 4pt 그리드 ---- */
+  --space-0: 0;
+  --space-half: 2px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  /* ---- 크기 ---- */
+  --size-control-sm: 18px;
+  --size-control: 22px;
+  --size-control-lg: 28px;
+  --size-hud: 36px;
+  --size-row: 40px;
+  --size-titlebar: 52px;
+  --size-traffic-lights: 80px; /* hiddenInset 신호등이 차지하는 왼쪽 폭 */
+  --size-icon-sm: 12px;
+  --size-icon: 16px;
+  --size-icon-lg: 20px;
+  --size-hit-min: 24px; /* WCAG 2.5.8 최소 타깃 */
+
+  /* ---- 반경 — 바깥이 클수록 크게 (창 > 그룹 > 컨트롤 > 칩) ---- */
+  --radius-none: 0;
+  --radius-chip: 4px;
+  --radius-control: 6px;
+  --radius-group: 10px;
+  --radius-window: 12px;
+  --radius-capsule: 999px;
+  --radius-round: 50%;
+
+  /* ---- 선 두께 ---- */
+  --border-hairline: 0.5px;
+  --border-thin: 1px;
+  --border-thick: 2px;
+
+  /* ---- 투명도 ---- */
+  --opacity-disabled: 0.45;
+  --opacity-muted: 0.6;
+
+  /* ---- 쌓임 순서 ---- */
+  --z-base: 0;
+  --z-raised: 1;
+  --z-sticky: 10;
+  --z-popover: 100;
+  --z-overlay: 200;
+  --z-toast: 300;
+  --z-tooltip: 400;
+
+  /* ---- 모션 — macOS 시트/팝오버 감속 곡선 ---- */
+  --ease-mac: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-linear: linear;
+  --duration-instant: 0ms;
+  --duration-fast: 80ms;
+  --duration-mid: 140ms;
+  --duration-slow: 240ms;
+  --duration-pulse: 1.6s;
+  --duration-spin: 0.8s;
+  --blur-material: 20px;
+
+  /* ---- 강조색 (브랜드 오렌지) ---- */
+  --brand: var(--p-orange-500);
+  --accent: var(--p-orange-500);
+  /* 글자가 얹히는 강조색 면 — 브랜드 오렌지 + 흰 글자 (2.8:1, AA 의도적 미적용) */
+  --accent-fill: var(--p-orange-500);
+  --accent-fill-pressed: var(--p-orange-600);
+  --accent-text: var(--p-white);
+  --accent-tint: light-dark(
+    var(--p-orange-100),
+    color-mix(in srgb, var(--p-orange-500) 20%, transparent)
+  );
+  --accent-tint-text: light-dark(var(--p-orange-900), var(--p-orange-400));
+
+  /* ---- 포커스 링 — 브랜드 오렌지 그대로 ---- */
+  --focus-ring: var(--p-orange-500);
+  --focus-ring-width: 3px;
+  --focus-ring-offset: 0;
+
+  /* ---- AppKit 이름 그대로의 시맨틱 (기존 코드 호환, 원값) ---- */
+  --label: light-dark(var(--p-warm-label), var(--p-warmdark-label));
+  --label-secondary: light-dark(
+    var(--p-warm-label-secondary),
+    var(--p-warmdark-label-secondary)
+  );
+  --label-tertiary: light-dark(
+    var(--p-warm-label-tertiary),
+    var(--p-warmdark-label-tertiary)
+  );
+  --label-quaternary: light-dark(
+    var(--p-warm-label-quaternary),
+    var(--p-warmdark-label-quaternary)
+  );
+  --separator: light-dark(var(--p-warm-separator), var(--p-warmdark-separator));
+  --bg-window: light-dark(var(--p-warm-window), var(--p-warmdark-window));
+  --bg-under-page: light-dark(var(--p-warm-under-page), var(--p-warmdark-under-page));
+  --bg-control: light-dark(var(--p-warm-control-bg), var(--p-warmdark-control-bg));
+  --control: light-dark(var(--p-warm-control), var(--p-warmdark-control));
+  --fill: light-dark(var(--p-warm-fill), var(--p-warmdark-fill));
+  --fill-secondary: light-dark(
+    var(--p-warm-fill-secondary),
+    var(--p-warmdark-fill-secondary)
+  );
+  --fill-tertiary: light-dark(
+    var(--p-warm-fill-tertiary),
+    var(--p-warmdark-fill-tertiary)
+  );
+  --fill-quaternary: light-dark(
+    var(--p-warm-fill-quaternary),
+    var(--p-warmdark-fill-quaternary)
+  );
+  --selection: light-dark(var(--p-aqua-selection), var(--p-darkaqua-selection));
+  --selection-unemphasized: light-dark(
+    var(--p-warm-selection-unemphasized),
+    var(--p-warmdark-selection-unemphasized)
+  );
+  --red: light-dark(var(--p-aqua-red), var(--p-darkaqua-red));
+  --orange: light-dark(var(--p-aqua-orange), var(--p-darkaqua-orange));
+  --yellow: light-dark(var(--p-aqua-yellow), var(--p-darkaqua-yellow));
+  --green: light-dark(var(--p-aqua-green), var(--p-darkaqua-green));
+  --teal: light-dark(var(--p-aqua-teal), var(--p-darkaqua-teal));
+  --blue: light-dark(var(--p-aqua-blue), var(--p-darkaqua-blue));
+  --indigo: light-dark(var(--p-aqua-indigo), var(--p-darkaqua-indigo));
+  --purple: light-dark(var(--p-aqua-purple), var(--p-darkaqua-purple));
+  --pink: light-dark(var(--p-aqua-pink), var(--p-darkaqua-pink));
+  --gray: light-dark(var(--p-aqua-gray), var(--p-darkaqua-gray));
+
+  /* ---- 텍스트 (새 코드는 이쪽을 쓴다 — AA 보정됨) ---- */
+  --text-primary: var(--label);
+  --text-secondary: light-dark(
+    var(--p-warm-text-secondary),
+    var(--p-warmdark-text-secondary)
+  );
+  --text-tertiary: light-dark(
+    var(--p-warm-text-tertiary),
+    var(--p-warmdark-text-tertiary)
+  );
+  --text-disabled: var(--label-tertiary); /* 1.4.3 예외(비활성) */
+  --text-on-accent: var(--accent-text);
+  --text-on-danger: var(--p-white);
+  --text-link: var(--accent-tint-text);
+  --text-danger: light-dark(
+    color-mix(in srgb, var(--red) 75%, var(--p-black)),
+    color-mix(in srgb, var(--red) 75%, var(--p-white))
+  );
+
+  /* ---- 면 ---- */
+  --surface-window: var(--bg-window);
+  --surface-under-page: var(--bg-under-page);
+  --surface-group: var(--fill-quaternary);
+  --surface-control: var(--control);
+  --surface-field: var(--bg-control);
+  --surface-elevated: light-dark(var(--p-warm-elevated), var(--p-warmdark-elevated));
+  --surface-hover: var(--fill-tertiary);
+  --surface-pressed: var(--fill);
+  --surface-selected: var(--accent-tint);
+  --surface-scrim: var(--p-scrim);
+  --surface-scrim-subtle: var(--p-scrim-subtle); /* 측정 모드 — 화면을 덜 가린다 */
+
+  /* ---- 경계 ---- */
+  --border-subtle: var(--separator);
+  --border-control: light-dark(
+    var(--p-warm-border-control),
+    var(--p-warmdark-border-control)
+  );
+  --border-strong: light-dark(
+    var(--p-warm-border-strong),
+    var(--p-warmdark-border-strong)
+  );
+
+  /* ---- 상태 색 — 면·아이콘용. 글자색으로 쓰려면 --text-danger 등 ---- */
+  --danger: var(--red);
+  --danger-fill: color-mix(
+    in srgb,
+    var(--red) 82%,
+    var(--p-black)
+  ); /* 흰 글자 4.5:1 이상 */
+  --danger-tint: color-mix(in srgb, var(--red) 16%, transparent);
+  --success: var(--green);
+  --success-tint: color-mix(in srgb, var(--green) 18%, transparent);
+  --warning: var(--orange);
+  --warning-tint: color-mix(in srgb, var(--orange) 18%, transparent);
+
+  /* ---- 그림자 ---- */
+  --shadow-raised:
+    0 1px 2px light-dark(var(--p-shadow-key), var(--p-shadow-key-dark)),
+    0 0 0 var(--border-hairline) light-dark(var(--p-shadow-key), var(--p-shadow-rim-dark));
+  --shadow-floating:
+    0 12px 32px light-dark(var(--p-shadow-ambient), var(--p-shadow-ambient-dark)),
+    0 0 0 var(--border-hairline) light-dark(var(--p-shadow-key), var(--p-shadow-rim-dark));
+
+  /* ---- HUD — 화면 위에 뜨는 작은 컨트롤. 외형과 무관하게 항상 어둡다 ---- */
+  --hud-bg: var(--p-hud-surface);
+  --hud-border: var(--p-hud-border);
+  --hud-label: var(--p-hud-label);
+  --hud-label-secondary: var(--p-hud-label-secondary);
+  --hud-fill: var(--p-hud-fill);
+  --hud-fill-hover: var(--p-hud-fill-hover);
+  --hud-fill-active: var(--p-hud-fill-active);
+  --hud-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.35), 0 0 0 var(--border-hairline) rgba(0, 0, 0, 0.6);
+
+  /*
+   * 미디어 위 — 캡처 이미지·영상·필름스트립 위에 얹는 요소. 밑바탕이 사용자의 화면이라
+   * 라이트/다크와 무관하게 고정한다(트림 바 바탕, 구간 밖 가림막, 재생 위치 선, 썸네일 배지,
+   * 클릭 지점 표시 등). 화면마다 0.55~0.62 로 흩어져 있던 값을 여기로 모았다.
+   */
+  --media-backdrop: var(--p-black);
+  --media-scrim: var(--p-scrim-strong);
+  --media-scrim-subtle: rgba(0, 0, 0, 0.14);
+  --media-on-scrim: var(--p-white);
+  --media-marker: var(--p-white);
+  --media-marker-shadow: 0 0 3px var(--p-shadow-on-media);
+  --media-ring: rgba(255, 255, 255, 0.9);
+  --media-lift-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+
+  /*
+   * ASIS 시그니처 — "캡처 프레임". 선택 오버레이·녹화 영역 테두리·HUD 가 같은 모티프를 쓴다:
+   * 얇은 흰 선 + 네 모서리의 굵은 브래킷. 녹화 중에는 빨강.
+   */
+  --frame-line: rgba(255, 255, 255, 0.92);
+  --frame-line-edge: rgba(0, 0, 0, 0.35);
+  --frame-bracket: 3px;
+  --frame-bracket-length: 14px;
+  --frame-recording: var(--p-darkaqua-red);
+  --frame-recording-fill: color-mix(in srgb, var(--p-darkaqua-red) 82%, var(--p-black));
+  /* 선택 바깥 어둡게 · 확정 순간 · 측정(화면 자) — 캡처가 아닌 측정은 파랑으로 구분 */
+  --frame-dim: var(--surface-scrim);
+  --frame-committed: var(--accent);
+  --frame-measure: var(--p-darkaqua-blue);
+  --frame-measure-tint: color-mix(in srgb, var(--p-darkaqua-blue) 10%, transparent);
+}
+
+/* ---- 외형 강제 — 어떤 요소에든 걸 수 있다 ---- */
+[data-appearance='dark'] {
+  color-scheme: dark;
+}
+
+[data-appearance='light'] {
+  color-scheme: light;
+}
+
+/* ---- 대비 증가 (시스템 설정 또는 강제) ---- */
+@media (prefers-contrast: more) {
+  :root {
+    --border-subtle: var(--border-strong);
+    --border-control: var(--border-strong);
+    --text-secondary: var(--label);
+    --text-tertiary: light-dark(
+      var(--p-warm-text-secondary),
+      var(--p-warmdark-label-secondary)
+    );
+  }
+}
+
+[data-contrast='more'] {
+  --border-subtle: var(--border-strong);
+  --border-control: var(--border-strong);
+  --text-secondary: var(--label);
+  --text-tertiary: light-dark(
+    var(--p-warm-text-secondary),
+    var(--p-warmdark-label-secondary)
+  );
+}
+
+/* ======================================================================
+ * 3) COMPONENT — design-system/component/* 의 CSS 만 쓴다
+ *
+ * 커스텀 속성의 var() 는 "선언된 요소"에서 풀려 그 값이 상속된다. :root 에만 선언하면
+ * 하위 요소에서 --accent-fill·--border-control 등을 바꿔도 --btn-primary-bg 는 :root 값으로 남는다.
+ * 그래서 시맨틱을 덮어쓰는 범위(data-appearance / data-contrast / data-ds-scope)에서 다시 선언한다.
+ * ==================================================================== */
+:root,
+[data-appearance],
+[data-contrast],
+[data-ds-scope] {
+  /* Button */
+  --btn-height: var(--size-control);
+  --btn-height-lg: var(--size-control-lg);
+  --btn-padding-x: var(--space-3);
+  --btn-radius: var(--radius-control);
+  --btn-bg: var(--surface-control);
+  --btn-bg-pressed: var(--surface-pressed);
+  --btn-label: var(--text-primary);
+  --btn-shadow: var(--shadow-raised);
+  --btn-primary-bg: var(--accent-fill);
+  --btn-primary-bg-pressed: var(--accent-fill-pressed);
+  --btn-primary-label: var(--accent-text);
+  --btn-destructive-bg: var(--danger-fill);
+  --btn-destructive-label: var(--text-on-danger);
+  --btn-plain-bg-hover: var(--surface-hover);
+
+  /* IconButton */
+  --icon-btn-size: var(--size-control-lg);
+  --icon-btn-radius: var(--radius-control);
+  --icon-btn-color: var(--text-secondary);
+  --icon-btn-color-hover: var(--text-primary);
+  --icon-btn-bg-hover: var(--surface-hover);
+  --icon-btn-bg-active: var(--accent-tint);
+  --icon-btn-color-active: var(--accent-tint-text);
+
+  /* Select (팝업 버튼) */
+  --select-height: var(--size-control);
+  --select-radius: 5px;
+  --select-bg: var(--surface-control);
+  --select-chevron: var(--text-secondary);
+
+  /* TextField */
+  --field-height: var(--size-control);
+  --field-radius: var(--radius-control);
+  --field-bg: var(--surface-field);
+  --field-border: var(--border-control);
+  --field-border-invalid: var(--danger);
+  --field-placeholder: var(--text-tertiary);
+
+  /* Toggle (스위치) */
+  --toggle-width: 32px;
+  --toggle-height: 18px;
+  --toggle-knob: var(--p-white);
+  --toggle-track-off: light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.16));
+  --toggle-track-on: var(--accent);
+  --toggle-knob-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.3), 0 0 0 var(--border-hairline) rgba(0, 0, 0, 0.1);
+
+  /* Checkbox */
+  --checkbox-size: 14px;
+  --checkbox-radius: var(--radius-chip);
+  --checkbox-bg: var(--surface-field);
+  --checkbox-border: var(
+    --border-strong
+  ); /* 체크 안 된 상자의 윤곽이 컨트롤 식별 수단 — 3:1 */
+  --checkbox-bg-checked: var(--accent-fill);
+  --checkbox-mark: var(--accent-text);
+
+  /* Slider */
+  --slider-track-height: 4px;
+  --slider-track: var(--fill);
+  --slider-fill: var(--accent);
+  --slider-thumb-size: 16px;
+  --slider-thumb: var(--p-white);
+  --slider-thumb-shadow: var(--toggle-knob-shadow);
+
+  /* SegmentedControl */
+  --segmented-height: var(--size-control);
+  --segmented-bg: var(--fill-secondary);
+  --segmented-selected-bg: light-dark(var(--p-white), rgba(255, 255, 255, 0.22));
+  --segmented-selected-shadow: var(--shadow-raised);
+  --segmented-divider: var(--border-subtle);
+
+  /* Group / Row (설정 폼) */
+  --group-bg: var(--surface-group);
+  --group-radius: var(--radius-group);
+  --group-border: var(--border-subtle);
+  --row-min-height: var(--size-row);
+  --row-padding-x: var(--space-3);
+
+  /* Toolbar */
+  --toolbar-height: var(--size-titlebar);
+  --toolbar-gap: var(--space-1);
+  --toolbar-divider: var(--border-subtle);
+
+  /* Tooltip */
+  --tooltip-bg: var(--surface-elevated);
+  --tooltip-label: var(--text-primary);
+  --tooltip-shadow: var(--shadow-floating);
+  --tooltip-radius: var(--radius-chip);
+
+  /* Toast (HUD 알림) */
+  --toast-bg: var(--hud-bg);
+  --toast-label: var(--hud-label);
+  --toast-label-secondary: var(--hud-label-secondary);
+  --toast-radius: var(--radius-group);
+  --toast-shadow: var(--hud-shadow);
+
+  /* HUD pill */
+  --hud-pill-height: var(--size-hud);
+  --hud-btn-height: var(--size-control-lg);
+  --hud-stop-bg: var(--frame-recording-fill);
+
+  /* Badge */
+  --badge-height: 18px;
+  --badge-radius: var(--radius-capsule);
+
+  /* KeyCap */
+  --keycap-bg: var(--surface-control);
+  --keycap-label: var(--text-secondary);
+  --keycap-shadow: var(--shadow-raised);
+  --keycap-radius: var(--radius-chip);
+
+  /* Titlebar */
+  --titlebar-height: var(--size-titlebar);
+  --titlebar-inset-start: var(--size-traffic-lights);
+}

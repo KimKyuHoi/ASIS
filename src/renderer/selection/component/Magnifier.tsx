@@ -1,7 +1,27 @@
-import { useEffect, useState } from 'react';
-import type { JSX } from 'react';
+import { useEffect, useState, type JSX } from 'react';
 import type { Point } from '../types/selection';
 import { rgbToHex } from '../lib/color-utils';
+
+/** 돋보기 캔버스 한 변(CSS px) · 확대 배율 — 한 변에 SIZE/ZOOM 픽셀을 샘플링한다. */
+const SIZE = 96;
+const ZOOM = 8;
+const SAMPLE = SIZE / ZOOM;
+/** 커서와 돋보기 사이 간격. */
+const OFFSET = 20;
+/** 화면 오른쪽 가장자리 여유. */
+const EDGE_MARGIN = 8;
+/** 캔버스 아래 색상 행 높이 — 위/아래 배치 판정에 포함한다. */
+const COLOR_ROW_HEIGHT = 38;
+
+/** 화면 밖으로 나가지 않도록 커서 우하단을 기본으로, 공간이 없으면 좌/상으로 뒤집는다. */
+function magnifierPosition(pointer: Point): { left: number; top: number } {
+  const placeRight = pointer.x + OFFSET + SIZE + EDGE_MARGIN < window.innerWidth;
+  const placeBelow = pointer.y + OFFSET + SIZE + COLOR_ROW_HEIGHT < window.innerHeight;
+  return {
+    left: placeRight ? pointer.x + OFFSET : pointer.x - OFFSET - SIZE,
+    top: placeBelow ? pointer.y + OFFSET : pointer.y - OFFSET - SIZE - COLOR_ROW_HEIGHT,
+  };
+}
 
 /**
  * Magnifier — 마우스 포인터 주변 픽셀 확대 + 중앙 픽셀의 HEX 색상 표시.
@@ -27,9 +47,6 @@ export function Magnifier({
       if (cancelled) return;
       const ctx = sampleCanvas.getContext('2d');
       if (!ctx) return;
-      const ZOOM = 8;
-      const SIZE = 96;
-      const SAMPLE = SIZE / ZOOM;
       ctx.imageSmoothingEnabled = false;
       const dpr = window.devicePixelRatio || 1;
       const sx = pointer.x * dpr - (SAMPLE * dpr) / 2;
@@ -46,16 +63,9 @@ export function Magnifier({
 
   const hex = rgbToHex(rgb[0], rgb[1], rgb[2]).toUpperCase();
 
-  const offset = 20;
-  const size = 96;
-  const placeRight = pointer.x + offset + size + 8 < window.innerWidth;
-  const placeBelow = pointer.y + offset + size + 38 < window.innerHeight;
-  const left = placeRight ? pointer.x + offset : pointer.x - offset - size;
-  const top = placeBelow ? pointer.y + offset : pointer.y - offset - size - 38;
-
   return (
-    <div className="magnifier" style={{ left, top }}>
-      <canvas ref={setSampleCanvas} className="magnifier__canvas" width={96} height={96} />
+    <div className="magnifier" style={magnifierPosition(pointer)}>
+      <canvas ref={setSampleCanvas} className="magnifier__canvas" width={SIZE} height={SIZE} />
       <div className="magnifier__crosshair" aria-hidden="true">
         <span className="magnifier__cross magnifier__cross--h" />
         <span className="magnifier__cross magnifier__cross--v" />

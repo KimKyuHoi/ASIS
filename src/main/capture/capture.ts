@@ -1,8 +1,11 @@
 import { stat, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { screen } from 'electron';
+import log from 'electron-log/main';
 import { runProcess } from '../runProcess';
 import { loadMisc } from '../settings';
+import { stitchDisplays, type DisplayShot } from './stitchDisplays';
 
 /**
  * macOS `screencapture` 자식 프로세스 래퍼 — *임시 PNG 파일 path 반환*.
@@ -92,6 +95,100 @@ export function captureRegion(rect: {
   return captureToFile([...soundArgs(), '-R', region, '-t', 'png']);
 }
 
+/**
+ * 연결된 모든 디스플레이를 실제 배치대로 한 장의 PNG 로 캡처.
+ *
+ * 합집합 rect 를 `-R` 한 번에 넘기지 않는 이유: 실측(macOS 26)에서 `-R` 은
+ * 디스플레이 밖 영역을 잘라낸다 (`-R -100,-100,300,300` → 200x200pt 만 반환).
+ * 여러 디스플레이에 걸친 rect 의 합성 여부는 문서에 없다. 그래서 디스플레이마다
+ * 자기 bounds 로 `-R` 캡처(기존 captureRegion 과 같은 경로)를 병렬 실행하고
+ * stitchDisplays 로 합성한다. 파일 순서 ↔ 디스플레이 매핑 문제도 생기지 않는다.
+ *
+ * 디스플레이 1개면 captureRegion 과 완전히 같은 결과 (합성 없음).
+ */
+export function captureAllDisplays(): Promise<CaptureResult> {
+  return captureDisplays(screen.getAllDisplays().map((d) => d.id));
+}
+
+/**
+ * 지정한 디스플레이들(Electron `Display.id`)만 실제 배치대로 한 장의 PNG 로 캡처.
+ * 1개면 그 디스플레이만 (합성 없음), 여러 개면 stitchDisplays 로 합성한다.
+ * 셔터음은 첫 캡처에만 — N번 겹쳐 울리지 않게 나머지는 '-x'.
+ *
+ * 빈 배열·중복 id·현재 연결되지 않은 id 는 호출자 버그로 보고 throw 한다
+ * (설정에 저장된 id 의 모니터가 빠진 경우의 폴백은 호출자가 결정).
+ */
+export async function captureDisplays(displayIds: number[]): Promise<CaptureResult> {
+  if (displayIds.length === 0) {
+    throw new Error('captureDisplays: displayIds 가 비어 있음');
+  }
+  if (new Set(displayIds).size !== displayIds.length) {
+    throw new Error(`captureDisplays: 중복된 displayId — ${displayIds.join(',')}`);
+  }
+  const connected = screen.getAllDisplays();
+  const displays = displayIds.map((id) => {
+    const found = connected.find((d) => d.id === id);
+    if (!found) {
+      throw new Error(`captureDisplays: 연결되지 않은 displayId ${id}`);
+    }
+    return found;
+  });
+  if (displays.length === 1) {
+    const b = displays[0].bounds;
+    return captureRegion({ x: b.x, y: b.y, w: b.width, h: b.height });
+  }
+
+  const stamp = `${Date.now()}-${process.pid}`;
+  const shots: DisplayShot[] = displays.map((d, i) => ({
+    path: join(tmpdir(), `asis-cap-${stamp}-d${i}.png`),
+    bounds: d.bounds,
+    scaleFactor: d.scaleFactor,
+  }));
+  const partPaths = shots.map((s) => s.path);
+
+  try {
+    // 병렬 실행 — 디스플레이 간 캡처 시각 차이를 줄인다. 하나가 실패해도
+    // 나머지가 끝날 때까지 기다려야 finally 에서 부분 파일을 모두 지울 수 있다.
+    const settled = await Promise.allSettled(
+      shots.map((s, i) => {
+        const b = s.bounds;
+        const region = `${b.x},${b.y},${b.width},${b.height}`;
+        const sound = i === 0 ? soundArgs() : ['-x'];
+        return runScreencapture([...sound, '-R', region, '-t', 'png'], s.path);
+      }),
+    );
+    for (const r of settled) {
+      if (r.status === 'rejected') throw r.reason;
+    }
+    // -R 은 대화형이 아니라 취소가 정상 흐름이 아니지만, verifyResult 가
+    // canceled 를 돌려주면 그 판정을 그대로 존중한다.
+    if (settled.some((r) => r.status === 'fulfilled' && r.value.kind === 'canceled')) {
+      return { kind: 'canceled' };
+    }
+
+    const outputPath = join(tmpdir(), `asis-cap-${stamp}.png`);
+    try {
+      await stitchDisplays(shots, outputPath);
+    } catch (err) {
+      await removeQuietly(outputPath);
+      throw err;
+    }
+    return await verifyResult(0, '', outputPath);
+  } finally {
+    await Promise.all(partPaths.map(removeQuietly));
+  }
+}
+
+async function removeQuietly(path: string): Promise<void> {
+  try {
+    await unlink(path);
+  } catch (err) {
+    // 캡처 실패로 파일이 아예 안 생긴 경우(ENOENT)는 정상. 그 외는 로그만 —
+    // finally/catch 에서 throw 하면 성공 결과나 원래 에러를 덮어쓴다. tmpdir 이라 OS 가 정리한다.
+    if (!isFileNotFound(err)) log.warn('[asis] capture temp cleanup failed', path, err);
+  }
+}
+
 function captureToFile(args: string[]): Promise<CaptureResult> {
   const tmpPath = join(
     tmpdir(),
@@ -151,6 +248,6 @@ function isFileNotFound(err: unknown): boolean {
     typeof err === 'object' &&
     err !== null &&
     'code' in err &&
-    (err as { code: unknown }).code === 'ENOENT'
+    err.code === 'ENOENT'
   );
 }

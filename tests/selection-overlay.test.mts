@@ -258,6 +258,14 @@ class MockBrowserWindow extends EventEmitter {
     this.allWorkspacesCalls += 1;
   }
 
+  setHiddenInMissionControl(_flag: boolean): void {
+    // configureFloatingWindow 가 호출 — 테스트에서 관찰할 상태 없음.
+  }
+
+  isHiddenInMissionControl(): boolean {
+    return true;
+  }
+
   isDestroyed(): boolean {
     return this.destroyed;
   }
@@ -406,6 +414,9 @@ function loadSelectionOverlay({
       },
     },
     './common': {
+      configureFloatingWindow(): void {
+        // 창 레벨·Space 설정 — 테스트 대상 아님.
+      },
       clearElementAtProvider(provider: ElementAtProviderMock): void {
         if (elementAtProvider === provider) elementAtProvider = null;
       },
@@ -461,29 +472,27 @@ function loadSelectionOverlay({
     },
   };
 
-  const source = fs.readFileSync(sourcePath, 'utf8');
-  const transpiled = ts.transpileModule(source, {
-    compilerOptions: {
-      esModuleInterop: true,
-      module: ts.ModuleKind.CommonJS,
-      target: ts.ScriptTarget.ES2022,
-    },
-    fileName: sourcePath,
-  }).outputText;
+  // selectionOverlay 가 의존하는 같은 폴더의 실제 모듈 — mock 하지 않고 함께 트랜스파일한다
+  // (창 생성 옵션·element-at 좌표 변환·ESC 점유가 실제 구현 그대로 검증되도록).
+  const realModules: Record<string, string> = {
+    './overlayWindow': path.join(repoRoot, 'src/main/windows/overlayWindow.ts'),
+    './escClaim': path.join(repoRoot, 'src/main/windows/escClaim.ts'),
+    './selectionSession': path.join(repoRoot, 'src/main/windows/selectionSession.ts'),
+  };
+  const loadedModules = new Map<string, unknown>();
 
-  const moduleObject = { exports: {} as Record<string, unknown> };
-  const sandbox = {
-    Buffer,
-    console,
-    exports: moduleObject.exports,
-    module: moduleObject,
-    process,
-    require(id: string): unknown {
-      if (Object.hasOwn(moduleMocks, id)) return moduleMocks[id];
-      throw new Error(`Unexpected module dependency in selectionOverlay test: ${id}`);
-    },
-    setImmediate,
-    clearImmediate,
+  const requireModule = (id: string): unknown => {
+    if (Object.hasOwn(moduleMocks, id)) return moduleMocks[id];
+    const cached = loadedModules.get(id);
+    if (cached) return cached;
+    const file = realModules[id];
+    if (!file) throw new Error(`Unexpected module dependency in selectionOverlay test: ${id}`);
+    const exports = runModule(file);
+    loadedModules.set(id, exports);
+    return exports;
+  };
+
+  const timerSandbox = {
     setTimeout(callback: TimerCallback, delay?: number, ...args: unknown[]): TimerRecord {
       const timer = { callback, delay, args, cleared: false };
       timeouts.push(timer);
@@ -502,7 +511,34 @@ function loadSelectionOverlay({
     },
   };
 
-  vm.runInNewContext(transpiled, sandbox, { filename: sourcePath });
+  function runModule(file: string): Record<string, unknown> {
+    const transpiled = ts.transpileModule(fs.readFileSync(file, 'utf8'), {
+      compilerOptions: {
+        esModuleInterop: true,
+        module: ts.ModuleKind.CommonJS,
+        target: ts.ScriptTarget.ES2022,
+      },
+      fileName: file,
+    }).outputText;
+    const moduleObject = { exports: {} as Record<string, unknown> };
+    vm.runInNewContext(transpiled, {
+      Buffer,
+      console,
+      exports: moduleObject.exports,
+      module: moduleObject,
+      process,
+      require: requireModule,
+      setImmediate: (callback: () => void): void => {
+        // prewarm 재시도(closed → setImmediate) 를 테스트가 통제하도록 실행하지 않는다.
+        timerSandbox.setTimeout(callback, -1);
+      },
+      clearImmediate,
+      ...timerSandbox,
+    }, { filename: file });
+    return moduleObject.exports;
+  }
+
+  const moduleObject = { exports: runModule(sourcePath) };
 
   if (!isSelectionOverlayModule(moduleObject.exports)) {
     throw new TypeError('selectionOverlay module did not export SelectionOverlayManager');
@@ -598,6 +634,8 @@ test('show creates one overlay window per display using display DIP bounds', asy
   const manager = new harness.SelectionOverlayManager();
 
   const resultPromise = manager.show();
+  // 다른 모니터 창은 커서 모니터의 bg 캡처가 끝난 뒤 생성된다.
+  await flushPromises();
   const visibleWindows = harness.windows.filter((win) => !win.destroyed);
 
   assert.equal(visibleWindows.length, DISPLAYS.length);
@@ -633,6 +671,8 @@ test('selected rect is translated from sender window local coordinates to global
   const manager = new harness.SelectionOverlayManager();
 
   const resultPromise = manager.show();
+  // 다른 모니터 창은 커서 모니터의 bg 캡처가 끝난 뒤 생성된다.
+  await flushPromises();
   const target = findWindowForDisplay(harness.windows, DISPLAYS[2]);
   assert.ok(target);
 
@@ -655,6 +695,8 @@ test('regular selected rect is clamped to the sender display bounds', async () =
   const manager = new harness.SelectionOverlayManager();
 
   const resultPromise = manager.show();
+  // 다른 모니터 창은 커서 모니터의 bg 캡처가 끝난 뒤 생성된다.
+  await flushPromises();
   const target = findWindowForDisplay(harness.windows, DISPLAYS[1]);
   assert.ok(target);
 
@@ -680,6 +722,8 @@ test('windows payload and element-at results are translated into each sender win
   const manager = new harness.SelectionOverlayManager();
 
   const resultPromise = manager.show();
+  // 다른 모니터 창은 커서 모니터의 bg 캡처가 끝난 뒤 생성된다.
+  await flushPromises();
   const left = findWindowForDisplay(harness.windows, DISPLAYS[0]);
   assert.ok(left);
 
@@ -705,6 +749,7 @@ test('windows payload and element-at results are translated into each sender win
     w: 90,
     h: 40,
     name: 'Button',
+    id: 100,
   });
 
   await select(harness.ipcMain, left, { x: 1, y: 1, w: 2, h: 2 });
@@ -716,6 +761,8 @@ test('selecting from any overlay settles once and closes every overlay exactly o
   const manager = new harness.SelectionOverlayManager();
 
   const resultPromise = manager.show();
+  // 다른 모니터 창은 커서 모니터의 bg 캡처가 끝난 뒤 생성된다.
+  await flushPromises();
   const visibleWindows = [...harness.windows];
   const selectedFrom = findWindowForDisplay(visibleWindows, DISPLAYS[0]);
   assert.ok(selectedFrom);
@@ -743,6 +790,8 @@ test('cancel ignores unrelated senders, while active sender cancel and Escape se
   const manager = new harness.SelectionOverlayManager();
 
   const firstResult = manager.show();
+  // 다른 모니터 창은 커서 모니터의 bg 캡처가 끝난 뒤 생성된다.
+  await flushPromises();
   const active = findWindowForDisplay(harness.windows, DISPLAYS[1]);
   assert.ok(active);
   const standby = new MockBrowserWindow({ x: 0, y: 0, width: 1, height: 1 });
@@ -763,6 +812,8 @@ test('duplicate show returns canceled without replacing the active session; stop
   const manager = new harness.SelectionOverlayManager();
 
   const firstResult = manager.show();
+  // 다른 모니터 창은 커서 모니터의 bg 캡처가 끝난 뒤 생성된다.
+  await flushPromises();
   const firstWindows = [...harness.windows];
   assert.deepEqual(plain(await manager.show()), { kind: 'canceled' });
   assert.deepEqual(firstWindows, harness.windows);
@@ -776,6 +827,8 @@ test('duplicate show returns canceled without replacing the active session; stop
 
   const freshManager = new harness.SelectionOverlayManager();
   const thirdResult = freshManager.show();
+  // 다른 모니터 창은 커서 모니터의 bg 캡처가 끝난 뒤 생성된다.
+  await flushPromises();
   const thirdWindows = harness.windows.slice(firstWindows.length);
   assert.equal(thirdWindows.length, DISPLAYS.length);
   await select(harness.ipcMain, thirdWindows[0], { x: 2, y: 3, w: 4, h: 5 });
@@ -789,6 +842,8 @@ test('ready from standby sender does not activate or feed the active session', a
   const manager = new harness.SelectionOverlayManager();
 
   const resultPromise = manager.show();
+  // 다른 모니터 창은 커서 모니터의 bg 캡처가 끝난 뒤 생성된다.
+  await flushPromises();
   const active = findWindowForDisplay(harness.windows, DISPLAYS[1]);
   assert.ok(active);
   const standby = new MockBrowserWindow({ x: 0, y: 0, width: 1, height: 1 });
@@ -804,4 +859,74 @@ test('ready from standby sender does not activate or feed the active session', a
 
   await select(harness.ipcMain, active, { x: 3, y: 4, w: 5, h: 6 });
   await resultPromise;
+});
+
+test('prewarmed standby is reused for the cursor display and shown instantly; other displays wait for renderer ready', async () => {
+  const harness = loadSelectionOverlay();
+  type PrewarmableManager = SelectionOverlayManagerLike & { prewarm(): void };
+  const manager = new harness.SelectionOverlayManager() as PrewarmableManager;
+
+  manager.prewarm();
+  const [standby] = harness.windows;
+  assert.ok(standby);
+  assert.equal(standby.opacity, 0);
+  assert.equal(standby.showInactiveCalls, 1);
+  ready(harness.ipcMain, standby);
+
+  const resultPromise = manager.show();
+  // 커서 모니터는 새 창 없이 standby 를 opacity 복원만으로 즉시 표시한다.
+  assert.equal(harness.windows.length, 1);
+  assert.deepEqual(plain(standby.bounds), DISPLAYS[1].bounds);
+  assert.equal(standby.opacity, 1);
+  assert.equal(standby.ignoreMouseEvents, false);
+  assert.equal(standby.showCalls, 0);
+
+  await flushPromises();
+  const secondaries = harness.windows.filter((win) => win !== standby);
+  assert.equal(secondaries.length, DISPLAYS.length - 1);
+  for (const win of secondaries) {
+    // renderer 로드 전에는 보이지 않고 클릭도 통과시킨다 (스냅샷 유실 방지).
+    assert.equal(win.opacity, 0);
+    assert.equal(win.ignoreMouseEvents, true);
+    assert.equal(win.focusCalls, 0);
+  }
+
+  const left = findWindowForDisplay(secondaries, DISPLAYS[0]);
+  assert.ok(left);
+  const callsBefore = harness.backgroundCalls.filter((call) => call.win === left).length;
+  ready(harness.ipcMain, left);
+  assert.equal(left.opacity, 1);
+  assert.equal(left.ignoreMouseEvents, false);
+  assert.equal(harness.backgroundCalls.filter((call) => call.win === left).length, callsBefore + 1);
+  assert.equal(left.focusCalls, 0, 'secondary overlay must not steal focus');
+
+  await select(harness.ipcMain, left, { x: 1, y: 1, w: 2, h: 2 });
+  await resultPromise;
+});
+
+test('session settled before the cursor display snapshot finishes creates no secondary windows', async () => {
+  const harness = loadSelectionOverlay();
+  const manager = new harness.SelectionOverlayManager();
+
+  const resultPromise = manager.show();
+  harness.pressEscape();
+  assert.deepEqual(plain(await resultPromise), { kind: 'canceled' });
+  await flushPromises();
+
+  assert.equal(harness.windows.length, 1);
+  assert.equal(harness.windows[0].isDestroyed(), true);
+});
+
+test('closing any secondary overlay cancels the session and closes the rest', async () => {
+  const harness = loadSelectionOverlay();
+  const manager = new harness.SelectionOverlayManager();
+
+  const resultPromise = manager.show();
+  await flushPromises();
+  const right = findWindowForDisplay(harness.windows, DISPLAYS[2]);
+  assert.ok(right);
+
+  right.close();
+  assert.deepEqual(plain(await resultPromise), { kind: 'canceled' });
+  for (const win of harness.windows) assert.equal(win.isDestroyed(), true);
 });

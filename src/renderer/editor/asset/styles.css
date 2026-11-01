@@ -1,35 +1,11 @@
 /*
- * ASIS 어노테이션 에디터 스타일.
- * 디자인 결: macOS Sonoma + Sunday-paper 정밀함 (selection overlay 와 동일 변수).
+ * ASIS 어노테이션 에디터 스타일 — 디자인 토큰(design-system) 위에 레이아웃만 얹는다.
+ * 색·글꼴·반경·그림자는 전부 토큰 → 시스템 라이트/다크와 설정의 "화면 모드"(main 이
+ * nativeTheme.themeSource 로 넘김)를 따른다. 캔버스 안 주석 색(사용자가 고른 색)은 대상이 아니다.
+ *
+ * gif-studio 가 이 파일을 @import 해 같은 툴바 클래스를 쓴다 — 클래스 이름을 바꾸면 그쪽도 확인.
  */
-
-:root {
-  --bg: #161618;
-  --surface: rgba(28, 28, 32, 0.92);
-  --surface-2: rgba(255, 255, 255, 0.06);
-  --border: rgba(255, 255, 255, 0.09);
-  --text: rgba(255, 255, 255, 0.96);
-  --text-secondary: rgba(255, 255, 255, 0.56);
-  --text-muted: rgba(255, 255, 255, 0.32);
-  --accent: #5ea2ff;
-  --accent-soft: rgba(94, 162, 255, 0.42);
-  --danger: #ff453a;
-
-  --font-system:
-    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue',
-    'Apple SD Gothic Neo', 'Pretendard', sans-serif;
-  --font-mono: 'SF Mono', 'JetBrains Mono', Menlo, ui-monospace, monospace;
-
-  --ease-mac: cubic-bezier(0.32, 0.72, 0, 1);
-  --duration-fast: 80ms;
-  --duration-mid: 140ms;
-}
-
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
+@import '../../design-system/asset/base.css';
 
 html,
 body,
@@ -37,25 +13,16 @@ body,
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  background: var(--bg);
-  color: var(--text);
-}
-
-body {
-  font-family: var(--font-system);
-  -webkit-font-smoothing: antialiased;
-  user-select: none;
-  -webkit-user-select: none;
+  background: var(--surface-window);
 }
 
 button {
-  font-family: inherit;
   cursor: pointer;
 }
 
 button:disabled {
   cursor: default;
-  opacity: 0.4;
+  opacity: var(--opacity-disabled);
 }
 
 /* ── 레이아웃 ───────────────────────────────────────── */
@@ -65,19 +32,18 @@ button:disabled {
   flex-direction: column;
   width: 100%;
   height: 100%;
-  /* macOS hiddenInset titleBar 영역 확보 */
-  padding-top: 28px;
+  /* macOS hiddenInset 타이틀바(신호등) 높이 확보 */
+  padding-top: calc(var(--space-6) + var(--space-1));
 }
 
+/* 위 padding-top 은 자리만 비울 뿐 잡히지 않는다 — 그 위에 겹쳐 앉는 fixed 레이어로
+   창 이동 손잡이를 만든다 (레이아웃 영향 없음, PR #6). 신호등은 네이티브라 가리지 않는다. */
 .editor__titlebar {
-  /* 위 padding-top 은 자리만 비울 뿐이라 잡히지 않는다 — 그 위에 겹쳐 앉는
-     fixed 레이어로 실제 드래그 영역을 만든다 (레이아웃 영향 없음). */
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  height: 28px;
-  /* 신호등 버튼은 네이티브라 웹 콘텐츠 위에 떠서 이 레이어에 가리지 않는다. */
+  height: calc(var(--space-6) + var(--space-1));
   z-index: 1;
   -webkit-app-region: drag;
   app-region: drag;
@@ -88,189 +54,228 @@ button:disabled {
   display: flex;
   /* 중앙 정렬은 stage-wrap 의 margin:auto 가 담당 — align/justify center 는
      줌으로 overflow 시 시작 부분이 스크롤 불가로 잘리는 flex 의 알려진 문제가 있다. */
-  padding: 16px 16px 0;
+  padding: var(--space-4) var(--space-4) 0;
   /* 줌 인 시 두 손가락 스크롤로 패닝. */
   overflow: auto;
 }
 
 .editor__empty {
-  color: var(--text-muted);
-  font-size: 13px;
+  margin: auto;
+  color: var(--text-tertiary);
+  font-size: var(--text-body);
 }
 
+/* 저장 알림(design-system Toast) 위치만 — 위쪽 가운데. 툴바는 창 폭에 따라 두세 줄로
+   접혀 높이가 바뀌므로, 아래에 두면 툴바를 가린다. */
 .editor__toast {
   position: fixed;
-  bottom: 72px;
+  top: var(--space-10);
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(34, 197, 94, 0.88);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 500;
-  padding: 7px 14px;
-  border-radius: 8px;
-  backdrop-filter: blur(8px);
+  z-index: var(--z-toast);
   pointer-events: none;
-  z-index: 9999;
+  max-width: calc(100vw - var(--space-10));
+}
+
+/* 크롭 모드 안내 막대 — 위쪽 가운데, 캔버스 위에 뜬다. */
+.editor__crop-bar {
+  position: fixed;
+  top: var(--space-10);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--z-toast);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: calc(100vw - var(--space-10));
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
+  border: var(--border-hairline) solid var(--border-subtle);
+  border-radius: var(--radius-group);
+  background: var(--surface-elevated);
+  box-shadow: var(--shadow-floating);
+  font-size: var(--text-body);
+  /* 창이 낮으면 editor__titlebar 드래그 영역과 겹칠 수 있다 — 버튼 클릭이 창 이동으로 먹히지 않게. */
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.editor__crop-hint {
+  color: var(--text-secondary);
   white-space: nowrap;
-  max-width: calc(100vw - 48px);
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.editor__crop-size {
+  color: var(--text-primary);
+  white-space: nowrap;
 }
 
 /* ── Stage wrapper (TextEditor 오버레이 기준점) ──────── */
 
 .stage-wrap {
   position: relative;
+  /* 캡처와 창 바탕의 경계 — 밝은 캡처가 라이트 창에 묻히지 않게. */
+  box-shadow: var(--shadow-raised);
 }
 
-/* ── 텍스트 인라인 editor ───────────────────────────── */
-
-.text-editor {
-  z-index: 1000;
-  min-width: 200px;
-  min-height: 36px;
-  padding: 4px 8px;
-  background: rgba(0, 0, 0, 0.85);
-  border: 2px solid var(--accent);
-  border-radius: 6px;
-  outline: none;
-  resize: none;
-  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-  line-height: 1.2;
-  letter-spacing: 0.01em;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 0 0 4px rgba(94, 162, 255, 0.18),
-    0 6px 16px rgba(0, 0, 0, 0.5);
-  caret-color: var(--accent);
-  pointer-events: auto;
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
-  overflow: visible;
-}
-
-.text-editor::placeholder {
-  color: rgba(255, 255, 255, 0.36);
-}
-
-/* ── Toolbar — 반응형 ────────────────────────────── */
+/* ── Toolbar — 창 아래 떠 있는 판, 반응형 줄바꿈 ─────── */
 
 .toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 8px;
-  padding: 8px 10px;
-  margin: 10px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 8px 24px rgba(0, 0, 0, 0.36),
-    0 1px 1px rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(20px) saturate(140%);
-  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-2);
+  margin: var(--space-2);
+  background: var(--surface-elevated);
+  border-radius: var(--radius-window);
+  box-shadow: var(--shadow-floating);
 }
 
 .toolbar__group {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: var(--space-half);
   flex-wrap: nowrap;
 }
 
 .toolbar__group--colors {
   flex-wrap: wrap;
-  max-width: 220px;
+  gap: var(--space-1);
+  max-width: 220px; /* token-ok: 팔레트 12색이 두 줄로 접히는 폭 */
 }
 
 .toolbar__group--actions {
-  gap: 8px;
+  gap: var(--space-2);
   margin-left: auto;
 }
 
 .toolbar__divider {
-  width: 1px;
-  height: 22px;
-  background: var(--border);
-  margin: 0 2px;
+  width: var(--border-thin);
+  height: var(--size-control);
+  margin: 0 var(--space-half);
+  background: var(--border-subtle);
 }
 
 .toolbar__spacer {
   flex: 1;
-  min-width: 8px;
+  min-width: var(--space-2);
 }
 
 .slider-label {
-  font-size: 11px;
+  margin-right: var(--space-1);
   color: var(--text-secondary);
-  margin-right: 4px;
+  font-size: var(--text-subhead);
+}
+
+/* ── 공통: 토글형 버튼(도구·두께·값·선 스타일·아이콘) ──────
+ * design-system IconButton 과 같은 상태 표현 — hover 는 옅은 채움,
+ * 켜짐은 브랜드 오렌지 틴트 + 진한 오렌지 글자.
+ */
+
+.tool,
+.stroke,
+.radius,
+.dash,
+.iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  border: none;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-primary);
+  transition:
+    background var(--duration-fast) var(--ease-mac),
+    color var(--duration-fast) var(--ease-mac);
+}
+
+.tool:hover:not(.tool--active),
+.stroke:hover:not(.stroke--active),
+.radius:hover:not(.radius--active),
+.dash:hover:not(.dash--active),
+/* 파일 선택 label(첨부) 은 button 이 아니라 :disabled 가 안 걸린다 — aria-disabled 로 같은 모양. */
+.iconbtn[aria-disabled="true"] {
+  opacity: var(--opacity-disabled);
+  pointer-events: none;
+}
+
+.iconbtn:hover:not(:disabled, .iconbtn--active) {
+  background: var(--surface-hover);
+}
+
+.tool:active,
+.stroke:active,
+.radius:active,
+.dash:active,
+.iconbtn:active:not(:disabled) {
+  background: var(--surface-pressed);
+}
+
+.tool--active,
+.stroke--active,
+.radius--active,
+.dash--active,
+.iconbtn--active {
+  background: var(--accent-tint);
+  color: var(--accent-tint-text);
 }
 
 /* ── 도구 버튼 ────────────────────────────────────── */
 
 .tool {
-  display: inline-flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-width: 44px;
-  height: 34px;
-  padding: 3px 6px;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  color: var(--text);
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.01em;
+  min-width: calc(var(--space-10) + var(--space-1));
+  height: calc(var(--size-control-lg) + var(--space-2));
+  padding: var(--space-half) var(--space-1);
+  font-size: var(--text-subhead);
+  font-weight: var(--weight-medium);
   white-space: nowrap;
-  transition:
-    background var(--duration-fast) var(--ease-mac),
-    border-color var(--duration-fast) var(--ease-mac);
-}
-
-.tool:hover:not(.tool--active) {
-  background: var(--surface-2);
-}
-
-.tool--active {
-  background: var(--accent-soft);
-  border-color: var(--accent);
-  color: var(--text);
 }
 
 .tool__label {
   display: block;
-  line-height: 1.2;
+  line-height: var(--leading-tight);
 }
 
 .tool__shortcut {
   display: block;
-  margin-top: 1px;
+  margin-top: var(--border-thin);
+  color: var(--text-tertiary);
   font-family: var(--font-mono);
-  font-size: 9px;
-  color: var(--text-secondary);
-  letter-spacing: 0.04em;
+  font-size: var(--text-footnote);
 }
 
 .tool--active .tool__shortcut {
-  color: rgba(255, 255, 255, 0.78);
+  color: var(--accent-tint-text);
 }
 
-/* ── 색상 ─────────────────────────────────────────── */
+/* ── 색상 견본 ─────────────────────────────────────── */
 
 .color {
-  width: 20px;
-  height: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 50%;
-  padding: 0;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  transition: transform var(--duration-fast) var(--ease-mac);
+  width: var(--size-icon-lg);
+  height: var(--size-icon-lg);
   flex: none;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-round);
+  /* 흰·검정 견본도 바탕과 구분되도록 안쪽 테두리 */
+  box-shadow: inset 0 0 0 var(--border-thin) var(--border-control);
+  transition: transform var(--duration-fast) var(--ease-mac);
+}
+
+.color:hover:not(.color--active) {
+  transform: scale(1.08);
+}
+
+/* 선택 표시 — 견본과 링 사이에 바탕색 틈을 둬 어떤 색 위에서도 링이 보인다. */
+.color--active {
+  box-shadow:
+    inset 0 0 0 var(--border-thin) var(--border-control),
+    0 0 0 var(--border-thick) var(--surface-elevated),
+    0 0 0 calc(var(--border-thick) * 2) var(--accent);
 }
 
 .color--custom {
@@ -279,13 +284,14 @@ button:disabled {
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  /* 사용자 지정 색 — 무지개 원판 (시스템 색 토큰) */
   background: conic-gradient(
     from 0deg,
-    #ff3b30 0deg,
-    #ffcc00 90deg,
-    #34c759 180deg,
-    #007aff 270deg,
-    #ff3b30 360deg
+    var(--red) 0deg,
+    var(--yellow) 90deg,
+    var(--green) 180deg,
+    var(--blue) 270deg,
+    var(--red) 360deg
   );
 }
 
@@ -294,259 +300,121 @@ button:disabled {
   inset: 0;
   width: 100%;
   height: 100%;
+  padding: 0;
+  border: 0;
   opacity: 0;
   cursor: pointer;
-  border: 0;
-  padding: 0;
 }
 
-.color:hover:not(.color--active) {
-  transform: scale(1.08);
-}
-
-.color--active {
-  border-color: var(--accent);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.1),
-    0 0 0 2px var(--accent-soft);
-}
-
-/* ── stroke width ────────────────────────────────── */
+/* ── 선 두께 ───────────────────────────────────────── */
 
 .stroke {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  flex: none;
-}
-
-.radius {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 28px;
-  height: 26px;
-  padding: 0 6px;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.02em;
-  transition: background var(--duration-fast) var(--ease-mac);
-}
-
-.radius:hover:not(.radius--active) {
-  background: var(--surface-2);
-}
-
-.radius--active {
-  background: var(--accent-soft);
-  border-color: var(--accent);
-}
-
-.stroke:hover:not(.stroke--active) {
-  background: var(--surface-2);
-}
-
-.stroke--active {
-  background: var(--accent-soft);
-  border-color: var(--accent);
+  width: var(--size-control-lg);
+  height: var(--size-control-lg);
 }
 
 .stroke__dot {
-  background: var(--text);
-  border-radius: 50%;
+  background: currentcolor;
+  border-radius: var(--radius-round);
 }
 
-/* ── 선 스타일 미리보기 버튼 ───────────────────────── */
+/* ── 숫자 값 (블러·블록·폰트 크기·줄간격) ───────────── */
+
+.radius {
+  min-width: var(--size-control-lg);
+  height: var(--size-control-lg);
+  padding: 0 var(--space-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-subhead);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 선 스타일 미리보기 ─────────────────────────────── */
 
 .dash {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 26px;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  color: var(--text);
-  flex: none;
+  width: var(--space-10);
+  height: var(--size-control-lg);
 }
 
-.dash:hover:not(.dash--active) {
-  background: var(--surface-2);
-}
-
-.dash--active {
-  background: var(--accent-soft);
-  border-color: var(--accent);
-}
-
-/* ── icon button ─────────────────────────────────── */
+/* ── 아이콘 버튼 (undo·redo·이미지·핀·저장·줌) ─────── */
 
 .iconbtn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  color: var(--text);
-  font-size: 18px;
+  width: var(--size-control-lg);
+  height: var(--size-control-lg);
+  color: var(--text-secondary);
+  font-size: var(--text-title2);
   line-height: 1;
-  transition: background var(--duration-fast) var(--ease-mac);
+}
+
+.iconbtn:hover:not(:disabled) {
+  color: var(--text-primary);
 }
 
 /* 줌 퍼센트 표시 — 클릭하면 원래 크기(100%)로. 자릿수 변동에도 폭 고정. */
 .iconbtn.zoom-pct {
   width: auto;
-  min-width: 44px;
-  padding: 0 4px;
-  font-size: 11px;
+  min-width: calc(var(--space-10) + var(--space-1));
+  padding: 0 var(--space-1);
+  font-size: var(--text-subhead);
   font-variant-numeric: tabular-nums;
 }
 
-.iconbtn:hover:not(:disabled) {
-  background: var(--surface-2);
-}
-
-.iconbtn--active {
-  background: var(--surface-2);
-  border-color: var(--border);
-  color: var(--accent);
-}
-
-/* ── 액션 버튼 (취소/복사) ─────────────────────────── */
-
-.action {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  height: 32px;
-  padding: 0 14px;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.01em;
-  transition:
-    background var(--duration-fast) var(--ease-mac),
-    transform var(--duration-fast) var(--ease-mac);
-}
-
-.action:active {
-  transform: translateY(0.5px);
-}
-
-.action--secondary {
-  background: var(--surface-2);
-  color: var(--text);
-}
-
-.action--secondary:hover {
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.action--primary {
-  background: var(--accent);
-  border-color: rgba(255, 255, 255, 0.18);
-  color: white;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.18),
-    0 1px 2px rgba(0, 0, 0, 0.32);
-}
-
-.action--primary:hover {
-  background: #4d92f5;
-}
+/* ── 액션 (design-system Button) 안 단축키 표기 ───── */
 
 .action__hint {
   font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  opacity: 0.7;
+  font-size: var(--text-footnote);
+  opacity: var(--opacity-muted);
 }
 
-/* ── 폰트 선택 드롭다운 ─────────────────────────────── */
+/* ── 폰트 선택 (design-system Select) ───────────────── */
 
-.font-select {
-  height: 26px;
-  padding: 0 6px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text);
-  font-family: var(--font-system);
-  font-size: 11px;
-  cursor: pointer;
-  outline: none;
-  appearance: none;
-  -webkit-appearance: none;
-  padding-right: 18px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='rgba(255,255,255,0.5)' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 5px center;
-  transition: border-color var(--duration-fast) var(--ease-mac);
+.font-select .ds-select__native {
+  max-width: 140px; /* token-ok: 긴 글꼴 이름이 툴바를 밀어내지 않게 */
+  font-size: var(--text-subhead);
 }
 
-.font-select:hover {
-  border-color: rgba(255, 255, 255, 0.2);
-}
-
-.font-select:focus {
-  border-color: var(--accent);
-}
-
-.font-select option {
-  background: #2a2a30;
-  color: var(--text);
-}
-
-/* ── 컨텍스트 메뉴 ──────────────────────────────────── */
+/* ── 컨텍스트 메뉴 — macOS 메뉴 모양 ───────────────── */
 
 .context-menu {
   position: fixed;
-  z-index: 9999;
-  /* 상단 근처에서 열리면 editor__titlebar 드래그 영역과 겹친다 — 항목 클릭이
-     창 이동으로 먹히지 않도록 예외 지정. */
+  /* 상단 근처에서 열리면 editor__titlebar 드래그 영역과 겹친다 — 항목 클릭이 창 이동으로 먹히지 않게. */
   -webkit-app-region: no-drag;
   app-region: no-drag;
-  min-width: 120px;
-  padding: 4px;
-  background: rgba(36, 36, 42, 0.96);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow:
-    0 4px 20px rgba(0, 0, 0, 0.5),
-    0 1px 2px rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  z-index: var(--z-popover);
+  min-width: 140px; /* token-ok: 메뉴 최소 폭 */
+  padding: var(--space-1);
+  background: var(--surface-elevated);
+  border-radius: var(--radius-group);
+  box-shadow: var(--shadow-floating);
 }
 
 .context-menu__item {
   display: block;
   width: 100%;
-  padding: 6px 10px;
-  background: transparent;
+  padding: var(--space-1) var(--space-2);
   border: none;
-  border-radius: 5px;
-  color: var(--text);
-  font-family: var(--font-system);
-  font-size: 12px;
+  border-radius: var(--radius-chip);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--text-body);
   text-align: left;
   cursor: pointer;
-  transition: background var(--duration-fast) var(--ease-mac);
 }
 
+/* macOS 메뉴 하이라이트 — 강조색 면 + 흰 글자 */
 .context-menu__item:hover {
-  background: var(--accent-soft);
+  background: var(--accent-fill);
+  color: var(--accent-text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tool,
+  .stroke,
+  .radius,
+  .dash,
+  .iconbtn,
+  .color {
+    transition: none;
+  }
 }

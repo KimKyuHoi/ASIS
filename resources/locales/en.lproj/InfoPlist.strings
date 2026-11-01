@@ -1,0 +1,3 @@
+/* macOS permission prompt descriptions — English. */
+"NSScreenCaptureUsageDescription" = "ASIS needs Screen Recording permission to capture your screen.";
+"NSAccessibilityUsageDescription" = "ASIS needs Accessibility permission to detect UI elements automatically.";

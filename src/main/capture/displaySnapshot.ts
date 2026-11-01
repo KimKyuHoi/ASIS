@@ -87,64 +87,80 @@ const kCGImageAlphaNoneSkipFirst = 6;
 /** 예상 밖 픽셀 포맷 경고는 한 번만 — 폴백이 매번 돌며 로그를 도배하지 않도록. */
 let formatWarned = false;
 
+type RawImage = { data: Buffer; width: number; height: number };
+
+/** renderer 스위즐이 가정하는 BGRA(32Little + alpha first) 인지. */
+function isBgra(bitmapInfo: number): boolean {
+  const alpha = bitmapInfo & kCGBitmapAlphaInfoMask;
+  return (bitmapInfo & kCGBitmapByteOrderMask) === kCGBitmapByteOrder32Little &&
+    (alpha === kCGImageAlphaPremultipliedFirst || alpha === kCGImageAlphaNoneSkipFirst);
+}
+
+/** stride 패딩 제거 — renderer 의 ImageData 는 촘촘한 rowBytes(width*4) 를 기대한다. */
+function stripRowPadding(
+  full: Buffer,
+  image: { width: number; height: number; bytesPerRow: number },
+): Buffer {
+  const { width, height, bytesPerRow } = image;
+  const rowBytes = width * 4;
+  if (bytesPerRow === rowBytes) return full;
+  const packed = Buffer.allocUnsafe(rowBytes * height);
+  for (let y = 0; y < height; y++) {
+    full.copy(packed, y * rowBytes, y * bytesPerRow, y * bytesPerRow + rowBytes);
+  }
+  return packed;
+}
+
+function createDisplayImage(cg: CgFns, displayId: number): Promise<unknown> {
+  return new Promise<unknown>((resolve, reject) => {
+    cg.createImage.async(displayId, (err: unknown, res: unknown) => {
+      if (err) reject(err instanceof Error ? err : new Error(`CGDisplayCreateImage 실패: ${JSON.stringify(err)}`));
+      else resolve(res);
+    });
+  });
+}
+
+/** CGImage → 촘촘한 BGRA 픽셀. 포맷 불일치·데이터 없음은 null. img 해제는 호출측. */
+function readBgraPixels(cg: CgFns, img: unknown): RawImage | null {
+  const width = Number(cg.getWidth(img));
+  const height = Number(cg.getHeight(img));
+  const info = Number(cg.getBitmapInfo(img));
+  if (width <= 0 || height <= 0 || !isBgra(info)) {
+    if (!formatWarned) {
+      formatWarned = true;
+      console.warn(
+        `[asis] CGImage 예상 밖 포맷 (bitmapInfo=0x${info.toString(16)}, ${String(width)}x${String(height)}) — screencapture 폴백`,
+      );
+    }
+    return null;
+  }
+
+  const data: unknown = cg.copyData(cg.getDataProvider(img));
+  if (!data) return null;
+  try {
+    const len = Number(cg.dataLength(data));
+    const ptr: unknown = cg.dataBytePtr(data);
+    const full = Buffer.from(koffi.decode(ptr, koffi.array('uint8', len)) as Uint8Array);
+    const bytesPerRow = Number(cg.getBytesPerRow(img));
+    return { data: stripRowPadding(full, { width, height, bytesPerRow }), width, height };
+  } finally {
+    cg.release(data);
+  }
+}
+
 /**
  * CGDisplayCreateImage 로 디스플레이 전체를 raw BGRA 로 캡처.
  * 실패(NULL/포맷 불일치)는 null — 호출측이 screencapture 로 폴백한다.
  * capture 호출은 koffi .async 로 워커 스레드에서 실행 — main 이벤트 루프 비차단.
  */
-async function captureDisplayRaw(
-  displayId: number,
-): Promise<{ data: Buffer; width: number; height: number } | null> {
+async function captureDisplayRaw(displayId: number): Promise<RawImage | null> {
   const cg = getCg();
   if (!cg) return null;
-
-  const img = await new Promise<unknown>((resolve, reject) => {
-    cg.createImage.async(displayId, (err: unknown, res: unknown) => {
-      if (err) reject(err instanceof Error ? err : new Error(String(err)));
-      else resolve(res);
-    });
-  });
+  const img = await createDisplayImage(cg, displayId);
   // NULL = 권한 없음, 디스플레이 sleep, 미래 macOS 의 API 제거 등 — 폴백 경로.
   if (!img) return null;
-
   try {
-    const width = Number(cg.getWidth(img));
-    const height = Number(cg.getHeight(img));
-    const bytesPerRow = Number(cg.getBytesPerRow(img));
-    const info = Number(cg.getBitmapInfo(img));
-    const isBgra =
-      (info & kCGBitmapByteOrderMask) === kCGBitmapByteOrder32Little &&
-      ((info & kCGBitmapAlphaInfoMask) === kCGImageAlphaPremultipliedFirst ||
-        (info & kCGBitmapAlphaInfoMask) === kCGImageAlphaNoneSkipFirst);
-    if (width <= 0 || height <= 0 || !isBgra) {
-      if (!formatWarned) {
-        formatWarned = true;
-        console.warn(
-          `[asis] CGImage 예상 밖 포맷 (bitmapInfo=0x${info.toString(16)}, ${width}x${height}) — screencapture 폴백`,
-        );
-      }
-      return null;
-    }
-
-    const data = cg.copyData(cg.getDataProvider(img));
-    if (!data) return null;
-    try {
-      const len = Number(cg.dataLength(data));
-      const ptr = cg.dataBytePtr(data);
-      const full = Buffer.from(koffi.decode(ptr, koffi.array('uint8', len)) as Uint8Array);
-      const rowBytes = width * 4;
-      if (bytesPerRow === rowBytes) {
-        return { data: full, width, height };
-      }
-      // stride 패딩 제거 — renderer 의 ImageData 는 촘촘한 rowBytes 를 기대한다.
-      const packed = Buffer.allocUnsafe(rowBytes * height);
-      for (let y = 0; y < height; y++) {
-        full.copy(packed, y * rowBytes, y * bytesPerRow, y * bytesPerRow + rowBytes);
-      }
-      return { data: packed, width, height };
-    } finally {
-      cg.release(data);
-    }
+    return readBgraPixels(cg, img);
   } finally {
     cg.release(img);
   }
@@ -219,7 +235,11 @@ export async function sendBackgroundSnapshot(
 ): Promise<void> {
   const startedAt = Date.now();
 
-  let raw: Awaited<ReturnType<typeof captureDisplayRaw>> = null;
+  const send = (payload: BackgroundPayload): void => {
+    if (!win.isDestroyed()) win.webContents.send(CHANNEL_BACKGROUND, payload);
+  };
+
+  let raw: RawImage | null = null;
   try {
     raw = await captureDisplayRaw(display.id);
   } catch (err) {
@@ -227,25 +247,18 @@ export async function sendBackgroundSnapshot(
   }
 
   if (raw) {
-    if (!win.isDestroyed()) {
-      const payload: BackgroundPayload = { kind: 'raw', ...raw };
-      win.webContents.send(CHANNEL_BACKGROUND, payload);
-    }
+    send({ kind: 'raw', ...raw });
     if (logPerf) {
       log.info(
-        `[perf] bg(cg) ${Date.now() - startedAt}ms ${raw.width}x${raw.height}` +
-        ` (raw ${Math.round(raw.data.length / 1048576)}MB)`,
+        `[perf] bg(cg) ${String(Date.now() - startedAt)}ms ${String(raw.width)}x${String(raw.height)}` +
+        ` (raw ${String(Math.round(raw.data.length / 1048576))}MB)`,
       );
     }
     return;
   }
 
-  const dataUrl = await captureWithScreencapture(display.bounds);
-  if (!win.isDestroyed()) {
-    const payload: BackgroundPayload = { kind: 'dataUrl', dataUrl };
-    win.webContents.send(CHANNEL_BACKGROUND, payload);
-  }
+  send({ kind: 'dataUrl', dataUrl: await captureWithScreencapture(display.bounds) });
   if (logPerf) {
-    log.info(`[perf] bg(sc-fallback) ${Date.now() - startedAt}ms`);
+    log.info(`[perf] bg(sc-fallback) ${String(Date.now() - startedAt)}ms`);
   }
 }

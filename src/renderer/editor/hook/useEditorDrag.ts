@@ -1,5 +1,4 @@
-import { useEffect, useRef } from 'react';
-import type { RefObject } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
 import type Konva from 'konva';
 import { useEditorStore } from '../lib/store';
 import { shapeDeltaPatch } from '../lib/shape-transform';
@@ -10,10 +9,18 @@ import { shapeDeltaPatch } from '../lib/shape-transform';
  * leader 노드(실제 도형) drag 시 다른 selected 노드도 같은 delta 만큼 이동.
  *
  * 범위: 실제 도형 노드가 leader 인 경우만 처리.
- * __group_drag__ KRect drag 는 Editor.tsx 의 JSX 핸들러가 별도 로컬 ref 로 처리.
+ * __group_drag__ KRect drag 는 Editor/GroupDragRect 가 별도 로컬 ref 로 처리.
  * 두 경우는 동시에 발생하지 않으므로 ref 공유 없이 독립.
+ *
+ * @param stageMounted Stage 가 렌더된 상태인지. ref 객체는 바뀌지 않아 deps 로 쓸 수
+ *   없으므로, Stage 가 나중에 마운트되는 화면(에디터: 이미지 로드 후)은 이 값을 넘겨야
+ *   마운트 시점에 리스너가 붙는다. 생략하면 첫 마운트 때 한 번만 시도한다
+ *   (Stage 가 처음부터 있는 화면용 — gif-studio 호환).
  */
-export function useEditorDrag(stageRef: RefObject<Konva.Stage | null>): void {
+export function useEditorDrag(
+  stageRef: RefObject<Konva.Stage | null>,
+  stageMounted = true,
+): void {
   const dragLeaderIdRef = useRef<string | null>(null);
   const dragStartPositionsRef = useRef<Map<string, { x: number; y: number }> | null>(null);
 
@@ -70,7 +77,7 @@ export function useEditorDrag(stageRef: RefObject<Konva.Stage | null>): void {
       positions.forEach((startPos, sid) => {
         const sh = shapes.find((s) => s.id === sid);
         if (!sh) return;
-        updateShape(sid, shapeDeltaPatch(sh, dx, dy, startPos));
+        updateShape(sid, shapeDeltaPatch(sh, { x: dx, y: dy }, startPos));
       });
       positions.forEach((_, sid) => {
         const node = stage.findOne(`#${sid}`);
@@ -92,5 +99,5 @@ export function useEditorDrag(stageRef: RefObject<Konva.Stage | null>): void {
       stage.off('dragmove', onDragMove);
       stage.off('dragend', onDragEnd);
     };
-  }, [stageRef]);
+  }, [stageRef, stageMounted]);
 }

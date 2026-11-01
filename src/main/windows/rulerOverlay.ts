@@ -1,15 +1,17 @@
-import { BrowserWindow, ipcMain, Notification, screen } from 'electron';
-import type { IpcMainEvent } from 'electron';
+import { ipcMain, type BrowserWindow } from 'electron';
 import { is } from '@electron-toolkit/utils';
+import { clearElementAtProvider, loadRendererPage, setElementAtProvider } from './common';
 import {
-  clearElementAtProvider,
-  loadRendererPage,
-  preloadPath,
-  setElementAtProvider,
-} from './common';
-import type { ElementAtProvider } from './common';
+  createLocalElementAtProvider,
+  createOverlayWindow,
+  getCursorDisplay,
+  logDidFailLoad,
+  onceRendererReady,
+  promptAccessibilityIfMissing,
+  refocusOnReadyToShow,
+  startBackgroundPolling,
+} from './overlayWindow';
 import { sendBackgroundSnapshot } from '../capture/displaySnapshot';
-import { ensureAccessibilityPermission, getElementBoundsAtPoint } from '../windowsInfo';
 import { tMain } from '../i18n/strings';
 
 /**
@@ -33,7 +35,6 @@ import { tMain } from '../i18n/strings';
  *   - imperative-style.md — main process 명령형 OK.
  */
 
-const CHANNEL_READY = 'capture:ready';
 const CHANNEL_CANCEL = 'capture:cancel';
 
 export class RulerOverlayManager {
@@ -48,123 +49,41 @@ export class RulerOverlayManager {
       return;
     }
 
-    // AX 권한 확인 — 요소 치수 표시에 필요. 없으면 안내 후에도 측정 자체는 동작
-    // (거리·눈금은 AX 무관). 권한 없으면 elementAt 이 자연스럽게 null 을 반환한다.
-    if (!ensureAccessibilityPermission(false)) {
-      ensureAccessibilityPermission(true);
-      new Notification({
-        title: tMain().accessibility.title,
-        body: tMain().accessibility.rulerBody,
-      }).show();
-    }
+    // AX 권한은 요소 치수 표시에만 필요하다 — 거리·눈금 측정은 권한 없이도 동작.
+    promptAccessibilityIfMissing(tMain().accessibility.rulerBody);
 
-    // 커서가 있는 디스플레이만 덮는다(다중 모니터).
-    const cursor = screen.getCursorScreenPoint();
-    const display = screen.getDisplayNearestPoint(cursor);
-    const minX = display.bounds.x;
-    const minY = display.bounds.y;
-
-    const win = createRulerWindow(display.bounds);
+    const display = getCursorDisplay();
+    const win = createOverlayWindow(display.bounds);
     this.win = win;
-
     if (is.dev) console.info('[asis] rulerOverlay open');
 
     // ?mode=ruler 로 selection 엔트리를 측정 모드로 로드.
     loadRendererPage(win, 'selection', { mode: 'ruler' }).catch((err: unknown) => {
       console.error('[asis] rulerOverlay load failed', err);
     });
-
-    win.webContents.on('did-fail-load', (_e, code, desc, url) => {
-      console.error(`[asis] rulerOverlay did-fail-load code=${code} desc=${desc} url=${url}`);
-    });
+    logDidFailLoad(win, 'rulerOverlay');
 
     // background 캡처를 win.show() 보다 먼저 시작 — overlay dim 이 캡처에 안 찍히도록.
-    const displayRef = { id: display.id, bounds: display.bounds };
-    sendBackgroundSnapshot(win, displayRef).catch((err: unknown) => {
-      console.warn('[asis] ruler background 캡처 실패 (magnifier 비활성):', err);
-    });
+    const pushBackground = (reason: string): void => {
+      sendBackgroundSnapshot(win, display).catch((err: unknown) => {
+        console.warn(`[asis] ruler background(${reason}) 실패 (magnifier 비활성):`, err);
+      });
+    };
+    pushBackground('open');
 
     win.show();
     win.focus();
     win.webContents.focus();
-    win.once('ready-to-show', () => {
-      // macOS 26β transparent+alwaysOnTop 자동 focus 회귀 우회.
-      win.focus();
-      win.webContents.focus();
-    });
-
-    // AX 요소 치수 조회 — 전역 좌표 ↔ 오버레이 로컬 좌표 변환(캡처 오버레이와 동일).
-    // 전역 핸들러 + provider 교체 (common.ts) — 이 창의 invoke 만 응답한다.
-    const elementAtProvider: ElementAtProvider = (event, x, y) => {
-      if (event.sender !== win.webContents) return null;
-      const result = getElementBoundsAtPoint(x + minX, y + minY);
-      if (!result) return null;
-      return {
-        x: result.x - minX,
-        y: result.y - minY,
-        w: result.w,
-        h: result.h,
-        name: result.name,
-      };
-    };
-    setElementAtProvider(elementAtProvider);
-
-    // renderer 가 ready 를 보내면 background 를 다시 한 번 밀어 준다(초기 유실 대비).
-    // sender 로 이 창만 판정 — selection prewarm 창의 ready 를 오인하지 않도록.
-    const onReady = (event: IpcMainEvent): void => {
-      if (event.sender !== win.webContents) return;
-      ipcMain.removeListener(CHANNEL_READY, onReady);
-      sendBackgroundSnapshot(win, displayRef).catch((err: unknown) => {
-        console.warn('[asis] ruler background(ready) 실패:', err);
-      });
-    };
-    ipcMain.on(CHANNEL_READY, onReady);
+    refocusOnReadyToShow(win);
 
     // ESC 처리는 renderer 가 담당한다 — measured 상태에서는 "측정 지우기", idle
     // 에서는 cancel IPC 로 창 닫기(2단계). 여기서 globalShortcut ESC 를 별도 등록하지
     // 않는 이유: 그러면 measured 결과가 첫 ESC 에 곧바로 삭제되어 완충 UX 가 깨진다.
-
-    // background 폴링 — Space 전환/화면 변화 시 magnifier 픽셀 갱신.
-    const BG_POLL_MS = 2500;
-    let bgInFlight = false;
-    let bgFailLogged = false;
-    const bgPoll = setInterval(() => {
-      if (win.isDestroyed()) {
-        clearInterval(bgPoll);
-        return;
-      }
-      if (bgInFlight) return;
-      bgInFlight = true;
-      sendBackgroundSnapshot(win, displayRef)
-        .catch((err: unknown) => {
-          if (!bgFailLogged) {
-            console.warn('[asis] ruler background polling 실패 (이후 silent):', err);
-            bgFailLogged = true;
-          }
-        })
-        .finally(() => { bgInFlight = false; });
-    }, BG_POLL_MS);
-
-    const cleanup = (): void => {
-      clearElementAtProvider(elementAtProvider);
-      ipcMain.removeAllListeners(CHANNEL_CANCEL);
-      // 이 창의 ready 리스너만 해제 — removeAllListeners 를 쓰면 selection
-      // prewarm 의 ready 리스너까지 지워져 prewarmed-loading 오판을 유발한다.
-      ipcMain.removeListener(CHANNEL_READY, onReady);
-      clearInterval(bgPoll);
-      this.win = null;
-    };
-
-    // renderer 의 ESC → cancel IPC 로 창 닫기.
-    ipcMain.once(CHANNEL_CANCEL, () => {
-      cleanup();
-      if (!win.isDestroyed()) win.close();
-    });
-
-    win.on('closed', () => {
-      // 외부 요인(예: stop())으로 닫혀도 리스너/interval 을 반드시 정리.
-      cleanup();
-    });
+    this.subscribe(win, [
+      // renderer ready 시 background 를 다시 한 번 밀어 준다(초기 유실 대비).
+      onceRendererReady(win, () => pushBackground('ready')),
+      startBackgroundPolling(win, display, 'ruler'),
+    ], display.bounds);
   }
 
   stop(): void {
@@ -173,37 +92,32 @@ export class RulerOverlayManager {
     if (!this.win.isDestroyed()) this.win.close();
     this.win = null;
   }
+
+  /**
+   * element-at provider 와 cancel IPC 를 연결하고, 창이 닫히면(cancel·stop 등
+   * 어떤 경로든) 받은 해제 함수까지 한 번에 정리한다.
+   */
+  private subscribe(
+    win: BrowserWindow,
+    unsubscribes: (() => void)[],
+    origin: { x: number; y: number },
+  ): void {
+    // 전역 핸들러 + provider 교체 (common.ts) — 이 창의 invoke 만 응답한다.
+    const elementAtProvider = createLocalElementAtProvider(win, origin);
+    setElementAtProvider(elementAtProvider);
+
+    const cleanup = (): void => {
+      clearElementAtProvider(elementAtProvider);
+      ipcMain.removeAllListeners(CHANNEL_CANCEL);
+      for (const unsubscribe of unsubscribes) unsubscribe();
+      this.win = null;
+    };
+
+    // renderer 의 ESC → cancel IPC 로 창 닫기.
+    ipcMain.once(CHANNEL_CANCEL, () => {
+      cleanup();
+      if (!win.isDestroyed()) win.close();
+    });
+    win.on('closed', cleanup);
+  }
 }
-
-type DisplayBounds = { x: number; y: number; width: number; height: number };
-
-/** 측정 오버레이용 BrowserWindow — 캡처 오버레이와 동일 옵션(panel/전역 표시). */
-function createRulerWindow(bounds: DisplayBounds): BrowserWindow {
-  const win = new BrowserWindow({
-    x: bounds.x,
-    y: bounds.y,
-    width: bounds.width,
-    height: bounds.height,
-    show: false,
-    frame: false,
-    transparent: true,
-    alwaysOnTop: true,
-    fullscreenable: false,
-    resizable: false,
-    movable: false,
-    hasShadow: false,
-    roundedCorners: false,
-    skipTaskbar: true,
-    enableLargerThanScreen: true,
-    type: 'panel',
-    webPreferences: {
-      preload: preloadPath(),
-      sandbox: false,
-    },
-  });
-
-  win.setAlwaysOnTop(true, 'screen-saver');
-  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  return win;
-}
-

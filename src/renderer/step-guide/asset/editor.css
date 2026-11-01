@@ -1,0 +1,261 @@
+/*
+ * 스텝 가이드 편집 창 — design-system 토큰(base.css) 위에 이 창의 배치만 얹는다.
+ * 색·글자·간격은 의미 토큰(--text-*, --surface-*, --border-*)만 쓴다.
+ * 시스템 라이트/다크를 따른다(HUD 와 달리 data-appearance 강제 없음 — main.tsx 가 뗀다).
+ * 클릭 위치 표시는 단계 주석(빨간 동그라미 기본 도형)이라 별도 스타일이 없다.
+ */
+/* 단계 주석은 이미지 에디터의 툴바·스테이지 컴포넌트를 그대로 쓰므로 그 스타일을 먼저 가져온다
+   (GIF 스튜디오와 같은 순서). 그 뒤 base.css 와 아래 규칙이 이 창 배치를 정한다. */
+@import '../../editor/asset/styles.css';
+@import '../../design-system/asset/base.css';
+
+html,
+body,
+#root {
+  height: 100%;
+  background: var(--surface-window);
+}
+
+.ge {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  height: 100vh;
+}
+
+/* 제목 막대는 design-system Titlebar — 저장 실패 문구만 위험 색. */
+.ge-status--error {
+  color: var(--text-danger);
+}
+
+/* ---- 본문 2단 ---- */
+.ge-body {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  min-height: 0;
+}
+
+.ge-sidebar {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface-group);
+  border-right: var(--border-hairline) solid var(--border-subtle);
+}
+
+.ge-sidebar__heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-3) var(--space-2);
+  font-weight: 600;
+}
+
+.ge-sidebar__hint {
+  color: var(--text-tertiary);
+  font-size: var(--text-subhead);
+  font-weight: 400;
+}
+
+.ge-list {
+  flex: 1;
+  overflow-y: auto;
+  list-style: none;
+  padding: 0 var(--space-2) var(--space-3);
+}
+
+.ge-item {
+  border-radius: var(--radius-group);
+  border-top: 2px solid transparent;
+}
+
+.ge-item--over {
+  border-top-color: var(--accent);
+}
+
+.ge-item--dragging {
+  opacity: 0.4;
+}
+
+.ge-item__button {
+  display: grid;
+  grid-template-columns: 18px 72px 1fr;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2);
+  border: none;
+  border-radius: var(--radius-group);
+  background: transparent;
+  text-align: left;
+}
+
+.ge-item__button:hover {
+  background: var(--surface-hover);
+}
+
+.ge-item--selected .ge-item__button {
+  background: var(--surface-selected);
+}
+
+.ge-item__num {
+  color: var(--text-secondary);
+  font-size: var(--text-callout);
+  text-align: right;
+}
+
+.ge-item--selected .ge-item__num {
+  color: var(--accent-tint-text);
+}
+
+.ge-item__thumb {
+  position: relative;
+  width: 72px;
+  height: 46px;
+  overflow: hidden;
+  border-radius: var(--radius-chip);
+  box-shadow: 0 0 0 var(--border-hairline) var(--border-subtle);
+  background: var(--surface-pressed);
+}
+
+.ge-item__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top left;
+}
+
+.ge-item__badge {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  padding: 0 4px;
+  border-radius: var(--radius-chip);
+  background: var(--media-scrim);
+  color: var(--media-on-scrim);
+  font-size: var(--text-footnote);
+  font-weight: 700;
+}
+
+.ge-item__caption {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: var(--text-callout);
+  line-height: 15px;
+}
+
+/* ---- 오른쪽 편집 영역 ---- */
+.ge-main {
+  overflow-y: auto;
+  padding: var(--space-5) var(--space-6) var(--space-6);
+}
+
+/* design-system TextField(.ds-field) 를 세로로 쌓고 폭을 채운다. */
+.ge-field {
+  display: flex;
+  width: 100%;
+  margin-top: var(--space-3);
+}
+
+.ge-field .ds-field__input {
+  width: 100%;
+}
+
+.ge-field--title .ds-field__input {
+  height: auto;
+  padding: var(--space-2);
+  font-size: var(--text-title1);
+  font-weight: var(--weight-semibold);
+}
+
+.ge-field--caption .ds-field__input {
+  height: auto;
+  padding: 6px var(--space-2);
+  font-size: var(--text-title2);
+  font-weight: var(--weight-semibold);
+}
+
+/* 여러 줄 입력 — design-system 에 TextArea 가 없어 TextField 입력칸 모양을 빌린다. */
+.ge-textarea {
+  height: auto;
+  min-height: 48px;
+  padding: 6px var(--space-2);
+  resize: none;
+  field-sizing: content;
+  line-height: var(--leading-body);
+}
+
+.ge-step {
+  margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: var(--border-hairline) solid var(--border-subtle);
+}
+
+.ge-step__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.ge-step__position {
+  font-size: var(--text-title3);
+  font-weight: var(--weight-semibold);
+}
+
+.ge-step__spacer {
+  flex: 1;
+}
+
+.ge-empty {
+  margin-top: var(--space-6);
+}
+
+/* ---- GIF 단계 화면 ---- */
+.ge-shot {
+  position: relative;
+  margin-top: var(--space-4);
+  overflow: hidden;
+  border-radius: var(--radius-control);
+  box-shadow: 0 0 0 var(--border-hairline) var(--border-subtle);
+}
+
+.ge-shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* ---- 단계 주석 (이미지 에디터 툴바 + 캔버스) ---- */
+.ge-annotate {
+  display: flex;
+  flex-direction: column;
+  margin-top: var(--space-4);
+}
+
+.ge-annotate__hint {
+  margin-top: var(--space-4);
+  color: var(--text-secondary);
+  font-size: var(--text-callout);
+}
+
+/* editor .toolbar 는 창 하단 떠 있는 막대라, 캔버스 위 막대로 쓰도록 여백만 맞춘다. */
+.ge-toolbar {
+  margin: var(--space-2) 0;
+}
+
+/* 줌·스크롤 기준 컨테이너 — 높이가 정해져 있어야 에디터가 맞춤 배율을 계산한다. */
+.ge-canvas {
+  flex: none;
+  height: min(64vh, 720px);
+  padding: var(--space-3);
+  border-radius: var(--radius-control);
+  background: var(--surface-under-page);
+  box-shadow: 0 0 0 var(--border-hairline) var(--border-subtle);
+}
+
+.ge-canvas__loading {
+  margin: auto;
+  color: var(--text-secondary);
+}

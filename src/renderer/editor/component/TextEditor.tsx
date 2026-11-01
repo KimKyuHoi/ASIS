@@ -1,10 +1,10 @@
-import { useEffect, useRef } from 'react';
-import type { CSSProperties, JSX } from 'react';
+import type { JSX } from 'react';
 import { createPortal } from 'react-dom';
-import { useEditorStore } from '../lib/store';
 import { useLanguage } from '../../../shared/i18n/use-language';
 import { editorStrings } from '../lib/strings';
 import type { TextShape } from '../types/shapes';
+import { useTextEditSession } from '../hook/useTextEditSession';
+import { textEditorStyle } from '../lib/text-editor-style';
 
 /**
  * 텍스트 도형 인라인 편집 textarea.
@@ -35,115 +35,15 @@ export function TextEditor({
   imageWidth: number;
 }): JSX.Element {
   const t = editorStrings[useLanguage()];
-  const updateShape = useEditorStore((s) => s.updateShape);
-  const deleteShape = useEditorStore((s) => s.deleteShape);
-  const setEditingId = useEditorStore((s) => s.setEditingId);
-  const setTool = useEditorStore((s) => s.setTool);
-  const ref = useRef<HTMLTextAreaElement>(null);
-  const textRef = useRef<string>(shape.text);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return undefined;
-    el.value = shape.text;
-    textRef.current = shape.text;
-    el.style.height = 'auto';
-    el.style.height = `${el.scrollHeight}px`;
-    el.focus();
-    el.select();
-
-    // settled 플래그: 언마운트 시 DOM blur 로 인한 이중 commit 방지.
-    let settled = false;
-
-    const commit = (): void => {
-      if (settled) return;
-      settled = true;
-      const trimmed = textRef.current.trim();
-      if (!trimmed) {
-        deleteShape(shape.id);
-      } else {
-        updateShape(shape.id, { text: trimmed });
-      }
-      setEditingId(null);
-      setTool('select');
-    };
-
-    const cancel = (): void => {
-      if (settled) return;
-      settled = true;
-      if (!shape.text) deleteShape(shape.id);
-      setEditingId(null);
-      setTool('select');
-    };
-
-    const handleKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        commit();
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        cancel();
-      }
-      e.stopPropagation();
-    };
-
-    // textarea 가 포커스를 잃을 때 commit — toolbar 로 이동한 경우는 제외.
-    // relatedTarget 은 브라우저가 직접 설정하는 실제 포커스 대상 요소이므로
-    // Chromium select popup 의 shadow DOM / native OS popup 여부와 무관하게
-    // .closest('.toolbar') 가 정확히 동작한다.
-    const handleBlur = (e: FocusEvent): void => {
-      const to = e.relatedTarget as Element | null;
-      if (to?.closest?.('.toolbar')) return;
-      commit();
-    };
-
-    el.addEventListener('keydown', handleKey);
-    el.addEventListener('blur', handleBlur);
-
-    return () => {
-      el.removeEventListener('keydown', handleKey);
-      el.removeEventListener('blur', handleBlur);
-    };
-  }, [shape.id, shape.text, updateShape, deleteShape, setEditingId, setTool]);
-
-  const displayFontSize = Math.max(14, shape.fontSize * stageScale);
-  // shape.width 를 기준으로 textarea 너비 결정. 이미지 오른쪽 경계는 상한선.
-  const maxStageW = Math.max(40, imageWidth - shape.x);
-  const fixedWidth = Math.max(80, Math.min(shape.width, maxStageW) * stageScale);
-
-  const style: CSSProperties = {
-    position: 'absolute',
-    left: shape.x * stageScale,
-    top: shape.y * stageScale,
-    width: fixedWidth,
-    padding: '2px 4px',
-    border: '1px dashed rgba(94, 162, 255, 0.8)',
-    borderRadius: 2,
-    background: 'transparent',
-    outline: 'none',
-    resize: 'none',
-    color: shape.fill,
-    fontSize: displayFontSize,
-    fontFamily: shape.fontFamily,
-    textAlign: shape.align ?? 'left',
-    lineHeight: shape.lineHeight ?? 1.2,
-    // overflow 미지정(default auto) — hidden 은 Chromium/Electron 에서 textarea
-    // 내부 word-wrap 알고리즘을 비활성화해 한 줄로 이어버린다.
-    // 시각적 클리핑은 상위 stageWrap(overflow:hidden) 이 담당한다.
-    overflowWrap: 'break-word',
-    wordBreak: 'break-all',
-    whiteSpace: 'pre-wrap',
-    caretColor: shape.fill,
-    zIndex: 1000,
-    boxSizing: 'border-box',
-  };
+  const { ref, setText } = useTextEditSession(shape);
+  const style = textEditorStyle(shape, { stageScale, imageWidth });
 
   return createPortal(
     <textarea
       ref={ref}
       defaultValue={shape.text}
       onChange={(e): void => {
-        textRef.current = e.target.value;
+        setText(e.target.value);
         const el = e.currentTarget;
         el.style.height = 'auto';
         el.style.height = `${el.scrollHeight}px`;

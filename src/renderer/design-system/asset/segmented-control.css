@@ -1,0 +1,61 @@
+.ds-segmented {
+  display: inline-flex;
+  height: var(--segmented-height);
+  padding: var(--space-half);
+  border-radius: var(--radius-control);
+  background: var(--segmented-bg);
+}
+
+.ds-segmented__item {
+  position: relative;
+  display: flex;
+}
+
+.ds-segmented__input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+}
+
+.ds-segmented__label {
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-3);
+  border-radius: calc(var(--radius-control) - var(--space-half));
+  color: var(--text-primary);
+  font-size: var(--text-body);
+  white-space: nowrap;
+  transition: background var(--duration-fast) var(--ease-mac);
+}
+
+/* 선택 안 된 이웃 사이에만 세로 구분선 */
+.ds-segmented__item + .ds-segmented__item .ds-segmented__label {
+  box-shadow: inset var(--border-thin) 0 0 -0.5px var(--segmented-divider); /* token-ok: 구분선 두께 보정 */
+}
+
+.ds-segmented__item:has(.ds-segmented__input:checked) .ds-segmented__label,
+.ds-segmented__item:has(.ds-segmented__input:checked)
+  + .ds-segmented__item
+  .ds-segmented__label {
+  box-shadow: none;
+}
+
+.ds-segmented__input:checked + .ds-segmented__label {
+  background: var(--segmented-selected-bg);
+  box-shadow: var(--segmented-selected-shadow);
+  font-weight: var(--weight-medium);
+}
+
+.ds-segmented__input:focus-visible + .ds-segmented__label {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+}
+
+.ds-segmented__input:disabled + .ds-segmented__label {
+  opacity: var(--opacity-disabled);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-segmented__label {
+    transition: none;
+  }
+}

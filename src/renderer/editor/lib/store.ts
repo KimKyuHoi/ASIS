@@ -1,5 +1,7 @@
-import { create } from 'zustand';
+import { create, type StoreApi } from 'zustand';
 import type { DashStyle, Shape, StrokeWidth, TextAlign, Tool } from '../types/shapes';
+import type { BaseImage, CropMark, CropRect } from '../types/crop';
+import { cropActions, historyActions, pushHistory } from './store-history';
 
 /**
  * 어노테이션 에디터 단일 zustand 스토어.
@@ -66,7 +68,7 @@ export const DEFAULT_FONT_FAMILY = FONT_FAMILIES[0].value;
 export const ZOOM_MIN = 1;
 export const ZOOM_MAX = 8;
 
-type EditorStore = {
+export type EditorStore = {
   // 도구·스타일
   tool: Tool;
   color: string;
@@ -106,9 +108,18 @@ type EditorStore = {
   /** marquee 박스 — select 도구 빈 영역 드래그로 영역 선택 시 임시 표시. */
   marquee: { x: number; y: number; w: number; h: number } | null;
 
+  // 크롭
+  /** 크롭 모드 여부 — 켜져 있으면 포인터는 크롭 영역 지정에만 쓰인다. */
+  cropping: boolean;
+  /** 크롭 모드에서 지정 중인 영역. 아직 드래그 전이면 null. */
+  cropRect: CropRect | null;
+
   // history
   past: Shape[][];
   future: Shape[][];
+  /** 크롭 적용 기록 — types/crop.ts 의 CropMark 설명 참고. */
+  cropUndo: CropMark[];
+  cropRedo: CropMark[];
 
   // 액션
   setTool: (tool: Tool) => void;
@@ -150,13 +161,41 @@ type EditorStore = {
   pasteShapes: (shapes: Shape[]) => void;
   setEditingId: (id: string | null) => void;
 
+  startCrop: () => void;
+  setCropRect: (rect: CropRect | null) => void;
+  cancelCrop: () => void;
+  /**
+   * 크롭 적용 — 배경을 image 로 바꾸고 모든 도형을 (-offset) 만큼 옮긴다.
+   * 직전 이미지·도형은 undo 기록에 남는다. 이미지 자르기는 lib/crop.ts 가 한다.
+   */
+  applyCrop: (image: BaseImage, offset: { x: number; y: number }) => void;
+
   undo: () => void;
   redo: () => void;
   canUndo: () => boolean;
   canRedo: () => boolean;
 };
 
-export const useEditorStore = create<EditorStore>((set, get) => ({
+export type SetState = StoreApi<EditorStore>['setState'];
+export type GetState = StoreApi<EditorStore>['getState'];
+
+type StyleActionKey =
+  | 'setTool' | 'setColor' | 'setStrokeWidth' | 'setDash' | 'setBlurRadius' |
+  'setMosaicBlockSize' | 'setFontSize' | 'setFontFamily' | 'setTextAlign' | 'setLineHeight' |
+  'setZoom' | 'setEffectiveZoom' | 'incrementStepNum';
+type DrawingActionKey =
+  | 'loadImage' | 'startDrawing' | 'updateDrawing' | 'finishDrawing' | 'cancelDrawing' |
+  'selectShape' | 'selectShapes' | 'setMarquee' | 'setEditingId';
+type EditActionKey =
+  | 'reorderShape' | 'updateShape' | 'deleteShape' | 'deleteSelected' | 'pasteShapes';
+export type CropActionKey = 'startCrop' | 'setCropRect' | 'cancelCrop' | 'applyCrop';
+export type HistoryActionKey = 'undo' | 'redo' | 'canUndo' | 'canRedo';
+export type EditorData = Omit<
+  EditorStore,
+  StyleActionKey | DrawingActionKey | EditActionKey | CropActionKey | HistoryActionKey
+>;
+
+const INITIAL_STATE: EditorData = {
   tool: 'select',
   color: PALETTE[0],
   strokeWidth: 4,
@@ -181,149 +220,140 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   editingId: null,
   marquee: null,
 
+  cropping: false,
+  cropRect: null,
+
   past: [],
   future: [],
+  cropUndo: [],
+  cropRedo: [],
+};
 
-  setTool: (tool) => set({ tool, selectedIds: [], marquee: null }),
-  setColor: (color) => set({ color }),
-  setStrokeWidth: (w) => set({ strokeWidth: w }),
-  setDash: (d) => set({ dash: d }),
-  setBlurRadius: (r) => set({ blurRadius: r }),
-  setMosaicBlockSize: (s) => set({ mosaicBlockSize: s }),
-  setFontSize: (s) => set({ fontSize: s }),
-  setFontFamily: (f) => set({ fontFamily: f }),
-  setTextAlign: (a) => set({ textAlign: a }),
-  setLineHeight: (h) => set({ lineHeight: h }),
-  setZoom: (z) => set({ zoom: Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z)) }),
-  setEffectiveZoom: (z) => set({ effectiveZoom: z }),
-  incrementStepNum: () => set((s) => ({ nextStepNum: s.nextStepNum + 1 })),
+/** 도구·스타일·줌 setter. */
+function styleActions(set: SetState): Pick<EditorStore, StyleActionKey> {
+  return {
+    // 도구를 고르면 크롭 모드는 끝난다 (크롭은 도구 목록 밖의 별도 모드).
+    setTool: (tool) => set({
+      tool, selectedIds: [], marquee: null, cropping: false, cropRect: null,
+    }),
+    setColor: (color) => set({ color }),
+    setStrokeWidth: (w) => set({ strokeWidth: w }),
+    setDash: (d) => set({ dash: d }),
+    setBlurRadius: (r) => set({ blurRadius: r }),
+    setMosaicBlockSize: (s) => set({ mosaicBlockSize: s }),
+    setFontSize: (s) => set({ fontSize: s }),
+    setFontFamily: (f) => set({ fontFamily: f }),
+    setTextAlign: (a) => set({ textAlign: a }),
+    setLineHeight: (h) => set({ lineHeight: h }),
+    setZoom: (z) => set({ zoom: Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z)) }),
+    setEffectiveZoom: (z) => set({ effectiveZoom: z }),
+    incrementStepNum: () => set((s) => ({ nextStepNum: s.nextStepNum + 1 })),
+  };
+}
 
-  reorderShape: (id, dir) => set((s) => {
-    const idx = s.shapes.findIndex((sh) => sh.id === id);
-    if (idx < 0) return {};
-    const arr = [...s.shapes];
-    const [item] = arr.splice(idx, 1);
-    let newIdx: number;
-    if (dir === 'front') newIdx = arr.length;
-    else if (dir === 'back') newIdx = 0;
-    else if (dir === 'forward') newIdx = Math.min(idx + 1, arr.length);
-    else newIdx = Math.max(idx - 1, 0);
-    if (newIdx === idx && dir !== 'front' && dir !== 'back') return {};
-    arr.splice(newIdx, 0, item);
-    return { shapes: arr, past: [...s.past, s.shapes], future: [] };
-  }),
-
-  loadImage: (src, width, height) => set({
-    imageSrc: src,
-    imageWidth: width,
-    imageHeight: height,
-    shapes: [],
-    drawing: null,
-    selectedIds: [],
-    editingId: null,
-    marquee: null,
-    past: [],
-    future: [],
-    nextStepNum: 1,
-  }),
-
-  startDrawing: (shape) => set({ drawing: shape }),
-
-  updateDrawing: (updater) => set((s) => {
-    if (!s.drawing) return {};
-    return { drawing: updater(s.drawing) };
-  }),
-
-  finishDrawing: () => set((s) => {
-    if (!s.drawing) return {};
-    return {
-      shapes: [...s.shapes, s.drawing],
+/** 이미지 로드·그리는 중 도형·선택·marquee·텍스트 편집 대상 — history 에 쌓지 않는 상태. */
+function drawingActions(set: SetState): Pick<EditorStore, DrawingActionKey> {
+  return {
+    loadImage: (src, width, height) => set({
+      imageSrc: src,
+      imageWidth: width,
+      imageHeight: height,
+      shapes: [],
       drawing: null,
-      past: [...s.past, s.shapes],
-      future: [],
-    };
-  }),
-
-  cancelDrawing: () => set({ drawing: null }),
-
-  selectShape: (id, additive = false) => set((s) => {
-    if (id === null) return { selectedIds: [] };
-    if (!additive) return { selectedIds: [id] };
-    // additive: 토글
-    const has = s.selectedIds.includes(id);
-    return {
-      selectedIds: has
-        ? s.selectedIds.filter((x) => x !== id)
-        : [...s.selectedIds, id],
-    };
-  }),
-
-  selectShapes: (ids) => set({ selectedIds: ids }),
-
-  setMarquee: (m) => set({ marquee: m }),
-
-  updateShape: (id, patch) => set((s) => ({
-    shapes: s.shapes.map((sh) =>
-      sh.id === id ? ({ ...sh, ...patch } as Shape) : sh,
-    ),
-    past: [...s.past, s.shapes],
-    future: [],
-  })),
-
-  deleteShape: (id) => set((s) => ({
-    shapes: s.shapes.filter((sh) => sh.id !== id),
-    selectedIds: s.selectedIds.filter((x) => x !== id),
-    editingId: s.editingId === id ? null : s.editingId,
-    past: [...s.past, s.shapes],
-    future: [],
-  })),
-
-  deleteSelected: () => set((s) => {
-    if (s.selectedIds.length === 0) return {};
-    const idSet = new Set(s.selectedIds);
-    return {
-      shapes: s.shapes.filter((sh) => !idSet.has(sh.id)),
       selectedIds: [],
       editingId: null,
-      past: [...s.past, s.shapes],
+      marquee: null,
+      past: [],
       future: [],
-    };
-  }),
+      cropUndo: [],
+      cropRedo: [],
+      cropping: false,
+      cropRect: null,
+      nextStepNum: 1,
+    }),
+    startDrawing: (shape) => set({ drawing: shape }),
+    updateDrawing: (updater) => set((s) => {
+      if (!s.drawing) return {};
+      return { drawing: updater(s.drawing) };
+    }),
+    finishDrawing: () => set((s) => {
+      if (!s.drawing) return {};
+      return {
+        shapes: [...s.shapes, s.drawing],
+        drawing: null,
+        ...pushHistory(s),
+      };
+    }),
+    cancelDrawing: () => set({ drawing: null }),
+    selectShape: (id, additive = false) => set((s) => {
+      if (id === null) return { selectedIds: [] };
+      if (!additive) return { selectedIds: [id] };
+      // additive: 토글
+      const has = s.selectedIds.includes(id);
+      return {
+        selectedIds: has
+          ? s.selectedIds.filter((x) => x !== id)
+          : [...s.selectedIds, id],
+      };
+    }),
+    selectShapes: (ids) => set({ selectedIds: ids }),
+    setMarquee: (m) => set({ marquee: m }),
+    setEditingId: (id) => set({ editingId: id }),
+  };
+}
 
-  pasteShapes: (newShapes) => set((s) => ({
-    shapes: [...s.shapes, ...newShapes],
-    selectedIds: newShapes.map((sh) => sh.id),
-    past: [...s.past, s.shapes],
-    future: [],
-  })),
+/** 도형 편집 — 변경마다 직전 shapes 를 past 에 쌓고 future 를 비운다. */
+function editActions(set: SetState): Pick<EditorStore, EditActionKey> {
+  return {
+    reorderShape: (id, dir) => set((s) => {
+      const idx = s.shapes.findIndex((sh) => sh.id === id);
+      if (idx < 0) return {};
+      const arr = [...s.shapes];
+      const [item] = arr.splice(idx, 1);
+      let newIdx: number;
+      if (dir === 'front') newIdx = arr.length;
+      else if (dir === 'back') newIdx = 0;
+      else if (dir === 'forward') newIdx = Math.min(idx + 1, arr.length);
+      else newIdx = Math.max(idx - 1, 0);
+      if (newIdx === idx && dir !== 'front' && dir !== 'back') return {};
+      arr.splice(newIdx, 0, item);
+      return { shapes: arr, ...pushHistory(s) };
+    }),
+    updateShape: (id, patch) => set((s) => ({
+      shapes: s.shapes.map((sh) =>
+        sh.id === id ? ({ ...sh, ...patch } as Shape) : sh,
+      ),
+      ...pushHistory(s),
+    })),
+    deleteShape: (id) => set((s) => ({
+      shapes: s.shapes.filter((sh) => sh.id !== id),
+      selectedIds: s.selectedIds.filter((x) => x !== id),
+      editingId: s.editingId === id ? null : s.editingId,
+      ...pushHistory(s),
+    })),
+    deleteSelected: () => set((s) => {
+      if (s.selectedIds.length === 0) return {};
+      const idSet = new Set(s.selectedIds);
+      return {
+        shapes: s.shapes.filter((sh) => !idSet.has(sh.id)),
+        selectedIds: [],
+        editingId: null,
+        ...pushHistory(s),
+      };
+    }),
+    pasteShapes: (newShapes) => set((s) => ({
+      shapes: [...s.shapes, ...newShapes],
+      selectedIds: newShapes.map((sh) => sh.id),
+      ...pushHistory(s),
+    })),
+  };
+}
 
-  setEditingId: (id) => set({ editingId: id }),
-
-  undo: () => set((s) => {
-    if (s.past.length === 0) return {};
-    const previous = s.past[s.past.length - 1];
-    return {
-      shapes: previous,
-      past: s.past.slice(0, -1),
-      future: [s.shapes, ...s.future],
-      selectedIds: [],
-      drawing: null,
-    };
-  }),
-
-  redo: () => set((s) => {
-    if (s.future.length === 0) return {};
-    const next = s.future[0];
-    return {
-      shapes: next,
-      past: [...s.past, s.shapes],
-      future: s.future.slice(1),
-      selectedIds: [],
-      drawing: null,
-    };
-  }),
-
-  canUndo: () => get().past.length > 0,
-  canRedo: () => get().future.length > 0,
+export const useEditorStore = create<EditorStore>((set, get) => ({
+  ...INITIAL_STATE,
+  ...styleActions(set),
+  ...drawingActions(set),
+  ...editActions(set),
+  ...cropActions(set),
+  ...historyActions(set, get),
 }));
-

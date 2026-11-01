@@ -1,14 +1,13 @@
-import { useRef } from 'react';
-import type { JSX } from 'react';
+import { useRef, type JSX } from 'react';
 import { Circle } from 'react-konva';
 import type Konva from 'konva';
 import { useEditorStore } from '../lib/store';
 import { clampXY } from '../lib/shape-transform';
 import { snapAngle45 } from '../lib/geometry';
+import { EDIT_HANDLE_NAME } from '../lib/edit-ui';
+import { useChromeColors } from '../hook/useChromeColors';
 import type { ArrowShape, LineShape } from '../types/shapes';
 
-const HANDLE_FILL = '#ffffff';
-const HANDLE_STROKE = '#5ea2ff';
 
 /**
  * 화살표/직선 단일 선택 시 양 끝점에 띄우는 드래그 핸들 2개.
@@ -26,6 +25,47 @@ const HANDLE_STROKE = '#5ea2ff';
  *
  * 룰: imperative-style — Konva 이벤트 핸들러 내부 명령형 OK.
  */
+type Endpoint = 0 | 1;
+type Point = { x: number; y: number };
+type DragEvt = Konva.KonvaEventObject<DragEvent>;
+
+/** Shift — 반대편 고정 끝점 기준으로 45° 단위 각도 스냅 (드로잉과 동일 동작). */
+function snapEndpoint(shape: ArrowShape | LineShape, idx: Endpoint, e: DragEvt): Point {
+  const pos = e.target.position();
+  if (!e.evt.shiftKey) return pos;
+  const other = { x: shape.points[(1 - idx) * 2], y: shape.points[(1 - idx) * 2 + 1] };
+  return snapAngle45(other, pos);
+}
+
+function withEndpoint(points: number[], idx: Endpoint, pt: Point): number[] {
+  const pts = points.slice();
+  pts[idx * 2] = pt.x;
+  pts[idx * 2 + 1] = pt.y;
+  return pts;
+}
+
+/** 끄는 끝점의 현재 위치로 화살표 노드 points 를 갱신. store 미터치. */
+function previewEndpoint(shape: ArrowShape | LineShape, idx: Endpoint, e: DragEvt): void {
+  const node = e.target;
+  const stage = node.getStage();
+  if (!stage) throw new Error('endpoint handle: drag 중 stage 가 없다');
+  const lineNode = stage.findOne<Konva.Arrow | Konva.Line>(`#${shape.id}`);
+  if (!lineNode) {
+    throw new Error(`endpoint handle: 도형 노드 #${shape.id} 를 찾지 못했다`);
+  }
+  const snapped = snapEndpoint(shape, idx, e);
+  // 스냅 시 핸들 자체도 스냅 위치로 — 핸들과 선 끝이 분리돼 보이지 않게.
+  if (e.evt.shiftKey) node.position(snapped);
+  lineNode.points(withEndpoint(shape.points, idx, snapped));
+  lineNode.getLayer()?.batchDraw();
+}
+
+/** stage container 커서 변경 — 노드가 아직 stage 에 없으면 무시(hover 이벤트라 정상적으론 있음). */
+function setStageCursor(e: Konva.KonvaEventObject<MouseEvent>, cursor: string): void {
+  const stage = e.target.getStage();
+  if (stage) stage.container().style.cursor = cursor;
+}
+
 export function EndpointHandles({
   shape,
   stageScale,
@@ -40,111 +80,55 @@ export function EndpointHandles({
   restoreCursor: string;
 }): JSX.Element {
   const updateShape = useEditorStore((s) => s.updateShape);
+  const chrome = useChromeColors();
   // 드래그 중 onMouseLeave 가 발화해 커서가 풀리는 것을 막기 위한 플래그.
   const draggingRef = useRef(false);
+
+  const onEnd = (e: DragEvt, idx: Endpoint): void => {
+    draggingRef.current = false;
+    const { x, y } = clampXY(snapEndpoint(shape, idx, e));
+    // clamp 결과가 직전 store 값과 우연히 같으면 prop 변화가 없어 react-konva 가
+    // Circle 을 다시 옮기지 않는다 — 노드 위치도 직접 보정.
+    e.target.position({ x, y });
+    updateShape(shape.id, { points: withEndpoint(shape.points, idx, { x, y }) });
+  };
+
+  const onStart = (e: DragEvt): void => {
+    // 본체(화살표 전체 이동)·그룹 드래그·marquee 로 이벤트가 전파되지 않게 차단.
+    // Konva 는 버블링 차단을 cancelBubble 대입으로만 제공한다.
+    const evt = e;
+    evt.cancelBubble = true;
+    draggingRef.current = true;
+  };
 
   // Circle 은 Stage scaleX/Y(stageScale)를 받는 일반 노드라, 화면상 크기를 일정하게
   // 하려면 논리 크기를 1/scale 로 키운다 (Transformer anchor 는 화면 픽셀 고정이라
   // 보정이 없었지만, 여기 Circle 은 메인 Layer 안이라 scale 을 받는다).
-  const r = 6 / stageScale;
-  const sw = 1.5 / stageScale;
-  const hit = 16 / stageScale;
-
-  // Shift — 반대편 고정 끝점 기준으로 45° 단위 각도 스냅 (드로잉과 동일 동작).
-  const snapIfShift = (
-    e: Konva.KonvaEventObject<DragEvent>,
-    idx: 0 | 1,
-    px: number,
-    py: number,
-  ): { x: number; y: number } => {
-    if (!e.evt.shiftKey) return { x: px, y: py };
-    const ox = shape.points[(1 - idx) * 2];
-    const oy = shape.points[(1 - idx) * 2 + 1];
-    return snapAngle45(ox, oy, px, py);
-  };
-
-  // 끄는 끝점(idx 0 or 1)의 현재 위치로 화살표 노드 points 를 갱신. store 미터치.
-  const onMove = (e: Konva.KonvaEventObject<DragEvent>, idx: 0 | 1): void => {
-    const node = e.target;
-    const stage = node.getStage();
-    if (!stage) throw new Error('endpoint handle: drag 중 stage 가 없다');
-    const lineNode = stage.findOne<Konva.Arrow | Konva.Line>(`#${shape.id}`);
-    if (!lineNode) {
-      throw new Error(`endpoint handle: 도형 노드 #${shape.id} 를 찾지 못했다`);
-    }
-    const snapped = snapIfShift(e, idx, node.x(), node.y());
-    // 스냅 시 핸들 자체도 스냅 위치로 — 핸들과 선 끝이 분리돼 보이지 않게.
-    if (e.evt.shiftKey) node.position(snapped);
-    const pts = shape.points.slice();
-    pts[idx * 2] = snapped.x;
-    pts[idx * 2 + 1] = snapped.y;
-    lineNode.points(pts);
-    lineNode.getLayer()?.batchDraw();
-  };
-
-  const onEnd = (e: Konva.KonvaEventObject<DragEvent>, idx: 0 | 1): void => {
-    draggingRef.current = false;
-    const node = e.target;
-    const snapped = snapIfShift(e, idx, node.x(), node.y());
-    const { x, y } = clampXY(snapped.x, snapped.y);
-    // clamp 결과가 직전 store 값과 우연히 같으면 prop 변화가 없어 react-konva 가
-    // Circle 을 다시 옮기지 않는다 — 노드 위치도 직접 보정.
-    node.position({ x, y });
-    const pts = shape.points.slice();
-    pts[idx * 2] = x;
-    pts[idx * 2 + 1] = y;
-    updateShape(shape.id, { points: pts });
-  };
-
-  const onStart = (e: Konva.KonvaEventObject<DragEvent>): void => {
-    // 본체(화살표 전체 이동)·그룹 드래그·marquee 로 이벤트가 전파되지 않게 차단.
-    e.cancelBubble = true;
-    draggingRef.current = true;
-  };
-
-  const onEnter = (e: Konva.KonvaEventObject<MouseEvent>): void => {
-    const stage = e.target.getStage();
-    if (stage) stage.container().style.cursor = cursor;
-  };
-
-  const onLeave = (e: Konva.KonvaEventObject<MouseEvent>): void => {
-    if (draggingRef.current) return; // 드래그 중엔 커서 유지
-    const stage = e.target.getStage();
-    if (stage) stage.container().style.cursor = restoreCursor;
-  };
-
   return (
     <>
-      <Circle
-        x={shape.points[0]}
-        y={shape.points[1]}
-        radius={r}
-        fill={HANDLE_FILL}
-        stroke={HANDLE_STROKE}
-        strokeWidth={sw}
-        hitStrokeWidth={hit}
-        draggable
-        onDragStart={onStart}
-        onDragMove={(e): void => onMove(e, 0)}
-        onDragEnd={(e): void => onEnd(e, 0)}
-        onMouseEnter={onEnter}
-        onMouseLeave={onLeave}
-      />
-      <Circle
-        x={shape.points[2]}
-        y={shape.points[3]}
-        radius={r}
-        fill={HANDLE_FILL}
-        stroke={HANDLE_STROKE}
-        strokeWidth={sw}
-        hitStrokeWidth={hit}
-        draggable
-        onDragStart={onStart}
-        onDragMove={(e): void => onMove(e, 1)}
-        onDragEnd={(e): void => onEnd(e, 1)}
-        onMouseEnter={onEnter}
-        onMouseLeave={onLeave}
-      />
+      {([0, 1] as const).map((idx) => (
+        <Circle
+          key={idx}
+          // stageToDataUrl 이 export 동안 숨기는 표식 — 편집 UI 가 이미지에 찍히지 않게.
+          name={EDIT_HANDLE_NAME}
+          x={shape.points[idx * 2]}
+          y={shape.points[idx * 2 + 1]}
+          radius={6 / stageScale}
+          fill={chrome.handleFill}
+          stroke={chrome.accent}
+          strokeWidth={1.5 / stageScale}
+          hitStrokeWidth={16 / stageScale}
+          draggable
+          onDragStart={onStart}
+          onDragMove={(e): void => previewEndpoint(shape, idx, e)}
+          onDragEnd={(e): void => onEnd(e, idx)}
+          onMouseEnter={(e): void => setStageCursor(e, cursor)}
+          onMouseLeave={(e): void => {
+            if (draggingRef.current) return; // 드래그 중엔 커서 유지
+            setStageCursor(e, restoreCursor);
+          }}
+        />
+      ))}
     </>
   );
 }

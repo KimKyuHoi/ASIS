@@ -1,31 +1,76 @@
 import { systemPreferences } from 'electron';
-import koffi from 'koffi';
+import {
+  copyAttributeValue,
+  copyAttributeValues,
+  copyElementAtPosition,
+  getAxFns,
+  isTooSmall,
+  readFrame,
+} from './windows-info/accessibility';
+import { cfNumToJs, cfRelease, cfStr, cfStrToJs, getCfFns } from './windows-info/coreFoundation';
 
-export type ElementBounds = { x: number; y: number; w: number; h: number; name?: string };
+export { onSpaceChange } from './windows-info/spaceNotify';
 
 /**
- * macOS 의 *모든 visible 윈도우* 의 bounds 를 받아오는 모듈.
+ * macOS 의 *모든 visible 윈도우* 와 마우스 아래 UI 요소의 bounds 를 받아오는 모듈.
  *
- * 구현: koffi FFI + CGWindowListCopyWindowInfo (CoreGraphics).
+ * 구현: koffi FFI + CGWindowListCopyWindowInfo (CoreGraphics) / AXUIElement.
  *   child process (osascript 등) 는 Automation / Screen Recording 권한이
  *   부모 프로세스에서 상속되지 않아 실패하므로, main process 안에서 직접 호출.
- *   main process 는 Screen Recording 권한을 가지며 window bounds 를 읽을 수 있음.
+ *   네이티브 바인딩은 `windows-info/` 에 있고 이 파일은 공개 API 만 조합한다.
  *
  * UI 자동 감지 (Snipaste/CleanShot 시그니처): selection overlay 에서 마우스
  * hover 시 윈도우 윤곽 자동 표시 + 클릭 한 번으로 그 영역 선택.
  */
 
+export type ElementBounds = { x: number; y: number; w: number; h: number; name?: string };
+
 export type WindowInfo = {
   id: number;
   name: string;
+  /**
+   * kCGWindowLayer — 0 = 일반 앱 창. 메뉴바·상태바 아이템·투명 오버레이 등은 0 이 아니다.
+   * "클릭한 앱이 무엇인가"처럼 일반 창만 봐야 하는 소비자는 layer === 0 으로 거른다.
+   */
+  layer: number;
   x: number;
   y: number;
   w: number;
   h: number;
 };
 
-/** listWindows 가 부수적으로 캐시하는 Dock process PID — getDockItems 에서 사용. */
-let _lastDockPid: number | null = null;
+const kCGWindowListOptionOnScreenOnly = 1 << 0;
+const kCGWindowListExcludeDesktopElements = 1 << 4;
+const kCGNullWindowID = 0;
+
+/**
+ * kCGWindowBounds 를 그대로 쓸 수 없는 owner.
+ * - screencapture: ASIS 자신이 color picker 용 background 캡처로 spawn 한 자식 process.
+ * - Dock: bounds 가 화면 전체로 보고되어 cursor 어디에든 hit 한다 → getDockItems 가
+ *   AX 로 개별 아이콘을 따로 가져온다.
+ */
+const SCREENCAPTURE_OWNER = 'screencapture';
+const DOCK_OWNER = 'Dock';
+
+/**
+ * 스냅 후보에서 빼는 macOS 시스템 창 owner.
+ * - Window Server: 메뉴바·커서·디스플레이 backstop 같은 합성기 내부 창. 화면 전체 크기로 잡혀
+ *   "Window Server" 스냅 박스가 뜬다.
+ * - screencaptureui: macOS 기본 스크린샷(⌘⇧4·⌘⇧5) 대기 화면. owner 이름이 시스템 언어로
+ *   현지화돼 보고된다 (한국어 '스크린샷', 영어 'Screenshot' — macOS 26.3 실측).
+ */
+const SYSTEM_UI_OWNERS: ReadonlySet<string> = new Set([
+  'Window Server',
+  'screencaptureui',
+  'Screenshot',
+  '스크린샷',
+]);
+
+/**
+ * listWindows 가 Dock 윈도우를 만날 때 기록하는 Dock process PID — getDockItems 가 사용한다.
+ * 첫 listWindows 전에는 null 이고, 그때 getDockItems 는 null 을 반환한다.
+ */
+let lastDockPid: number | null = null;
 
 export function ensureAccessibilityPermission(prompt: boolean): boolean {
   return systemPreferences.isTrustedAccessibilityClient(prompt);
@@ -40,381 +85,138 @@ export function ensureAccessibilityPermission(prompt: boolean): boolean {
  * 캐시가 true 로 유지된다. AX API 자체가 권한 revoke 시 axErr 를 반환하므로
  * getElementBoundsAtPoint 가 자연스럽게 null 로 fallback 한다.
  */
-let _axPermGranted = false;
-function checkAxPermFast(): boolean {
-  if (_axPermGranted) return true;
-  if (ensureAccessibilityPermission(false)) {
-    _axPermGranted = true;
-    return true;
-  }
-  return false;
+let axPermissionGranted = false;
+function hasAccessibilityPermission(): boolean {
+  if (!axPermissionGranted) axPermissionGranted = ensureAccessibilityPermission(false);
+  return axPermissionGranted;
 }
 
 // ---------------------------------------------------------------------------
-// CoreFoundation / CoreGraphics 상수
+// CGWindowList
 // ---------------------------------------------------------------------------
-const kCFStringEncodingUTF8 = 0x08000100;
-const kCFNumberDoubleType = 13;      // double (64-bit)
-const kCGWindowListOptionOnScreenOnly = 1;      // 1 << 0
-const kCGWindowListExcludeDesktopElements = 16; // 1 << 4
 
-// ---------------------------------------------------------------------------
-// lazy-init koffi bindings — koffi.load 는 dlopen, 한 번만.
-// ---------------------------------------------------------------------------
-type Fns = {
-  winList: (opts: number, rel: number) => unknown;
-  arrCount: (arr: unknown) => number;
-  arrGet: (arr: unknown, idx: number) => unknown;
-  dictGet: (dict: unknown, key: unknown) => unknown;
-  strCreate: (alloc: null, s: string, enc: number) => unknown;
-  strPtr: (s: unknown, enc: number) => string | null;
-  strGetCString: (s: unknown, buf: Buffer, maxLen: number, enc: number) => boolean;
-  numVal: (num: unknown, type: number, out: number[]) => boolean;
-  release: (ref: unknown) => void;
-  // CF type 판별 — batch AX 결과에 섞여 있는 kAXValueTypeIllegal AXValueRef 를
-  // CFString 인 척 처리하면 NSInvalidArgumentException(_fastCStringContents:) 로
-  // 프로세스가 죽으므로 type ID 비교가 필수.
-  getTypeID: (ref: unknown) => number;
-  stringTypeID: () => number;
-};
+type WindowDictKeys = Record<
+  'bounds' | 'owner' | 'pid' | 'number' | 'layer' | 'x' | 'y' | 'w' | 'h',
+  unknown
+>;
 
-// ---------------------------------------------------------------------------
-// koffi 타입 객체 — process(globalThis) 레벨 캐시
-//
-// koffi 타입 레지스트리는 프로세스 전체에서 공유되며 hot-reload 후에도 유지된다.
-// 반면 모듈 변수는 hot-reload 시 재초기화된다. 타입 객체를 globalThis 에 저장하면
-// 동일한 명명 타입을 항상 재사용할 수 있어 "Duplicate type name" 오류를 방지한다.
-// ---------------------------------------------------------------------------
-const _g = globalThis as typeof globalThis & {
-  __asisKoffiCfRef: ReturnType<typeof koffi.pointer> | undefined;
-  __asisKoffiAXRef: ReturnType<typeof koffi.pointer> | undefined;
-  __asisKoffiCGRect: ReturnType<typeof koffi.struct> | undefined;
-};
+type WindowEntry = { pid: number; owner: string; info: WindowInfo };
 
-function getCfRef(): ReturnType<typeof koffi.pointer> {
-  if (_g.__asisKoffiCfRef) return _g.__asisKoffiCfRef;
-  try {
-    _g.__asisKoffiCfRef = koffi.pointer('CfRef', koffi.opaque());
-  } catch {
-    // hot-reload: 이미 등록된 이름 — 이름 문자열로 참조하므로 anonymous fallback 불필요.
-    // globalThis 에 null-ish 이므로 다음 getFns() 호출에서 다시 시도되지 않도록 dummy 값 저장.
-    _g.__asisKoffiCfRef = koffi.pointer(koffi.opaque());
-  }
-  return _g.__asisKoffiCfRef;
-}
-
-function getAXRef(): ReturnType<typeof koffi.pointer> {
-  if (_g.__asisKoffiAXRef) return _g.__asisKoffiAXRef;
-  try {
-    _g.__asisKoffiAXRef = koffi.pointer('AXRef', koffi.opaque());
-  } catch {
-    _g.__asisKoffiAXRef = koffi.pointer(koffi.opaque());
-  }
-  return _g.__asisKoffiAXRef;
-}
-
-function getCGRectStruct(): ReturnType<typeof koffi.struct> {
-  if (_g.__asisKoffiCGRect) return _g.__asisKoffiCGRect;
-  try {
-    _g.__asisKoffiCGRect = koffi.struct('CGRect_t', {
-      x: 'double', y: 'double', width: 'double', height: 'double',
-    });
-  } catch {
-    _g.__asisKoffiCGRect = koffi.struct({ x: 'double', y: 'double', width: 'double', height: 'double' });
-  }
-  return _g.__asisKoffiCGRect;
-}
-
-let _fns: Fns | null = null;
-
-function getFns(): Fns {
-  if (_fns) return _fns;
-
-  // getCfRef/getAXRef 를 먼저 호출해 타입이 레지스트리에 등록되도록 한다.
-  getCfRef();
-
-  const CF = koffi.load('/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation');
-  const CG = koffi.load('/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics');
-  _fns = {
-    winList: CG.func('CfRef CGWindowListCopyWindowInfo(uint32, uint32)'),
-    arrCount: CF.func('long CFArrayGetCount(CfRef)'),
-    arrGet: CF.func('CfRef CFArrayGetValueAtIndex(CfRef, long)'),
-    dictGet: CF.func('CfRef CFDictionaryGetValue(CfRef, CfRef)'),
-    strCreate: CF.func('CfRef CFStringCreateWithCString(CfRef, str, uint32)'),
-    strPtr: CF.func('str CFStringGetCStringPtr(CfRef, uint32)'),
-    strGetCString: CF.func('bool CFStringGetCString(CfRef, char *, long, uint32)'),
-    // 문자열 타입명으로 선언 — hot-reload 후 anonymous fallback 타입과의 불일치 방지.
-    numVal: CF.func('CFNumberGetValue', 'bool', ['CfRef', 'int', koffi.out(koffi.pointer('double'))]),
-    release: CF.func('void CFRelease(CfRef)'),
-    getTypeID: CF.func('long CFGetTypeID(CfRef)'),
-    stringTypeID: CF.func('long CFStringGetTypeID()'),
+/** CGWindowList 의 윈도우 dictionary 하나를 읽는다. 항목·bounds 가 없으면 null. */
+function readWindowEntry(win: unknown, keys: WindowDictKeys): WindowEntry | null {
+  // NULL dictionary 를 CFDictionaryGetValue 에 넘기면 native crash.
+  if (!win) return null;
+  const { dictGet } = getCfFns();
+  const boundsRef = dictGet(win, keys.bounds);
+  if (!boundsRef) return null;
+  const owner = cfStrToJs(dictGet(win, keys.owner));
+  return {
+    pid: cfNumToJs(dictGet(win, keys.pid)),
+    owner,
+    info: {
+      id: cfNumToJs(dictGet(win, keys.number)),
+      name: owner,
+      layer: cfNumToJs(dictGet(win, keys.layer)),
+      x: cfNumToJs(dictGet(boundsRef, keys.x)),
+      y: cfNumToJs(dictGet(boundsRef, keys.y)),
+      w: cfNumToJs(dictGet(boundsRef, keys.w)),
+      h: cfNumToJs(dictGet(boundsRef, keys.h)),
+    },
   };
-  return _fns;
 }
 
-// ---------------------------------------------------------------------------
-// 헬퍼
-// ---------------------------------------------------------------------------
-function cfStr(s: string): unknown {
-  return getFns().strCreate(null, s, kCFStringEncodingUTF8);
+function listWindowsSync(): WindowInfo[] {
+  const f = getCfFns();
+  const list = f.winList(
+    kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements,
+    kCGNullWindowID,
+  );
+  if (!list) return [];
+
+  // 루프 안 반복 생성 방지 — CFString 키를 미리 만들어 둔다.
+  const keys: WindowDictKeys = {
+    bounds: cfStr('kCGWindowBounds'),
+    owner: cfStr('kCGWindowOwnerName'),
+    pid: cfStr('kCGWindowOwnerPID'),
+    number: cfStr('kCGWindowNumber'),
+    layer: cfStr('kCGWindowLayer'),
+    x: cfStr('X'),
+    y: cfStr('Y'),
+    w: cfStr('Width'),
+    h: cfStr('Height'),
+  };
+
+  const windows: WindowInfo[] = [];
+  const count = f.arrCount(list);
+  for (let i = 0; i < count; i++) {
+    const entry = readWindowEntry(f.arrGet(list, i), keys);
+    if (!entry || entry.pid === process.pid || isTooSmall(entry.info)) continue;
+    // owner name 이 빈 윈도우 = macOS 내부 레이어 (Desktop 배경, 알림센터 등).
+    if (!entry.owner || entry.owner === SCREENCAPTURE_OWNER) continue;
+    if (SYSTEM_UI_OWNERS.has(entry.owner)) continue;
+    if (entry.owner === DOCK_OWNER) {
+      lastDockPid = Math.round(entry.pid);
+      continue;
+    }
+    windows.push(entry.info);
+  }
+
+  cfRelease(...Object.values(keys), list);
+  return windows;
 }
 
-/** CFStringRef 의 CFTypeID — singleton 한 번만 조회. */
-let _cfStringTypeID: number | null = null;
-function cfStringTypeID(): number {
-  if (_cfStringTypeID === null) _cfStringTypeID = getFns().stringTypeID();
-  return _cfStringTypeID;
-}
-
-function cfStrToJs(ref: unknown): string {
-  if (!ref) return '';
-  // type guard — CFString 이 아닌 ref (AXValueRef of kAXValueTypeIllegal 등)
-  // 가 들어오면 빈 문자열 반환. 잘못된 selector 호출로 인한 native crash 방지.
-  if (getFns().getTypeID(ref) !== cfStringTypeID()) return '';
-  // 빠른 경로: 8-bit 저장 CFString 은 포인터 직접 반환.
-  const ptr = getFns().strPtr(ref, kCFStringEncodingUTF8);
-  if (typeof ptr === 'string') return ptr;
-  // 폴백: UTF-16 저장 CFString (대부분의 앱 이름) — 버퍼로 복사.
-  const buf = Buffer.alloc(256);
-  const ok = getFns().strGetCString(ref, buf, buf.length, kCFStringEncodingUTF8);
-  if (!ok) return '';
-  const nul = buf.indexOf(0);
-  return buf.subarray(0, nul < 0 ? buf.length : nul).toString('utf8');
-}
-
-function cfNumToJs(ref: unknown): number {
-  if (!ref) return 0;
-  const out = [0.0];
-  getFns().numVal(ref, kCFNumberDoubleType, out);
-  return out[0];
-}
-
-// ---------------------------------------------------------------------------
-// 공개 API
-// ---------------------------------------------------------------------------
 /**
  * 모든 visible 윈도우의 position + size 를 list 로 반환.
+ * 부수효과: Dock 윈도우를 만나면 그 PID 를 기록한다 (getDockItems 용).
  * koffi 초기화·호출 실패 시 빈 배열 — overlay 는 수동 선택만으로 동작.
  */
 export function listWindows(): Promise<WindowInfo[]> {
-  return new Promise((resolve) => {
-    try {
-      const f = getFns();
-      const list = f.winList(
-        kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements,
-        0,
-      );
-      if (!list) {
-        resolve([]);
-        return;
-      }
-
-      const count = getFns().arrCount(list);
-
-      // 루프 안 반복 생성 방지 — CFString 키를 미리 만들어 둠.
-      const kBounds = cfStr('kCGWindowBounds');
-      const kOwner = cfStr('kCGWindowOwnerName');
-      const kPID = cfStr('kCGWindowOwnerPID');
-      const kWindowNumber = cfStr('kCGWindowNumber');
-      const kX = cfStr('X');
-      const kY = cfStr('Y');
-      const kW = cfStr('Width');
-      const kH = cfStr('Height');
-
-      const selfPid = process.pid;
-      const windows: WindowInfo[] = [];
-
-      for (let i = 0; i < count; i++) {
-        const win = f.arrGet(list, i);
-        if (!win) continue;
-
-        const pid = cfNumToJs(f.dictGet(win, kPID));
-        if (pid === selfPid) continue;
-
-        const boundsRef = f.dictGet(win, kBounds);
-        if (!boundsRef) continue;
-        const x = cfNumToJs(f.dictGet(boundsRef, kX));
-        const y = cfNumToJs(f.dictGet(boundsRef, kY));
-        const w = cfNumToJs(f.dictGet(boundsRef, kW));
-        const h = cfNumToJs(f.dictGet(boundsRef, kH));
-
-        if (w < 2 || h < 2) continue;
-
-        const name = cfStrToJs(f.dictGet(win, kOwner));
-        // owner name 이 빈 윈도우 = macOS 내부 레이어 (Desktop 배경, 알림센터 등).
-        if (!name) continue;
-        // 차단 대상 owner — kCGWindowBounds 가 정상적이지 않거나 자식 process.
-        // - screencapture: ASIS 자신이 color picker 용 background 캡처로 spawn.
-        // - Dock: kCGWindowBounds 가 화면 전체(1920×1080) 로 보고되어 cursor 어디
-        //   에든 hit → 전체 화면 캡처 문제. listWindows 에서는 제외하지만 PID 는
-        //   별도로 캐싱해서 getDockItems() 가 AX 로 개별 아이콘을 따로 가져온다.
-        if (name === 'screencapture') continue;
-        if (name === 'Dock') {
-          _lastDockPid = Math.round(pid);
-          continue;
-        }
-
-        const id = cfNumToJs(f.dictGet(win, kWindowNumber));
-        windows.push({ id, name, x, y, w, h });
-      }
-
-      // Retain 된 참조 해제.
-      for (const k of [kBounds, kOwner, kPID, kWindowNumber, kX, kY, kW, kH]) f.release(k);
-      f.release(list);
-
-      resolve(windows);
-    } catch (err: unknown) {
-      console.warn('[asis] listWindows koffi 실패:', err);
-      resolve([]);
-    }
-  });
+  try {
+    return Promise.resolve(listWindowsSync());
+  } catch (err: unknown) {
+    console.warn('[asis] listWindows koffi 실패:', err);
+    return Promise.resolve([]);
+  }
 }
 
 // ---------------------------------------------------------------------------
-// AXUIElement — 마우스 위치의 개별 UI 요소 bounds 조회
+// AXUIElement
 // ---------------------------------------------------------------------------
 
-type AXFns = {
-  createSystemWide: () => unknown;
-  // PID 기준 AX root 생성 — Dock children enumerate 등 특정 process 의 UI 트리
-  // 접근에 사용.
-  createApp: (pid: number) => unknown;
-  elementAtPos: (sys: unknown, x: number, y: number, out: unknown[]) => number;
-  copyAttrValue: (el: unknown, attr: unknown, out: unknown[]) => number;
-  // batch — 여러 attribute 를 1번의 AX IPC 로 읽음. cost 절감.
-  copyMultipleAttrValues: (
-    el: unknown, attrs: unknown, options: number, out: unknown[],
-  ) => number;
-  axValueGetValue: (
-    val: unknown,
-    type: number,
-    out: Array<{ x: number; y: number; width: number; height: number }>,
-  ) => boolean;
-  // 결과 array parsing 용 — CFArrayGetValueAtIndex.
-  arrayGet: (arr: unknown, idx: number) => unknown;
-  // batch input array 구성용 — CFArrayCreateMutable + CFArrayAppendValue.
-  arrayCreateMutable: (alloc: null, capacity: number, callbacks: null) => unknown;
-  arrayAppendValue: (arr: unknown, val: unknown) => void;
-  release: (ref: unknown) => void;
-};
+/**
+ * 라벨 우선 순위: AXTitle(구체 라벨) → AXRoleDescription(역할명, 예: "버튼")
+ * → AXDescription(대체 설명). 마지막 자리는 AXFrame.
+ */
+const ELEMENT_LABEL_ATTRIBUTES = ['AXTitle', 'AXRoleDescription', 'AXDescription'];
 
-let _axFns: AXFns | null = null;
+function readElementBounds(el: unknown): ElementBounds | null {
+  const keys = [...ELEMENT_LABEL_ATTRIBUTES, 'AXFrame'].map(cfStr);
+  const values = copyAttributeValues(el, keys);
+  cfRelease(...keys);
+  if (!values) return null;
 
-function getAxFns(): AXFns {
-  if (_axFns) return _axFns;
+  const { arrayGet } = getAxFns();
+  const labels = ELEMENT_LABEL_ATTRIBUTES.map((_, i) => cfStrToJs(arrayGet(values, i)));
+  const frame = readFrame(arrayGet(values, ELEMENT_LABEL_ATTRIBUTES.length));
+  cfRelease(values);
+  if (!frame) return null;
 
-  getCfRef(); // 'CfRef' 이름이 레지스트리에 있어야 copyAttrValue 시그니처 파싱 가능.
-  getAXRef(); // 'AXRef' 이름 등록.
-  const CGRectStruct = getCGRectStruct();
-
-  const AS = koffi.load(
-    '/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices',
-  );
-
-  // AX 함수 시그니처를 CfRef 로 통일 — copyAttrValue 의 out 결과가 CFString
-  // (예: AXTitle) 일 때 cfStrToJs(CfRef) 에 그대로 넘길 수 있도록.
-  // AXRef·CFTypeRef·CFStringRef 모두 raw opaque pointer 이므로 명명만 통일하면 안전.
-  const CF = koffi.load('/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation');
-  _axFns = {
-    createSystemWide: AS.func('CfRef AXUIElementCreateSystemWide()'),
-    createApp: AS.func('CfRef AXUIElementCreateApplication(int)'),
-    elementAtPos: AS.func(
-      'int32 AXUIElementCopyElementAtPosition(CfRef, float, float, _Out_ CfRef *)',
-    ),
-    copyAttrValue: AS.func(
-      'int32 AXUIElementCopyAttributeValue(CfRef, CfRef, _Out_ CfRef *)',
-    ),
-    copyMultipleAttrValues: AS.func(
-      'int32 AXUIElementCopyMultipleAttributeValues(CfRef, CfRef, uint32, _Out_ CfRef *)',
-    ),
-    axValueGetValue: AS.func(
-      'AXValueGetValue',
-      'bool',
-      ['CfRef', 'int32', koffi.out(koffi.pointer(CGRectStruct))],
-    ),
-    arrayGet: CF.func('CfRef CFArrayGetValueAtIndex(CfRef, long)'),
-    arrayCreateMutable: CF.func(
-      'CFArrayCreateMutable', 'CfRef', ['CfRef', 'long', koffi.pointer('uint8')],
-    ),
-    arrayAppendValue: CF.func('void CFArrayAppendValue(CfRef, CfRef)'),
-    release: AS.func('void CFRelease(CfRef)'),
-  };
-  return _axFns;
+  const name = labels.find((label) => label !== '');
+  return { ...frame, name };
 }
-
-const kAXErrorSuccess = 0;
-const kAXFrameAttribute = 'AXFrame';
-const kAXValueCGRectType = 3;
 
 /**
  * 주어진 macOS 스크린 좌표(논리 픽셀)에서 가장 구체적인 AXUIElement 의 frame 반환.
  * 손쉬운 사용 권한이 없거나 실패하면 null.
  */
-export function getElementBoundsAtPoint(
-  screenX: number,
-  screenY: number,
-): ElementBounds | null {
-  if (!checkAxPermFast()) return null;
+export function getElementBoundsAtPoint(screenX: number, screenY: number): ElementBounds | null {
+  if (!hasAccessibilityPermission()) return null;
   try {
-    const f = getAxFns();
-    const sys = f.createSystemWide();
-    const elOut: unknown[] = [null];
-    const axErr = f.elementAtPos(sys, screenX, screenY, elOut);
-    f.release(sys);
-    if (axErr !== kAXErrorSuccess || !elOut[0]) return null;
-
-    const el = elOut[0];
-    const { strCreate, release } = getFns();
-
-    // 4개 attribute 를 1번의 AX IPC 로 batch 읽기. macOS AX IPC 비용이 koffi
-    // FFI 비용보다 큰 편이라 4 → 1 호출로 의미 있는 절감.
-    // 우선 순위: AXTitle(구체 라벨) → AXRoleDescription(역할명, 예: "버튼")
-    //          → AXDescription(대체 설명), 마지막에 AXFrame.
-    const titleKey = strCreate(null, 'AXTitle', kCFStringEncodingUTF8);
-    const roleKey = strCreate(null, 'AXRoleDescription', kCFStringEncodingUTF8);
-    const descKey = strCreate(null, 'AXDescription', kCFStringEncodingUTF8);
-    const frameKey = strCreate(null, kAXFrameAttribute, kCFStringEncodingUTF8);
-    const attrArr = f.arrayCreateMutable(null, 4, null);
-    f.arrayAppendValue(attrArr, titleKey);
-    f.arrayAppendValue(attrArr, roleKey);
-    f.arrayAppendValue(attrArr, descKey);
-    f.arrayAppendValue(attrArr, frameKey);
-    const valuesOut: unknown[] = [null];
-    const batchErr = f.copyMultipleAttrValues(el, attrArr, 0, valuesOut);
-    // CFString 키들 + input array 정리.
-    release(titleKey);
-    release(roleKey);
-    release(descKey);
-    release(frameKey);
-    release(attrArr);
-    f.release(el);
-    if (batchErr !== kAXErrorSuccess || !valuesOut[0]) return null;
-    const values = valuesOut[0];
-
-    // 각 attribute 의 값 추출. 실패한 attribute 는 AXValueRef of kAXValueTypeIllegal
-    // 이지만 우리는 string 결과는 cfStrToJs 가 빈 문자열로, frame 결과는
-    // axValueGetValue 가 false 로 자연스럽게 fail 처리한다.
-    const titleVal = f.arrayGet(values, 0);
-    const roleVal = f.arrayGet(values, 1);
-    const descVal = f.arrayGet(values, 2);
-    const frameVal = f.arrayGet(values, 3);
-
-    let name = titleVal ? cfStrToJs(titleVal) : '';
-    if (!name && roleVal) name = cfStrToJs(roleVal);
-    if (!name && descVal) name = cfStrToJs(descVal);
-
-    if (!frameVal) {
-      release(values);
-      return null;
-    }
-    const rectOut = [{ x: 0, y: 0, width: 0, height: 0 }];
-    const ok = f.axValueGetValue(frameVal, kAXValueCGRectType, rectOut);
-    release(values);
-    if (!ok) return null;
-
-    const { x, y, width: w, height: h } = rectOut[0];
-    if (w < 2 || h < 2) return null;
-    return { x, y, w, h, name: name || undefined };
+    const el = copyElementAtPosition(screenX, screenY);
+    if (!el) return null;
+    const bounds = readElementBounds(el);
+    cfRelease(el);
+    return bounds;
   } catch (err: unknown) {
     console.warn('[asis] getElementBoundsAtPoint 실패:', err);
     return null;
@@ -422,155 +224,75 @@ export function getElementBoundsAtPoint(
 }
 
 /**
- * Dock 아이콘 enumerate — listWindows 에서 Dock 차단을 우회하기 위해 AX 로
- * Dock 의 children 을 직접 가져온다.
+ * Dock 의 아이콘 컨테이너(AXList) 의 children 배열. 실패 시 null. 호출자가 cfRelease 한다.
  *
  * Dock 의 AX 구조:
  *   Dock(app) → AXChildren → [AXList(items)] → AXChildren → [AXDockItem, ...]
- *   각 AXDockItem 은 AXTitle("Safari" 등) + AXFrame (개별 아이콘 좌표).
+ */
+function copyDockItemArray(dockPid: number): unknown {
+  const f = getAxFns();
+  const childrenKey = cfStr('AXChildren');
+  const dockApp = f.createApp(dockPid);
+  const topChildren = copyAttributeValue(dockApp, childrenKey);
+  cfRelease(dockApp);
+  // Dock 의 top child[0] = AXList(아이콘 컨테이너). topChildren 이 소유하므로 해제 전에 읽는다.
+  const hasList = topChildren !== null && getCfFns().arrCount(topChildren) > 0;
+  const items = hasList ? copyAttributeValue(f.arrayGet(topChildren, 0), childrenKey) : null;
+  cfRelease(childrenKey);
+  if (topChildren !== null) cfRelease(topChildren);
+  return items;
+}
+
+/**
+ * Dock 아이콘의 layer — AX 로 읽어 CGWindowList 값이 없으므로 Dock 창 레벨을 쓴다.
+ * CGWindowLevelForKey(.dockWindow) = 20 (macOS 26.3 실측).
+ */
+const DOCK_ITEM_LAYER = 20;
+
+type DockItemKeys = [title: unknown, frame: unknown];
+
+/** AXDockItem 하나 → WindowInfo. id 는 CGWindowID 와 겹치지 않도록 음수 + index. */
+function readDockItem(item: unknown, index: number, keys: DockItemKeys): WindowInfo | null {
+  const values = copyAttributeValues(item, keys);
+  if (!values) return null;
+  const { arrayGet } = getAxFns();
+  const title = cfStrToJs(arrayGet(values, 0));
+  const frame = readFrame(arrayGet(values, 1));
+  cfRelease(values);
+  if (!frame) return null;
+  return { id: -1 - index, name: title || DOCK_OWNER, layer: DOCK_ITEM_LAYER, ...frame };
+}
+
+function readDockItems(dockItemArr: unknown): WindowInfo[] {
+  const keys: DockItemKeys = [cfStr('AXTitle'), cfStr('AXFrame')];
+  const items: WindowInfo[] = [];
+  const count = getCfFns().arrCount(dockItemArr);
+  for (let i = 0; i < count; i++) {
+    const item = getAxFns().arrayGet(dockItemArr, i);
+    const info = item ? readDockItem(item, i, keys) : null;
+    if (info) items.push(info);
+  }
+  cfRelease(...keys);
+  return items;
+}
+
+/**
+ * Dock 아이콘 enumerate — listWindows 에서 Dock 을 제외하는 대신 AX 로
+ * 개별 AXDockItem 의 AXTitle + AXFrame 을 가져온다.
  *
- * listWindows 가 부수적으로 _lastDockPid 를 캐시했을 때만 동작.
- * AX 권한 없거나 enumerate 실패 시 null — 호출자는 자연스럽게 빈 목록으로 처리.
+ * listWindows 가 Dock PID 를 기록한 뒤에만 동작한다.
+ * AX 권한 없거나 enumerate 실패 시 null — 호출자는 빈 목록으로 처리.
  */
 export function getDockItems(): WindowInfo[] | null {
-  if (_lastDockPid === null) return null;
-  if (!checkAxPermFast()) return null;
+  if (lastDockPid === null || !hasAccessibilityPermission()) return null;
   try {
-    const f = getAxFns();
-    const { strCreate, release } = getFns();
-    const dockApp = f.createApp(_lastDockPid);
-
-    // Step 1: Dock app 의 AXChildren → AXList 찾기.
-    const childrenKey = strCreate(null, 'AXChildren', kCFStringEncodingUTF8);
-    const listOut: unknown[] = [null];
-    let err = f.copyAttrValue(dockApp, childrenKey, listOut);
-    f.release(dockApp);
-    if (err !== kAXErrorSuccess || !listOut[0]) {
-      release(childrenKey);
-      return null;
-    }
-    const topChildren = listOut[0];
-    if (getFns().arrCount(topChildren) === 0) {
-      release(childrenKey);
-      release(topChildren);
-      return null;
-    }
-    // Dock 의 top child[0] = AXList(아이콘 컨테이너).
-    const axList = f.arrayGet(topChildren, 0);
-
-    // Step 2: AXList 의 AXChildren → 개별 AXDockItem 들.
-    const itemsOut: unknown[] = [null];
-    err = f.copyAttrValue(axList, childrenKey, itemsOut);
-    release(childrenKey);
-    release(topChildren);
-    if (err !== kAXErrorSuccess || !itemsOut[0]) return null;
-    const dockItemArr = itemsOut[0];
-    const itemCount = getFns().arrCount(dockItemArr);
-
-    // Step 3: 각 아이템의 AXTitle + AXFrame batch.
-    const titleKey = strCreate(null, 'AXTitle', kCFStringEncodingUTF8);
-    const frameKey = strCreate(null, kAXFrameAttribute, kCFStringEncodingUTF8);
-
-    const items: WindowInfo[] = [];
-    for (let i = 0; i < itemCount; i++) {
-      const item = f.arrayGet(dockItemArr, i);
-      if (!item) continue;
-
-      const attrArr = f.arrayCreateMutable(null, 2, null);
-      f.arrayAppendValue(attrArr, titleKey);
-      f.arrayAppendValue(attrArr, frameKey);
-      const valuesOut: unknown[] = [null];
-      const batchErr = f.copyMultipleAttrValues(item, attrArr, 0, valuesOut);
-      release(attrArr);
-      if (batchErr !== kAXErrorSuccess || !valuesOut[0]) continue;
-      const values = valuesOut[0];
-      const titleVal = f.arrayGet(values, 0);
-      const frameVal = f.arrayGet(values, 1);
-      const title = titleVal ? cfStrToJs(titleVal) : '';
-      if (!frameVal) {
-        release(values);
-        continue;
-      }
-      const rectOut = [{ x: 0, y: 0, width: 0, height: 0 }];
-      const ok = f.axValueGetValue(frameVal, kAXValueCGRectType, rectOut);
-      release(values);
-      if (!ok) continue;
-      const { x, y, width: w, height: h } = rectOut[0];
-      if (w < 2 || h < 2) continue;
-      // Dock item 의 id 는 일반 CGWindowID 와 conflict 안 나도록 음수 + index.
-      items.push({ id: -1 - i, name: title || 'Dock', x, y, w, h });
-    }
-
-    release(titleKey);
-    release(frameKey);
-    release(dockItemArr);
+    const dockItemArr = copyDockItemArray(lastDockPid);
+    if (!dockItemArr) return null;
+    const items = readDockItems(dockItemArr);
+    cfRelease(dockItemArr);
     return items;
   } catch (err: unknown) {
     console.warn('[asis] getDockItems 실패:', err);
     return null;
   }
-}
-
-// ---------------------------------------------------------------------------
-// Darwin notify — Space 전환 감지 (com.apple.spaces.notify)
-//
-// CFNotificationCenter 콜백은 Electron 의 CF run loop 통합 문제로 일부 macOS
-// 버전에서 fire 가 안정적이지 않다. 대신 libSystem 의 notify_register_check +
-// notify_check 폴링(150ms) 패턴을 사용 — 가볍고 신뢰성 있다.
-//
-// polling fallback (400ms/2500ms) 는 selectionOverlay 에서 유지 — 이 이벤트가
-// 안 fire 하는 환경(특정 macOS 버전·multi-display 설정) 에서도 동작 보장.
-// ---------------------------------------------------------------------------
-type NotifyPollFns = {
-  registerCheck: (name: string, outToken: number[]) => number;
-  check: (token: number, outChanged: number[]) => number;
-  cancel: (token: number) => number;
-};
-let _notifyFns: NotifyPollFns | null = null;
-function getNotifyFns(): NotifyPollFns | null {
-  if (_notifyFns) return _notifyFns;
-  try {
-    const lib = koffi.load('/usr/lib/libSystem.B.dylib');
-    _notifyFns = {
-      registerCheck: lib.func('notify_register_check', 'int', [
-        'str', koffi.out(koffi.pointer('int')),
-      ]),
-      check: lib.func('notify_check', 'int', [
-        'int', koffi.out(koffi.pointer('int')),
-      ]),
-      cancel: lib.func('notify_cancel', 'int', ['int']),
-    };
-  } catch (err) {
-    console.warn('[asis] notify SPI 로드 실패 (Space 이벤트 비활성):', err);
-    return null;
-  }
-  return _notifyFns;
-}
-
-/**
- * Space 전환 이벤트 구독. 콜백은 검출된 직후 즉시 호출된다.
- * 반환된 unsubscribe 함수로 정리.
- *
- * macOS API 또는 libSystem 로드 실패 시 no-op unsubscribe 반환 — 호출자는
- * polling fallback 으로 안전하게 동작한다.
- */
-export function onSpaceChange(cb: () => void): () => void {
-  const f = getNotifyFns();
-  if (!f) return (): void => { /* no-op */ };
-  const tokenOut = [0];
-  const status = f.registerCheck('com.apple.spaces.notify', tokenOut);
-  if (status !== 0) {
-    console.warn(`[asis] onSpaceChange: notify_register_check 실패 status=${status}`);
-    return (): void => { /* no-op */ };
-  }
-  const token = tokenOut[0];
-  const intervalId = setInterval(() => {
-    const changed = [0];
-    f.check(token, changed);
-    if (changed[0]) cb();
-  }, 150);
-  return (): void => {
-    clearInterval(intervalId);
-    f.cancel(token);
-  };
 }

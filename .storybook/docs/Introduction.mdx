@@ -1,0 +1,29 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Introduction" />
+
+# ASIS 디자인 시스템
+
+캡처한 화면을 설명하는 도구답게, **UI는 조용히 물러나고 캡처한 화면이 주인공**이 되게 한다.
+
+- **macOS 구조, 따뜻한 톤** — 크기·반경·그림자·시스템 색은 macOS 를 따른다. 바탕과 회색에는 따뜻한 기운을 넣어 오래 봐도 눈이 편하게 한다.
+- **ASIS 오렌지** — 메인 색은 밝은 주황(`#ff6f0f`) 하나다. 선택·켜짐·기본 동작에만 쓰고, 그 위 글자는 흰색이다(당근처럼 색을 우선, AA 의도적 미적용). 넓은 면에는 복숭아빛 틴트를 쓴다.
+- **캡처 프레임** — 개성은 한 곳에만 쓴다. 얇은 선과 네 모서리의 굵은 브래킷으로 그리고, 녹화 중에는 빨강으로 바뀐다.
+- **라이트 / 다크 / 대비 증가** — 모든 토큰이 세 가지 외형을 다 가진다. 캡처 오버레이와 HUD는 어떤 앱 위에 떠도 읽히도록 항상 다크다.
+
+## 툴바
+
+<table>
+  <thead><tr><th>버튼</th><th>하는 일</th></tr></thead>
+  <tbody>
+    <tr><td>외형</td><td>라이트 + 다크(나란히) / 시스템 / 라이트 / 다크. 앱과 같은 `<html data-appearance>` 를 쓴다</td></tr>
+    <tr><td>강조색</td><td>ASIS 오렌지(기본). macOS 강조색으로 바꿔 비교할 수 있다</td></tr>
+    <tr><td>대비</td><td>표준 / 대비 증가 (`data-contrast="more"`, 시스템 "대비 증가" 와 같은 토큰)</td></tr>
+  </tbody>
+</table>
+
+## 문서
+
+- **Guides/Tokens** — 토큰 3단 구조와 사용 규칙, 토큰 감사(`token-audit`)
+- **Guides/Migration** — 도메인 CSS 를 이 시스템으로 옮기는 표와 순서
+- **Foundations/Contrast** — 토큰 쌍마다 WCAG 대비를 렌더 결과에서 직접 잰 표

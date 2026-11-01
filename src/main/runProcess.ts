@@ -34,22 +34,17 @@ export function runProcess(
   return new Promise((resolve, reject) => {
     const child = spawn(bin, args);
     const stderrChunks: Buffer[] = [];
-    let settled = false;
 
     child.stderr.on('data', (chunk: Buffer) => {
       stderrChunks.push(chunk);
     });
 
-    // 'error' 와 'close' 가 모두 올 수 있으므로 한 번만 settle.
+    // 'error' 와 'close' 가 모두 올 수 있지만 Promise 는 먼저 온 쪽으로 한 번만 settle 된다.
     child.on('error', (err) => {
-      if (settled) return;
-      settled = true;
       reject(new Error(`${label} spawn 실패: ${err.message}`));
     });
 
     child.on('close', (code) => {
-      if (settled) return;
-      settled = true;
       resolve({
         code,
         stderr: Buffer.concat(stderrChunks).toString('utf8').trim(),

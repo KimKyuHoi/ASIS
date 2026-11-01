@@ -28,7 +28,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 24.22.2
           cache: pnpm
 
       - name: Sync package.json version from tag
@@ -48,12 +48,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # 네이티브 헬퍼(asis-ocr, asis-clickmon)를 electron-builder 전에 빌드한다.
+      # 네이티브 헬퍼(asis-clickmon)를 electron-builder 전에 빌드한다.
       # 이게 없으면 extraResources 의 resources/bin/* 소스가 존재하지 않아 앱 번들에
-      # 바이너리가 빠진 채 배포된다 (v0.6.3 에서 OCR·스텝 가이드가 깨졌던 원인).
-      - name: Build native helpers (OCR / click monitor)
+      # 바이너리가 빠진 채 배포된다 (v0.6.3 에서 스텝 가이드가 깨졌던 원인).
+      - name: Build native helpers (click monitor)
         run: |
-          pnpm build:ocr
           pnpm build:clickmon
 
       - name: Build renderer + main
@@ -114,6 +113,8 @@ jobs:
             pnpm electron-builder --mac --publish always
           fi
 
+      # 릴리스 본문 — 사람이 쓴 release-notes/<version>.{ko,en}.md 가 있으면 그것을 쓴다
+      # (앱의 변경 이력 창과 같은 원본). 둘 다 있을 때만 쓰고, 없으면 changelogen 자동 생성.
       - name: Update release notes from changelog
         if: >
           github.event_name == 'push' ||
@@ -122,6 +123,22 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
+          KO="release-notes/${VERSION}.ko.md"
+          EN="release-notes/${VERSION}.en.md"
+          if [ -f "$KO" ] && [ -f "$EN" ]; then
+            {
+              cat "$KO"
+              printf '\n---\n\n'
+              cat "$EN"
+            } > RELEASE_NOTES.md
+            gh release edit "$TAG" --notes-file RELEASE_NOTES.md
+            echo "release notes from $KO + $EN"
+            exit 0
+          fi
+          if [ -f "$KO" ] || [ -f "$EN" ]; then
+            echo "::warning::release-notes/${VERSION} 는 ko·en 둘 다 있어야 한다 — changelogen 으로 대신한다"
+          fi
           # 이전 태그 찾기 (없으면 전체 커밋 사용)
           PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${TAG}$" | head -1)
           if [ -n "$PREV_TAG" ]; then

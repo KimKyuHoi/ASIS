@@ -55,27 +55,15 @@ export function niceTickStep(targetPx: number): number {
   return Math.max(1, Math.round(niceFraction * base));
 }
 
+/** 비정상적으로 작은 step 이 들어와도 DOM 노드가 폭발하지 않도록 하는 tick 수 상한. */
+const MAX_TICKS = 2000;
+
 /**
- * [start, end) 구간에서 step 간격의 눈금 좌표 배열을 만든다.
+ * [0, length) 구간에서 step 간격의 눈금 좌표 배열을 만든다.
  * step 이 0 이하이거나 구간이 비면 빈 배열(무한 루프·과도한 tick 방지).
- *
- * maxTicks 로 상한을 둔다 — 비정상적으로 작은 step 이 들어와도 DOM 노드가
- * 폭발하지 않도록 하는 안전장치.
  */
-export function tickPositions(
-  start: number,
-  end: number,
-  step: number,
-  maxTicks = 2000,
-): number[] {
-  if (step <= 0 || end <= start) return [];
-  const ticks: number[] = [];
-  // start 이상인 첫 번째 step 배수부터 시작.
-  const first = Math.ceil(start / step) * step;
-  let pos = first;
-  while (pos < end && ticks.length < maxTicks) {
-    ticks.push(pos);
-    pos += step;
-  }
-  return ticks;
+export function tickPositions(length: number, step: number): number[] {
+  if (step <= 0 || length <= 0) return [];
+  const count = Math.min(Math.ceil(length / step), MAX_TICKS);
+  return Array.from({ length: count }, (_, i) => i * step);
 }

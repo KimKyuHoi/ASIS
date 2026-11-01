@@ -1,0 +1,21 @@
+.ds-keycap {
+  display: inline-flex;
+  gap: var(--space-half);
+  font-family: var(--font-ui);
+}
+
+.ds-keycap__key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--size-control-sm);
+  height: var(--size-control-sm);
+  padding: 0 var(--space-1);
+  border-radius: var(--keycap-radius);
+  background: var(--keycap-bg);
+  box-shadow: var(--keycap-shadow);
+  color: var(--keycap-label);
+  font-family: var(--font-ui);
+  font-size: var(--text-callout);
+  font-weight: var(--weight-medium);
+}

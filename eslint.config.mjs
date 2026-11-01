@@ -6,10 +6,13 @@
  *  - 스타일: ESLint @stylistic 으로 직접 강제 (Prettier는 비코드 파일 전용)
  *  - React: react / react-hooks / react-refresh / react-compiler
  *  - TypeScript: @electron-toolkit/eslint-config-ts (typescript-eslint recommended)
+ *  - src/** 한정 타입 정보 기반 규칙 (typescript-eslint strictTypeChecked + stylisticTypeChecked)
+ *  - 복잡도·크기 상한 — 리팩토링 목표치. 넘으면 파일/함수를 나눈다.
  */
 
 import { defineConfig } from 'eslint/config';
 import tseslint from '@electron-toolkit/eslint-config-ts';
+import typescriptEslint from 'typescript-eslint';
 import stylistic from '@stylistic/eslint-plugin';
 import eslintPluginReact from 'eslint-plugin-react';
 import eslintPluginReactHooks from 'eslint-plugin-react-hooks';
@@ -249,6 +252,83 @@ export default defineConfig(
       }],
       '@stylistic/switch-colon-spacing': 'error',
       '@stylistic/wrap-iife': ['error', 'inside'],
+    },
+  },
+
+  // ─── src/** 타입 정보 기반 규칙 ──────────────────────────────────────
+  // projectService 가 tsconfig.node.json / tsconfig.web.json 을 찾아 타입 정보를 붙인다.
+  // 설정 파일·landing/ 처럼 tsconfig 밖 파일에는 적용하지 않는다.
+  ...[
+    ...typescriptEslint.configs.strictTypeChecked,
+    ...typescriptEslint.configs.stylisticTypeChecked,
+  ].map((config) => ({ ...config, files: ['src/**/*.{ts,tsx}'] })),
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    languageOptions: {
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+    rules: {
+      // null-safety.md — 타입상 null 이 될 수 없는데 ?. / ?? 로 무마한 곳을 잡는다.
+      '@typescript-eslint/no-unnecessary-condition': 'error',
+      // 판별 유니온(RecorderResult.kind 등)에 variant 가 추가되면 처리 누락을 잡는다.
+      '@typescript-eslint/switch-exhaustiveness-check': ['error', {
+        considerDefaultExhaustiveForUnions: true,
+        requireDefaultForNonUnion: true,
+      }],
+      '@typescript-eslint/no-floating-promises': 'error',
+      '@typescript-eslint/no-misused-promises': 'error',
+      '@typescript-eslint/prefer-readonly': 'error',
+      '@typescript-eslint/restrict-template-expressions': ['error', {
+        allowNumber: true,
+      }],
+      '@typescript-eslint/no-confusing-void-expression': ['error', {
+        ignoreArrowShorthand: true,
+      }],
+      // 프로젝트는 type 별칭을 쓴다(consistent-type-definitions: type).
+      '@typescript-eslint/consistent-type-definitions': ['error', 'type'],
+
+      // ─── 복잡도·크기 상한 — 넘으면 함수/파일을 나눈다 ──────────────
+      'complexity': ['error', 12],
+      'max-depth': ['error', 3],
+      'max-nested-callbacks': ['error', 3],
+      'max-params': ['error', 3],
+      'max-lines-per-function': ['error', {
+        max: 80,
+        skipBlankLines: true,
+        skipComments: true,
+      }],
+      'max-lines': ['error', {
+        max: 300,
+        skipBlankLines: true,
+        skipComments: true,
+      }],
+      'no-nested-ternary': 'error',
+      'no-else-return': ['error', { allowElseIf: false }],
+      'no-param-reassign': ['error', {
+        props: true,
+        // canvas 2D 컨텍스트·reduce 누산기는 변경이 본래 용도.
+        // event — ipcMain.on 의 sendSync 응답은 Electron API 가 event.returnValue 대입을 요구한다.
+        ignorePropertyModificationsFor: ['ctx', 'acc', 'event'],
+      }],
+      'no-duplicate-imports': 'error',
+    },
+  },
+
+  // ─── 렌더러 React 규칙 ───────────────────────────────────────────────
+  {
+    files: ['src/renderer/**/*.tsx'],
+    rules: {
+      // {count && <X/>} 가 0 을 렌더링하는 실수를 막는다.
+      'react/jsx-no-leaked-render': ['error', { validStrategies: ['ternary', 'coerce'] }],
+      'react/no-array-index-key': 'error',
+      'react/no-unstable-nested-components': 'error',
+      'react/jsx-no-useless-fragment': 'error',
+      'react/hook-use-state': 'error',
+      'react/jsx-boolean-value': ['error', 'never'],
+      'react/self-closing-comp': 'error',
     },
   },
 

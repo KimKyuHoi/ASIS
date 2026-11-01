@@ -1,297 +1,144 @@
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+/*
+ * 환경설정 — design-system 토큰·컴포넌트(Group·Row·Select·Checkbox·Slider·Button) 위에
+ * 이 창의 배치만 얹는다. 외형은 시스템(설정의 "화면 모드" → nativeTheme)을 따른다.
+ */
+@import '../../design-system/asset/base.css';
+
+html,
+body,
+#root {
+  height: 100%;
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  font-size: 13px;
-  background: #1e1e1e;
-  color: #e0e0e0;
-  -webkit-font-smoothing: antialiased;
+  background: var(--surface-under-page);
+  color: var(--text-primary);
 }
 
+/* 내용은 스크롤, [기본값으로] [저장] 은 창 아래에 고정. */
 .settings {
-  padding: 24px;
   display: flex;
   flex-direction: column;
-  gap: 24px;
-  min-height: 100vh;
+  height: 100vh;
 }
 
-.settings__title {
-  font-size: 18px;
-  font-weight: 600;
-  color: #fff;
-}
-
-.settings__section-title {
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: #888;
-  margin-bottom: 12px;
-}
-
-.hotkey-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.hotkey-row {
-  border-bottom: 1px solid #2a2a2a;
-}
-
-.hotkey-row:last-child {
-  border-bottom: none;
-}
-
-.hotkey-row__label {
-  padding: 10px 0;
-  color: #ccc;
-  width: 60%;
-}
-
-.hotkey-row__input {
-  padding: 6px 0;
-  text-align: right;
-}
-
-.hotkey-btn {
-  padding: 4px 12px;
-  border-radius: 6px;
-  border: 1px solid #444;
-  background: #2a2a2a;
-  color: #e0e0e0;
-  font-size: 13px;
-  font-family: 'SF Mono', 'Menlo', monospace;
-  cursor: pointer;
-  min-width: 120px;
-  text-align: center;
-  transition:
-    border-color 0.1s,
-    background 0.1s;
-}
-
-.hotkey-btn:hover {
-  border-color: #666;
-  background: #333;
-}
-
-.hotkey-btn--recording {
-  border-color: #007aff;
-  background: #002244;
-  color: #7ab8ff;
-  animation: pulse 1s infinite;
-}
-
-/* 같은 조합이 여러 기능에 지정된 행 — 저장 차단 사유를 행 단위로 보여준다. */
-.hotkey-btn--conflict,
-.hotkey-btn--conflict:hover {
-  border-color: #ff9f0a;
-  background: #3a2a10;
-  color: #ffc46b;
-}
-
-.hotkey-btn--empty {
-  color: #777;
-  font-style: italic;
-}
-
-/* 행 단위 해제 버튼 — 값이 있을 때만 렌더된다. */
-.hotkey-row__clear {
-  margin-left: 6px;
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: #888;
-  font-size: 13px;
-  line-height: 1;
-  cursor: pointer;
-  vertical-align: middle;
-}
-
-.hotkey-row__clear:hover {
-  border-color: #666;
-  background: #333;
-  color: #eee;
-}
-
-/* 섹션 제목 아래 짧은 설명. */
-.settings__section-hint {
-  margin: -4px 0 10px;
-  font-size: 12px;
-  line-height: 1.5;
-  color: #888;
-}
-
-.hotkey-row__badge {
-  display: inline-block;
-  margin-right: 8px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: #ff9f0a;
-  color: #1e1e1e;
-  font-size: 11px;
-  font-weight: 600;
-  vertical-align: middle;
-}
-
-/* 경고/안내 배너 — info 는 진행 중 기능, warn 은 단축키 중복. */
-.settings__notice {
-  padding: 10px 12px;
-  border-radius: 8px;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.settings__notice--info {
-  background: #14283d;
-  border: 1px solid #235783;
-  color: #9ccbf5;
-}
-
-.settings__notice--warn {
-  background: #3a2a10;
-  border: 1px solid #7a5a18;
-  color: #ffc46b;
-  margin-bottom: 12px;
-}
-
-@keyframes pulse {
-  0%,
-  100% {
-    border-color: #007aff;
-  }
-  50% {
-    border-color: #0055cc;
-  }
-}
-
-.folder-row {
+.settings__scroll {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 0;
-}
-
-.folder-row__path {
   flex: 1;
-  font-size: 12px;
-  color: #aaa;
-  font-family: 'SF Mono', 'Menlo', monospace;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.folder-row__btn {
-  flex-shrink: 0;
-  padding: 4px 12px;
-}
-
-.misc-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 0;
-  border-bottom: 1px solid #2a2a2a;
-}
-
-.misc-row:last-child {
-  border-bottom: none;
-}
-
-.misc-row__label {
-  flex: 1;
-  color: #ccc;
-  font-size: 13px;
-}
-
-.misc-row__label--check {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-}
-
-.misc-row__check {
-  width: 14px;
-  height: 14px;
-  accent-color: #007aff;
-  cursor: pointer;
-}
-
-.misc-row__select {
-  padding: 4px 8px;
-  border-radius: 6px;
-  border: 1px solid #444;
-  background: #2a2a2a;
-  color: #e0e0e0;
-  font-size: 13px;
-  cursor: pointer;
-  min-width: 90px;
-}
-
-.misc-row__range {
-  flex: 1;
-  max-width: 160px;
-  accent-color: #007aff;
-  cursor: pointer;
-}
-
-.misc-row__value {
-  font-size: 12px;
-  color: #888;
-  min-width: 36px;
-  text-align: right;
+  flex-direction: column;
+  gap: var(--space-6);
+  min-height: 0;
+  padding: var(--space-5) var(--space-5) var(--space-6);
+  overflow-y: auto;
 }
 
 .settings__actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
-  padding-top: 8px;
-  border-top: 1px solid #2a2a2a;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  border-top: var(--border-hairline) solid var(--border-subtle);
+  background: var(--surface-window);
 }
 
-.btn {
-  padding: 7px 16px;
-  border-radius: 7px;
+/* 실행 중 기능 안내(info) · 단축키 중복(warn). 색만이 아니라 문장으로 사유를 전한다. */
+.settings-notice {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-control);
+  font-size: var(--text-callout);
+  line-height: var(--leading-relaxed);
+}
+
+.settings-notice--info {
+  background: var(--surface-group);
+  box-shadow: inset 0 0 0 var(--border-hairline) var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.settings-notice--warn {
+  margin: var(--space-2);
+  background: var(--warning-tint);
+  color: var(--text-primary);
+}
+
+/* 저장 위치 — 긴 경로는 말줄임, 전체는 title 툴팁. */
+.settings-path {
+  display: block;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: var(--text-callout);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ds-row__text:has(.settings-path) {
+  flex: 1;
+}
+
+.settings-slider {
+  width: 180px; /* token-ok: 15~100% 를 5단위로 고르기 충분한 폭 */
+}
+
+/* ── 단축키 입력 버튼 ─────────────────────────────── */
+
+.hotkey-field {
+  min-width: 128px; /* token-ok: "⌥⇧⌘D" 와 녹화 안내 문구가 들어가는 폭 */
+  height: var(--size-control);
+  padding: 0 var(--space-3);
   border: none;
-  font-size: 13px;
-  cursor: pointer;
-  font-weight: 500;
+  border-radius: var(--radius-control);
+  background: var(--surface-control);
+  box-shadow: var(--shadow-raised);
+  color: var(--text-primary);
+  font-size: var(--text-body);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  transition: box-shadow var(--duration-fast) var(--ease-mac);
 }
 
-.btn--secondary {
-  background: #3a3a3a;
-  color: #ccc;
+.hotkey-field:active {
+  background: var(--surface-pressed);
 }
 
-.btn--secondary:hover {
-  background: #444;
+/*
+ * 해제됨 — 면을 비우고 점선 윤곽으로 "빈 칸" 임을 모양으로 보인다. 글자가 컨트롤 면이 아니라
+ * 그룹 바탕 위에 놓여 secondary 로도 4.5:1 을 넘는다 (컨트롤 면 위에선 다크 3.56:1).
+ */
+.hotkey-field--empty {
+  border: var(--border-thin) dashed var(--border-strong);
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-secondary);
 }
 
-.btn--primary {
-  background: #007aff;
-  color: #fff;
+/* 키 입력을 기다리는 중 — 강조색 테두리 + 틴트, 천천히 숨 쉰다. */
+.hotkey-field--recording {
+  background: var(--accent-tint);
+  box-shadow: inset 0 0 0 var(--border-thin) var(--accent);
+  color: var(--accent-tint-text);
+  font-size: var(--text-callout);
+  animation: hotkey-recording var(--duration-pulse) var(--ease-mac) infinite;
 }
 
-.btn--primary:hover {
-  background: #0066dd;
+.hotkey-field--conflict {
+  box-shadow: inset 0 0 0 var(--border-thin) var(--warning);
 }
 
-/* 중복 단축키가 있으면 저장을 막는다 — 눌러도 소용없음을 시각적으로 알린다. */
-.btn:disabled,
-.btn:disabled:hover {
-  background: #2f2f2f;
-  color: #777;
-  cursor: not-allowed;
+@keyframes hotkey-recording {
+  50% {
+    box-shadow: inset 0 0 0 var(--border-thick) var(--accent);
+  }
+}
+
+/* 해제 버튼이 없는 행도 키 버튼이 같은 자리에 오도록 같은 폭을 비워 둔다. */
+.hotkey-clear-slot {
+  width: var(--size-control-lg); /* IconButton 크기 */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hotkey-field,
+  .hotkey-field--recording {
+    transition: none;
+    animation: none;
+  }
 }

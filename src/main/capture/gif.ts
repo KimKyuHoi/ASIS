@@ -1,4 +1,4 @@
-import { mkdir, readdir, rm } from 'node:fs/promises';
+import { mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ffmpegPath from 'ffmpeg-static';
@@ -26,6 +26,10 @@ if (!ffmpegPath) {
 // asarUnpack 으로 추출된 app.asar.unpacked 경로로 교정.
 const FFMPEG_BIN = ffmpegPath.replace('app.asar', 'app.asar.unpacked');
 
+/** frame PNG 파일명 — ffmpeg 입력 패턴(%04d)과 nextFramePath 의 4자리 0-패딩이 맞아야 한다. */
+const FRAME_INPUT_PATTERN = 'frame_%04d.png';
+const frameFileName = (index: number): string => `frame_${String(index).padStart(4, '0')}.png`;
+
 export type EncodeOptions = {
   /** GIF 의 frame rate. 기본 10. */
   fps?: number;
@@ -37,40 +41,33 @@ export type EncodeOptions = {
  * frames 폴더 안 frame_*.png → GIF 파일.
  * @returns 생성된 GIF 파일 path
  */
-export async function encodeGif(
+async function encodeGif(
   framesDir: string,
   outputPath: string,
   options: EncodeOptions = {},
 ): Promise<string> {
-  const fps = options.fps ?? 10;
-  const loop = options.loop ?? 0;
+  const fps = String(options.fps ?? 10);
+  const loop = String(options.loop ?? 0);
+  const framesInput = join(framesDir, FRAME_INPUT_PATTERN);
 
   // 1-pass: palette.png 생성.
   const palettePath = join(framesDir, '__palette.png');
   await runFfmpeg([
     '-y',
-    '-framerate',
-    String(fps),
-    '-i',
-    join(framesDir, 'frame_%04d.png'),
-    '-vf',
-    'palettegen=stats_mode=full',
+    '-framerate', fps,
+    '-i', framesInput,
+    '-vf', 'palettegen=stats_mode=full',
     palettePath,
   ]);
 
   // 2-pass: paletteuse 로 GIF 인코딩.
   await runFfmpeg([
     '-y',
-    '-framerate',
-    String(fps),
-    '-i',
-    join(framesDir, 'frame_%04d.png'),
-    '-i',
-    palettePath,
-    '-lavfi',
-    `paletteuse=dither=sierra2_4a`,
-    '-loop',
-    String(loop),
+    '-framerate', fps,
+    '-i', framesInput,
+    '-i', palettePath,
+    '-lavfi', 'paletteuse=dither=sierra2_4a',
+    '-loop', loop,
     outputPath,
   ]);
 
@@ -80,7 +77,7 @@ export async function encodeGif(
 async function runFfmpeg(args: string[]): Promise<void> {
   const { code, stderr } = await runProcess(FFMPEG_BIN, args, 'ffmpeg');
   if (code !== 0) {
-    throw new Error(`ffmpeg 실패 (exit ${code ?? 'null'}): ${stderr}`);
+    throw new Error(`ffmpeg 실패 (exit ${String(code)}): ${stderr}`);
   }
 }
 
@@ -107,27 +104,15 @@ export class GifManager {
   }
 
   /**
-   * 다음 frame 의 expected 경로 반환. 호출자가 이 path 로 PNG 를 *직접 쓴 후*
-   * 호출하면 frameIndex 가 증가한다 (capture 흐름과 호환).
+   * 다음 frame 을 쓸 경로를 예약한다(frameIndex 증가). 호출자가 이 path 로 PNG 를 직접 쓴다.
    */
   nextFramePath(): string {
     if (!this.framesDir) {
       throw new Error('GifManager.nextFramePath() — start() 안 호출됨');
     }
-    const index = String(this.frameIndex).padStart(4, '0');
+    const path = join(this.framesDir, frameFileName(this.frameIndex));
     this.frameIndex += 1;
-    return join(this.framesDir, `frame_${index}.png`);
-  }
-
-  /**
-   * 외부에서 frame 을 별도 path 로 만든 경우 등록 (단순 카운트 증가).
-   * nextFramePath() 와 둘 중 하나만 사용하는 걸 권장.
-   */
-  registerExternalFrame(): void {
-    if (!this.framesDir) {
-      throw new Error('GifManager.registerExternalFrame() — start() 안 호출됨');
-    }
-    this.frameIndex += 1;
+    return path;
   }
 
   /** 현재까지 등록된 frame 수. */
@@ -169,16 +154,5 @@ export class GifManager {
     await rm(dir, { recursive: true, force: true }).catch((err: unknown) => {
       console.error('[asis] gif cancel cleanup failed', err);
     });
-  }
-
-  isRecording(): boolean {
-    return this.framesDir !== null;
-  }
-
-  /** 진단: frames 디렉토리 안 PNG 개수 확인 (테스트/디버그 용). */
-  async listFrames(): Promise<string[]> {
-    if (!this.framesDir) return [];
-    const all = await readdir(this.framesDir);
-    return all.filter((f) => f.startsWith('frame_') && f.endsWith('.png'));
   }
 }

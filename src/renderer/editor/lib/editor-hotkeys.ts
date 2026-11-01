@@ -2,8 +2,9 @@ import {
   DEFAULT_EDITOR_HOTKEYS,
   EDITOR_TOOLS,
   HOTKEY_DISABLED,
+  type EditorHotkeyConfig,
+  type EditorTool,
 } from '../../../shared/editor-hotkeys';
-import type { EditorHotkeyConfig, EditorTool } from '../../../shared/editor-hotkeys';
 
 /**
  * 에디터 창 안의 도구 단축키 표 — 모듈 스코프 외부 store.

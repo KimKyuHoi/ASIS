@@ -1,0 +1,100 @@
+/* Storybook 문서 블록(Foundations) 전용 — 앱 화면에서는 쓰지 않는다. */
+.ds-found-groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.ds-found-heading {
+  margin-bottom: var(--space-2);
+  font-size: var(--text-body);
+  font-weight: var(--weight-semibold);
+}
+
+.ds-found-swatches {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); /* token-ok: 견본 격자 */
+  gap: var(--space-3);
+  list-style: none;
+}
+
+.ds-found-swatch {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--text-subhead);
+  color: var(--text-secondary);
+}
+
+.ds-found-chip {
+  height: var(--space-10);
+  border-radius: var(--radius-control);
+  background: var(--ds-chip);
+  box-shadow: inset 0 0 0 var(--border-hairline) var(--border-strong);
+}
+
+.ds-found-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  list-style: none;
+}
+
+.ds-found-scale-row {
+  display: grid;
+  grid-template-columns: 120px 1fr; /* token-ok: 표 열 폭 */
+  align-items: center;
+  font-size: var(--text-subhead);
+}
+
+.ds-found-space {
+  width: var(--ds-size);
+  height: var(--space-3);
+  border-radius: var(--radius-chip);
+  background: var(--accent);
+}
+
+.ds-found-radius {
+  height: var(--space-10);
+  border-radius: var(--ds-radius);
+  background: var(--fill-secondary);
+  box-shadow: inset 0 0 0 var(--border-thin) var(--border-control);
+}
+
+.ds-found-shadow {
+  height: var(--space-10);
+  border-radius: var(--radius-control);
+  background: var(--surface-elevated);
+  box-shadow: var(--ds-shadow);
+}
+
+.ds-found-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-callout);
+}
+
+.ds-found-table th {
+  padding: var(--space-1) var(--space-2);
+  border-bottom: var(--border-hairline) solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-weight: var(--weight-medium);
+  text-align: left;
+}
+
+.ds-found-table td {
+  padding: var(--space-2);
+  border-bottom: var(--border-hairline) solid var(--border-subtle);
+  vertical-align: top;
+}
+
+.ds-found-table code {
+  font-family: var(--font-mono);
+  font-size: var(--text-subhead);
+}
+
+.ds-found-note {
+  margin-top: var(--space-half);
+  font-size: var(--text-subhead);
+  color: var(--text-secondary);
+}

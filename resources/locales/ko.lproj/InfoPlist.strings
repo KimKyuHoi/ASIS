@@ -1,0 +1,3 @@
+/* macOS 권한 요청 창 설명 — 한국어. 기본값(영어)은 package.json build.mac.extendInfo. */
+"NSScreenCaptureUsageDescription" = "캡처 기능에 화면 녹화 권한이 필요합니다.";
+"NSAccessibilityUsageDescription" = "UI 자동 감지에 손쉬운 사용 권한이 필요합니다.";

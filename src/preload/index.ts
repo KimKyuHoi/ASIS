@@ -1,10 +1,19 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
-import { electronAPI } from '@electron-toolkit/preload';
+import type {
+  GifExportRequest,
+  GifExportResult,
+  GifStudioAPI,
+  GifStudioMedia,
+  GifStudioPreview,
+} from '../main/gif-studio/types';
+import type { PinClickThroughState, PinLoadPayload } from '../shared/pin';
+import type { GuideDraft, GuideEdits, GuideSaveResult } from '../shared/step-guide';
 import type { HotkeyConfig, MiscConfig } from '../main/settings';
 import type { RunningFeature } from '../shared/running-features';
 import type { PatchNote } from '../main/patch-notes/patchNotes';
 import type { Language } from '../shared/i18n/language';
 import type { EditorHotkeyConfig } from '../shared/editor-hotkeys';
+import type { HistoryEntry } from '../main/captureHistory';
 
 type Rect = {
   x: number;
@@ -38,12 +47,12 @@ const selection = {
       반환값은 cleanup — useEffect teardown 에서 호출해 리스너를 해제한다. */
   onWindows: (
     callback: (
-      windows: Array<{ name: string; x: number; y: number; w: number; h: number }>,
+      windows: { name: string; x: number; y: number; w: number; h: number }[],
     ) => void,
   ): (() => void) => {
     const handler = (
       _event: IpcRendererEvent,
-      windows: Array<{ name: string; x: number; y: number; w: number; h: number }>,
+      windows: { name: string; x: number; y: number; w: number; h: number }[],
     ): void => {
       callback(windows);
     };
@@ -74,12 +83,9 @@ const editor = {
   onLoadImage: (
     callback: (imagePath: string, width: number, height: number) => void,
   ): (() => void) => {
-    const handler = (
-      _event: IpcRendererEvent,
-      imagePath: string,
-      width: number,
-      height: number,
-    ): void => {
+    // (event, path, w, h) 4개 — max-params(3) 때문에 rest 튜플로 받는다.
+    type Args = [IpcRendererEvent, string, number, number];
+    const handler = (...[, imagePath, width, height]: Args): void => {
       callback(imagePath, width, height);
     };
     ipcRenderer.on('editor:load-image', handler);
@@ -90,11 +96,21 @@ const editor = {
    * main 은 이 신호를 받고 image path 를 send → 메시지 유실 차단.
    */
   ready: (): void => ipcRenderer.send('editor:ready'),
-  copy: (dataUrl: string): Promise<void> =>
-    ipcRenderer.invoke('editor:copy', dataUrl),
+  /** 다시 편집 — 히스토리 [편집]. 값은 renderer 가 parseEditorProject 로 검증한다. */
+  onLoadProject: (callback: (project: unknown) => void): (() => void) => {
+    const handler = (_event: IpcRendererEvent, project: unknown): void => {
+      callback(project);
+    };
+    ipcRenderer.on('editor:load-project', handler);
+    return () => ipcRenderer.removeListener('editor:load-project', handler);
+  },
+  // project: 다시 편집용(주석 없는 배경 + 도형) — main 이 검증해 히스토리에 함께 남긴다.
+  copy: (dataUrl: string, project: unknown): Promise<void> =>
+    ipcRenderer.invoke('editor:copy', dataUrl, project),
   cancel: (): void => ipcRenderer.send('editor:cancel'),
-  pin: (dataUrl: string, w: number, h: number): Promise<void> =>
-    ipcRenderer.invoke('editor:pin', dataUrl, w, h),
+  // 4개 인자 — max-params(3) 때문에 rest 튜플로 받는다 (main 핸들러와 같은 모양).
+  pin: (...[dataUrl, w, h, project]: [string, number, number, unknown]): Promise<void> =>
+    ipcRenderer.invoke('editor:pin', dataUrl, w, h, project),
   save: (dataUrl: string): Promise<{ saved: boolean; path?: string }> =>
     ipcRenderer.invoke('editor:save', dataUrl),
   saveFolder: (dataUrl: string): Promise<{ path: string }> =>
@@ -120,20 +136,21 @@ const editor = {
  *  - setClickThrough: X 토글 — 마우스 이벤트 통과
  */
 const pin = {
-  onLoadImage: (
-    callback: (src: string, w: number, h: number, opacity: number) => void,
-  ): (() => void) => {
-    const handler = (
-      _event: IpcRendererEvent,
-      src: string,
-      w: number,
-      h: number,
-      opacity: number,
-    ): void => {
-      callback(src, w, h, opacity);
+  onLoadImage: (callback: (payload: PinLoadPayload) => void): (() => void) => {
+    const handler = (_event: IpcRendererEvent, payload: PinLoadPayload): void => {
+      callback(payload);
     };
     ipcRenderer.on('pin:load-image', handler);
     return () => ipcRenderer.removeListener('pin:load-image', handler);
+  },
+  onClickThroughChanged: (
+    callback: (state: PinClickThroughState) => void,
+  ): (() => void) => {
+    const handler = (_event: IpcRendererEvent, state: PinClickThroughState): void => {
+      callback(state);
+    };
+    ipcRenderer.on('pin:click-through-changed', handler);
+    return () => ipcRenderer.removeListener('pin:click-through-changed', handler);
   },
   ready: (): void => ipcRenderer.send('pin:ready'),
   close: (): void => ipcRenderer.send('pin:close'),
@@ -198,47 +215,10 @@ const videoRecorder = {
 };
 
 /**
- * 타임머신 상태 알약(HUD) IPC 브릿지.
- *  - ready(): 구독을 건 뒤 현재 상태를 요청 (main 의 첫 push 를 놓치지 않기 위함)
- *  - onState(cb): 녹화/저장 단계 push 구독. cleanup 반환
- *  - save()/stop(): 알약 버튼 → 단축키와 같은 동작
- *  - reveal(): 마지막 저장 파일을 Finder 에서 표시
- * 상태는 전부 main 이 소유한다 — 여기서는 전달만 한다.
- */
-const timeMachineHudPhaseChannel = 'time-machine-hud:state';
-const timeMachineHud = {
-  ready: (): void => ipcRenderer.send('time-machine-hud:ready'),
-  onState: (
-    callback: (state: {
-      phase:
-        | { kind: 'recording' } |
-        { kind: 'saving' } |
-        { kind: 'saved'; seconds: number } |
-        { kind: 'notice'; message: string };
-      bufferSeconds: number;
-      startedAt: number;
-    }) => void,
-  ): (() => void) => {
-    const handler = (
-      _event: IpcRendererEvent,
-      state: Parameters<typeof callback>[0],
-    ): void => {
-      callback(state);
-    };
-    ipcRenderer.on(timeMachineHudPhaseChannel, handler);
-    return () => ipcRenderer.removeListener(timeMachineHudPhaseChannel, handler);
-  },
-  save: (): void => ipcRenderer.send('time-machine-hud:save'),
-  stop: (): void => ipcRenderer.send('time-machine-hud:stop'),
-  reveal: (): void => ipcRenderer.send('time-machine-hud:reveal'),
-};
-
-/**
  * 환경설정 IPC 브릿지.
  *  - get(): 현재 핫키 설정 반환
  *  - set(hotkeys): 저장 + ShortcutManager 재등록
  *  - getFolder(): 저장 폴더 경로 반환 (빈 문자열 = 기본값)
- *  - setFolder(path): 저장 폴더 경로 갱신
  *  - pickFolder(): 네이티브 폴더 선택 다이얼로그
  *  - getMisc(): GIF fps/소리/로그인 등 기타 설정 반환
  *  - setMisc(misc): 저장 + 즉시 적용 (openAtLogin 등)
@@ -249,7 +229,6 @@ const settings = {
   get: (): Promise<HotkeyConfig> => ipcRenderer.invoke('settings:get'),
   set: (hotkeys: HotkeyConfig): Promise<void> => ipcRenderer.invoke('settings:set', hotkeys),
   getFolder: (): Promise<string> => ipcRenderer.invoke('settings:get-folder'),
-  setFolder: (path: string): Promise<void> => ipcRenderer.invoke('settings:set-folder', path),
   pickFolder: (): Promise<string | null> => ipcRenderer.invoke('settings:pick-folder'),
   getMisc: (): Promise<MiscConfig> => ipcRenderer.invoke('settings:get-misc'),
   setMisc: (misc: MiscConfig): Promise<void> => ipcRenderer.invoke('settings:set-misc', misc),
@@ -264,14 +243,6 @@ const settings = {
     ipcRenderer.invoke('settings:set-editor-hotkeys', hotkeys),
 };
 
-type HistoryEntry = {
-  id: string;
-  dataUrl: string;
-  timestamp: number;
-  width: number;
-  height: number;
-};
-
 /**
  * 캡처 히스토리 IPC 브릿지.
  * window.history 는 브라우저 내장 API — 충돌 방지를 위해 captureHistory 로 노출.
@@ -281,6 +252,8 @@ const captureHistory = {
   copy: (dataUrl: string): Promise<void> => ipcRenderer.invoke('history:copy', dataUrl),
   pin: (dataUrl: string, w: number, h: number): Promise<void> =>
     ipcRenderer.invoke('history:pin', dataUrl, w, h),
+  /** [편집] — 그 항목의 편집본을 에디터로 연다 (editable 인 항목만). */
+  edit: (id: string): Promise<void> => ipcRenderer.invoke('history:edit', id),
 };
 
 /**
@@ -315,6 +288,8 @@ const stepGuide = {
   stopGif: (): void => ipcRenderer.send('step-guide:stop-gif'),
   stop: (format: 'markdown' | 'html'): void =>
     ipcRenderer.send('step-guide:stop', format),
+  /** [취소]·ESC — 기록한 단계와 임시 파일을 버리고 편집 창을 열지 않는다. */
+  cancel: (): void => ipcRenderer.send('step-guide:cancel'),
 };
 
 /**
@@ -323,8 +298,12 @@ const stepGuide = {
 const scrollCapture = {
   stop: (): void => ipcRenderer.send('scroll-capture:stop'),
   cancel: (): void => ipcRenderer.send('scroll-capture:cancel'),
-  getFrameCount: (): Promise<number> =>
-    ipcRenderer.invoke('scroll-capture:get-frame-count'),
+  /** 시작할 때 고른 스크롤 방향 — 자동 스크롤이 이 방향으로 진행한다. */
+  chooseDirection: (direction: 'up' | 'down'): void =>
+    ipcRenderer.send('scroll-capture:direction', direction),
+  /** 진행 상황 — 찍은 장수, 지금까지 이어 붙인 높이(px), 이어 붙이지 못한 구간 수. */
+  getProgress: (): Promise<{ frames: number; height: number; gaps: number }> =>
+    ipcRenderer.invoke('scroll-capture:get-progress'),
   onStitching: (callback: () => void): (() => void) => {
     const handler = (): void => callback();
     ipcRenderer.on('scroll-capture:stitching', handler);
@@ -368,20 +347,55 @@ const i18n = {
   completeOnboarding: (): void => ipcRenderer.send('i18n:onboarding-done'),
 };
 
+/**
+ * 스텝 가이드 편집 창 IPC 브릿지.
+ *  - getDraft(): 이 창에 배정된 녹화 결과(이미지 포함)
+ *  - save(edits): main 이 저장 다이얼로그 → 단일 HTML 쓰기
+ */
+const stepGuideEditor = {
+  getDraft: (): Promise<GuideDraft> => ipcRenderer.invoke('step-guide-editor:get-draft'),
+  save: (edits: GuideEdits): Promise<GuideSaveResult> =>
+    ipcRenderer.invoke('step-guide-editor:save', edits),
+};
+
+/** GIF 스튜디오 IPC 브릿지 — main 의 windows/gifStudioWindow.ts 와 채널 동형. */
+const gifStudio: GifStudioAPI = {
+  getMedia: (): Promise<GifStudioMedia | null> => ipcRenderer.invoke('gif-studio:get-media'),
+  onMedia: (callback: (media: GifStudioMedia) => void): (() => void) => {
+    const handler = (_event: IpcRendererEvent, media: GifStudioMedia): void => {
+      callback(media);
+    };
+    ipcRenderer.on('gif-studio:media', handler);
+    return () => {
+      ipcRenderer.removeListener('gif-studio:media', handler);
+    };
+  },
+  loadPreview: (path: string): Promise<GifStudioPreview> =>
+    ipcRenderer.invoke('gif-studio:load-preview', path),
+  pick: (): Promise<boolean> => ipcRenderer.invoke('gif-studio:pick'),
+  export: (request: GifExportRequest): Promise<GifExportResult> =>
+    ipcRenderer.invoke('gif-studio:export', request),
+  cancelExport: (): Promise<void> => ipcRenderer.invoke('gif-studio:cancel-export'),
+  reveal: (path: string): Promise<void> => ipcRenderer.invoke('gif-studio:reveal', path),
+  close: (): void => {
+    ipcRenderer.send('gif-studio:close');
+  },
+};
+
 if (process.contextIsolated) {
   try {
-    contextBridge.exposeInMainWorld('electron', electronAPI);
     contextBridge.exposeInMainWorld('selection', selection);
     contextBridge.exposeInMainWorld('editor', editor);
     contextBridge.exposeInMainWorld('pin', pin);
     contextBridge.exposeInMainWorld('recorder', recorder);
     contextBridge.exposeInMainWorld('videoRecorder', videoRecorder);
-    contextBridge.exposeInMainWorld('timeMachineHud', timeMachineHud);
     contextBridge.exposeInMainWorld('settings', settings);
     contextBridge.exposeInMainWorld('captureHistory', captureHistory);
     contextBridge.exposeInMainWorld('patchHistory', patchHistory);
     contextBridge.exposeInMainWorld('stepGuide', stepGuide);
+    contextBridge.exposeInMainWorld('stepGuideEditor', stepGuideEditor);
     contextBridge.exposeInMainWorld('scrollCapture', scrollCapture);
+    contextBridge.exposeInMainWorld('gifStudio', gifStudio);
     contextBridge.exposeInMainWorld('i18n', i18n);
   } catch (err) {
     console.error('preload: contextBridge expose failed', err);

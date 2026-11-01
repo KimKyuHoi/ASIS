@@ -3,6 +3,8 @@ import { defineDict } from '../../../shared/i18n/language';
 /** GIF 녹화 컨트롤 바의 사용자 노출 문자열. */
 export const recorderStrings = defineDict({
   ko: {
+    hudLabel: 'GIF 녹화',
+    recBadge: 'REC',
     encoding: 'GIF 만드는 중…',
     encodingFrames: (n: number) => `${n}프레임 인코딩`,
     frames: (n: number) => `${n}프레임`,
@@ -12,6 +14,8 @@ export const recorderStrings = defineDict({
     stop: '정지',
   },
   en: {
+    hudLabel: 'GIF recording',
+    recBadge: 'REC',
     encoding: 'Creating GIF…',
     encodingFrames: (n: number) => `Encoding ${n} frames`,
     frames: (n: number) => `${n} frames`,

@@ -98,10 +98,9 @@ ASIS-x.x.x-x64.pkg     # Intel Mac
 
 ### 요구 사항
 
-- **Node.js** 20+
-- **pnpm** 10+
+- **Node.js** 24.22.1+
+- **pnpm** 12+
 - **macOS** (main process가 macOS 전용 API 사용)
-- **Docker** (Hermes 메모리 서버 실행 시)
 
 ### 설치 및 실행
 
@@ -109,11 +108,8 @@ ASIS-x.x.x-x64.pkg     # Intel Mac
 # 의존성 설치
 pnpm install
 
-# 개발 서버 실행 (Hermes 메모리 서버 포함)
+# 개발 서버 실행
 pnpm dev
-
-# 앱만 실행 (Hermes 없이)
-pnpm dev:app
 ```
 
 ### 빌드
@@ -146,7 +142,6 @@ pnpm changelog      # CHANGELOG 생성
 | 언어          | [TypeScript 5](https://www.typescriptlang.org/)                                           |
 | 캔버스        | [Konva](https://konvajs.org/) / [react-konva](https://konvajs.org/docs/react/)            |
 | 상태 관리     | [Zustand](https://zustand-demo.pmnd.rs/)                                                  |
-| 메모리 서버   | Hermes (Docker)                                                                           |
 | 패키지 매니저 | [pnpm](https://pnpm.io/)                                                                  |
 
 ---

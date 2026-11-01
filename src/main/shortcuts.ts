@@ -31,20 +31,22 @@ export type ShortcutHandlers = {
   onGif: () => void;
   /** 화면 영상 녹화 시작/정지 — 영역 선택 → screencapture -v → .mov. */
   onVideo: () => void;
-  /** 영역 선택 → 캡처 → OCR(Vision) → 텍스트 클립보드 복사. */
-  onOcr: () => void;
   /** 클립보드 이미지를 바로 Pin window 로 (Snipaste F3 결). */
   onClipboardPin: () => void;
   /** 화면 자 / 간격 측정 오버레이. */
   onRuler: () => void;
-  /** 타임머신 상시 녹화 토글(시작/정지). */
-  onTimeMachineToggle: () => void;
-  /** 타임머신 최근 구간 즉시 저장. */
-  onTimeMachineSave: () => void;
   /** 스텝바이스텝 가이드 녹화 토글. */
   onStepGuide: () => void;
   /** 스크롤 캡처 시작/정지. */
   onScrollCapture: () => void;
+  /** 떠 있는 핀 전부 닫기. */
+  onCloseAllPins: () => void;
+  /** 캡처 히스토리 창. */
+  onHistory: () => void;
+  /** 환경설정 창. */
+  onSettings: () => void;
+  /** GIF 스튜디오 — 파일 선택부터. */
+  onGifStudio: () => void;
 };
 
 /**
@@ -115,7 +117,7 @@ export class ShortcutManager {
   private _register(handlers: ShortcutHandlers): void {
     // 저장값에 새로 추가된 키가 없을 수 있어 DEFAULT_HOTKEYS 로 병합 (loadHotkeys).
     const hotkeys = loadHotkeys();
-    const bindings: Array<[HotkeyKey, () => void]> = [
+    const bindings: [HotkeyKey, () => void][] = [
       ['region', handlers.onRegion],
       ['fullscreen', handlers.onFullscreen],
       ['window', handlers.onWindow],
@@ -124,13 +126,14 @@ export class ShortcutManager {
       ['disableClickThrough', handlers.onDisableClickThrough],
       ['gif', handlers.onGif],
       ['video', handlers.onVideo],
-      ['ocr', handlers.onOcr],
       ['clipboardPin', handlers.onClipboardPin],
       ['ruler', handlers.onRuler],
-      ['timeMachineToggle', handlers.onTimeMachineToggle],
-      ['timeMachineSave', handlers.onTimeMachineSave],
       ['stepGuide', handlers.onStepGuide],
       ['scrollCapture', handlers.onScrollCapture],
+      ['closeAllPins', handlers.onCloseAllPins],
+      ['history', handlers.onHistory],
+      ['openSettings', handlers.onSettings],
+      ['gifStudio', handlers.onGifStudio],
     ];
 
     const failures: ShortcutFailure[] = [];
@@ -152,7 +155,12 @@ export class ShortcutManager {
 
       let ok: boolean;
       try {
-        ok = globalShortcut.register(accelerator, callback);
+        // 발화 로그 — "단축키가 안 먹는다" 보고 시 키 이벤트가 앱까지 오는지(이 줄이 찍히는지),
+        // 핸들러 이후에 실패하는지를 main.log 로 가른다.
+        ok = globalShortcut.register(accelerator, () => {
+          log.info('[shortcuts] fired', key);
+          callback();
+        });
       } catch (err: unknown) {
         // Electron 은 파싱할 수 없는 accelerator 에 throw 한다
         // ("Error processing argument at index 0, conversion failure from …").

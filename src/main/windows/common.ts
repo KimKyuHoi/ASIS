@@ -1,5 +1,9 @@
-import { BrowserWindow, ipcMain, type BrowserWindowConstructorOptions } from 'electron';
-import type { IpcMainInvokeEvent } from 'electron';
+import {
+  BrowserWindow,
+  ipcMain,
+  type BrowserWindowConstructorOptions,
+  type IpcMainInvokeEvent,
+} from 'electron';
 import { join } from 'node:path';
 import { is } from '@electron-toolkit/utils';
 
@@ -62,12 +66,45 @@ export function preloadPath(): string {
  * electron-vite 는 dev 실행 시 ELECTRON_RENDERER_URL 환경변수로 dev 서버 주소를
  * 주입하고, 멀티 페이지 입력은 `<devUrl>/<page>/index.html` 로 서빙된다.
  */
+/**
+ * 화면 위에 떠 있는 보조 창(선택 오버레이·화면 자·녹화 테두리·카운트다운·녹화 알약) 공통 설정.
+ *  - 항상 위 + 모든 Space(전체화면 앱 위 포함)에 표시
+ *  - Mission Control 에서 숨김 — 특히 선택 오버레이는 즉시 표시를 위해 투명(opacity 0) 창을
+ *    상시 띄워 두므로, 숨기지 않으면 Mission Control 에 빈 "asis" 창으로 보인다.
+ * level: 녹화 테두리는 HUD 보다 아래('pop-up-menu'), 나머지는 'screen-saver'.
+ */
+export function configureFloatingWindow(
+  win: BrowserWindow,
+  level: 'screen-saver' | 'pop-up-menu' = 'screen-saver',
+): void {
+  win.setAlwaysOnTop(true, level);
+  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  win.setHiddenInMissionControl(true);
+}
+
+/** page-title-updated 를 이미 막은 창 — 같은 창을 다시 로드해도 리스너를 한 번만 단다. */
+const titleLockedWindows = new WeakSet<BrowserWindow>();
+
+/**
+ * 창 제목은 main 이 i18n 사전으로 정한다(BrowserWindow title 옵션·setTitle).
+ * HTML <title> 은 언어를 모르는 고정 문자열이라, 로드되면 영어 UI 에서도 한국어 제목으로
+ * 덮어써 버린다 — 덮어쓰기를 막는다.
+ */
+function lockWindowTitle(win: BrowserWindow): void {
+  if (titleLockedWindows.has(win)) return;
+  titleLockedWindows.add(win);
+  win.on('page-title-updated', (event) => {
+    event.preventDefault();
+  });
+}
+
 export function loadRendererPage(
   win: BrowserWindow,
   page: string,
   query?: Record<string, string>,
 ): Promise<void> {
-  const devUrl = process.env['ELECTRON_RENDERER_URL'];
+  lockWindowTitle(win);
+  const devUrl = process.env.ELECTRON_RENDERER_URL;
   if (is.dev && devUrl) {
     const qs = query ? `?${new URLSearchParams(query).toString()}` : '';
     return win.loadURL(`${devUrl}/${page}/index.html${qs}`);
@@ -115,7 +152,8 @@ export abstract class SingletonWindowManager {
     });
 
     win.on('closed', () => {
-      this.win = null;
+      // 이전 창의 closed 가 늦게 오면 그 사이 새로 연 창의 참조를 지우지 않는다.
+      if (this.win === win) this.win = null;
     });
   }
 

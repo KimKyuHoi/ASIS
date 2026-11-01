@@ -3,6 +3,8 @@ import { defineDict } from '../../../shared/i18n/language';
 /** 화면 영상 녹화 컨트롤 바의 사용자 노출 문자열. */
 export const videoRecorderStrings = defineDict({
   ko: {
+    hudLabel: '화면 녹화',
+    recBadge: 'REC',
     saving: '저장 준비 중…',
     cancelTitle: '취소 (ESC)',
     cancel: '취소',
@@ -10,6 +12,8 @@ export const videoRecorderStrings = defineDict({
     stop: '정지',
   },
   en: {
+    hudLabel: 'Screen recording',
+    recBadge: 'REC',
     saving: 'Preparing to save…',
     cancelTitle: 'Cancel (ESC)',
     cancel: 'Cancel',

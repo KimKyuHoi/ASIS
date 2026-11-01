@@ -1,10 +1,14 @@
-/* Pin Window — 배경 transparent, 이미지만 떠있는 듯 보이도록. */
+@import '../../design-system/asset/base.css';
 
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
+/*
+ * Pin Window — 배경 transparent, 이미지만 떠있는 듯 보이도록.
+ * 화면 위에 뜨는 요소라 <html data-appearance="dark"> + --hud-* / --frame-* 토큰을 쓴다.
+ *
+ * 상태별 외양
+ *   일반 hover : 흰 헤어라인 프레임(--frame-line) + 닫기 버튼 — 캡처 프레임과 같은 모티프.
+ *   고정       : 강조색 테두리 + 잠금 칩이 *항상* 보인다.
+ *   고정 hover : 칩에 해제 방법이 펼쳐지고 이미지가 옅어진다(아래 창이 비침).
+ */
 
 html,
 body,
@@ -13,54 +17,233 @@ body,
   height: 100vh;
   overflow: hidden;
   background: transparent;
-  user-select: none;
-  -webkit-user-select: none;
 }
 
-button {
-  font-family:
-    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
-  cursor: pointer;
+.pin-placeholder {
+  width: 1px;
+  height: 1px;
 }
 
-/* ── Close button — 핀 hover 시 우상단에만 살짝 노출 (Snipaste 결) ─────── */
+.pin {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  cursor: move;
+  /* 윈도우 자체 drag (Electron) — 닫기 버튼만 no-drag. */
+  -webkit-app-region: drag;
+  app-region: drag;
+}
 
-.pin-close {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 18px;
-  height: 18px;
-  padding: 0;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
-  color: rgba(255, 255, 255, 0.92);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0;
-  transition:
-    opacity 0.12s ease-out,
-    background 0.12s ease-out;
+/* 고정 중에는 클릭이 뒤 창으로 가므로 drag 영역이 의미 없다. */
+.pin--locked {
+  cursor: default;
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
 
-/* 핀 윈도우에 hover 할 때만 닫기 버튼 노출. */
-#root:hover .pin-close {
+.pin__surface {
+  position: absolute;
+  inset: 0;
+}
+
+.pin__image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  transform-origin: center center;
+  pointer-events: none;
+  transition: opacity var(--duration-mid) var(--ease-mac);
+}
+
+.pin--locked:hover .pin__image {
+  opacity: 0.35;
+}
+
+/* ── 프레임 ─────────────────────────────────────────────────────────── */
+
+.pin__frame {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  box-shadow:
+    inset 0 0 0 1px var(--frame-line),
+    inset 0 0 0 2px var(--frame-line-edge);
+  transition: opacity var(--duration-mid) var(--ease-mac);
+}
+
+.pin:hover .pin__frame {
   opacity: 1;
 }
 
-.pin-close:hover {
-  background: rgba(255, 95, 86, 0.95); /* hover 시 macOS close 빨강 */
+.pin--locked .pin__frame {
+  opacity: 1;
+  box-shadow:
+    inset 0 0 0 2px var(--accent),
+    inset 0 0 0 3px var(--frame-line-edge);
 }
 
-.pin-close__glyph {
-  font-size: 12px;
-  line-height: 1;
-  font-weight: 600;
+/* ── 닫기 버튼 — 일반 상태 hover 시 우상단에만 노출 (Snipaste 결) ──────── */
+
+.pin__close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0.5px solid var(--hud-border);
+  border-radius: var(--radius-capsule);
+  background: var(--hud-bg);
+  box-shadow: var(--hud-shadow);
+  color: var(--hud-label);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity var(--duration-fast) var(--ease-mac),
+    background var(--duration-fast) var(--ease-mac);
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.pin:hover .pin__close {
+  opacity: 1;
+}
+
+.pin__close:hover {
+  background: var(--red);
+}
+
+.pin__close-glyph {
   display: block;
   margin-top: -1px; /* × 글리프가 시각적으로 가운데 오도록 미세 보정 */
+  font-size: var(--text-callout);
+  font-weight: var(--weight-semibold);
+  line-height: 1;
+}
+
+/* ── 잠금 칩 — 고정 상태 상시 표시 ─────────────────────────────────── */
+
+.pin-chip {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  max-width: calc(100% - 12px);
+  padding: 3px 8px 3px 6px;
+  border: 0.5px solid var(--hud-border);
+  border-radius: var(--radius-control);
+  background: var(--hud-bg);
+  box-shadow: var(--hud-shadow);
+  color: var(--hud-label);
+  font-size: var(--text-subhead);
+  line-height: 14px;
+  pointer-events: none;
+}
+
+.pin-chip .pin-lock-icon {
+  flex: none;
+  margin-top: 1px;
+  color: var(--accent);
+}
+
+.pin-chip__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.pin-chip__label {
+  overflow: hidden;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pin-chip__hint {
+  display: none;
+  word-break: keep-all;
+  color: var(--hud-label-secondary);
+}
+
+.pin--locked:hover .pin-chip__hint {
+  display: block;
+}
+
+/* ── 상태 전환 토스트 ─────────────────────────────────────────────── */
+
+.pin-toast {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: calc(100% - 16px);
+  padding: var(--space-2) var(--space-3);
+  border: 0.5px solid var(--hud-border);
+  border-radius: var(--radius-group);
+  background: var(--hud-bg);
+  box-shadow: var(--hud-shadow);
+  color: var(--hud-label);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  animation: pin-toast 1800ms var(--ease-mac) forwards;
+}
+
+.pin-toast__icon {
+  display: flex;
+  flex: none;
+  color: var(--hud-label-secondary);
+}
+
+.pin-toast__icon--locked {
+  color: var(--accent);
+}
+
+.pin-toast__icon .pin-lock-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.pin-toast__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.pin-toast__title {
+  overflow: hidden;
+  font-size: var(--text-body);
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pin-toast__hint {
+  word-break: keep-all;
+  color: var(--hud-label-secondary);
+  font-size: var(--text-subhead);
+}
+
+@keyframes pin-toast {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.96);
+  }
+  10%,
+  75% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1);
+  }
 }

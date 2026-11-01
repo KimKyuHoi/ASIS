@@ -17,9 +17,9 @@ import {
  */
 
 /** 시스템 선호 언어 → 지원 언어 매핑. 한국어 외에는 전부 영어. */
-export function detectSystemLanguage(): Language {
-  // 선호 언어 목록이 빈 배열일 수 있어 [0] 은 진짜 옵셔널 — 그 경우 'en' 으로 시작한다.
-  const primary = app.getPreferredSystemLanguages()[0];
+function detectSystemLanguage(): Language {
+  // 선호 언어 목록이 빈 배열일 수 있어 첫 항목은 진짜 옵셔널 — 그 경우 'en' 으로 시작한다.
+  const primary = app.getPreferredSystemLanguages().at(0);
   return primary?.startsWith('ko') ? 'ko' : 'en';
 }
 
@@ -29,7 +29,7 @@ export function isLanguageChosen(): boolean {
 }
 
 /** 언어 저장 + shared store 반영 + 모든 renderer 에 broadcast. */
-export function applyLanguage(lang: Language): void {
+function applyLanguage(lang: Language): void {
   settingsStore.set('language', lang);
   setLanguage(lang);
   for (const win of BrowserWindow.getAllWindows()) {
@@ -49,6 +49,7 @@ export function initLanguage(): void {
   // 주의: 이 핸들러는 코드베이스 유일의 sendSync 짝이다. renderer 가 응답까지
   // 블로킹되므로 여기에 I/O·async 작업을 절대 추가하지 않는다 — 메모리 값 반환만.
   ipcMain.on('i18n:get-language', (event) => {
+    // sendSync 응답은 event.returnValue 대입이 유일한 방법이다 (Electron IpcMainEvent).
     event.returnValue = getLanguage();
   });
   ipcMain.handle('i18n:set-language', (_event, lang: unknown) => {

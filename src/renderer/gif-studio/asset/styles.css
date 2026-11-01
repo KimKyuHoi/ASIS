@@ -1,0 +1,555 @@
+/*
+ * GIF 스튜디오 스타일 — 디자인 토큰(design-system) 위에 레이아웃만 얹는다.
+ * 색은 전부 토큰 변수 → 시스템 라이트/다크를 따른다. 버튼·팝업은 base.css 의
+ * .mac-btn / .mac-select 를 쓴다.
+ * 레이아웃: 헤더 / 주석 도구 / 체커보드 미리보기 / 재생·필름스트립 / 출력 설정 / 액션 바.
+ */
+/* 툴바·스테이지는 이미지 에디터 컴포넌트를 그대로 쓰므로 그 스타일을 먼저 가져온다.
+   그 뒤 디자인 토큰(base.css)이 같은 이름의 변수(--accent 등)를 덮고, 아래 규칙이 창 배경을 정한다. */
+@import '../../editor/asset/styles.css';
+@import '../../design-system/asset/base.css';
+
+html,
+body,
+#root {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--bg-window);
+}
+
+input[type='number'] {
+  width: 84px;
+  height: 22px;
+  padding: 0 var(--space-2);
+  border: none;
+  border-radius: var(--radius-control);
+  background: var(--bg-control);
+  box-shadow:
+    inset 0 0 0 0.5px var(--separator),
+    var(--shadow-raised);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+input[type='number']:disabled {
+  color: var(--label-tertiary);
+}
+
+input[type='range'] {
+  width: 100%;
+}
+
+.studio {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.studio__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  box-shadow: inset 0 -0.5px 0 var(--separator);
+}
+
+.studio__header h1 {
+  font-size: var(--text-title3);
+  font-weight: 600;
+}
+
+.studio__file {
+  flex: 1;
+  overflow: hidden;
+  color: var(--label-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.studio__error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  background: color-mix(in srgb, var(--red) 12%, transparent);
+  color: var(--red);
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.studio__error-close {
+  border: none;
+  background: none;
+  color: inherit;
+  font-size: var(--text-title3);
+}
+
+.placeholder {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  color: var(--label-secondary);
+}
+
+.placeholder h2 {
+  color: var(--label);
+  font-size: var(--text-title2);
+}
+
+.placeholder--error {
+  color: var(--red);
+}
+
+/* ---- 작업 공간 ---- */
+
+.workspace {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* 투명 체커보드 위 미리보기 — GIF 투명 영역을 구분해 보이게 한다. */
+.preview {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  margin: var(--space-3) var(--space-4) 0;
+  overflow: hidden;
+  border-radius: var(--radius-group);
+  background-color: var(--bg-under-page);
+  background-image:
+    linear-gradient(45deg, var(--fill) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--fill) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--fill) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--fill) 75%);
+  background-position:
+    0 0,
+    0 8px,
+    8px -8px,
+    -8px 0;
+  background-size: 16px 16px;
+  box-shadow: inset 0 0 0 0.5px var(--separator);
+}
+
+.preview__frame {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.preview__video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+}
+
+/* ---- 재생 + 필름스트립 ---- */
+
+.transport {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4) var(--space-1);
+}
+
+.transport__play {
+  width: 56px;
+  height: 32px;
+  border: none;
+  border-radius: var(--radius-control);
+  background: var(--control);
+  box-shadow: var(--shadow-raised);
+  color: var(--label);
+  font-size: var(--text-title3);
+}
+
+.trim {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 필름스트립 썸네일은 실제 영상 프레임이라 어떤 외형에서도 검정 바탕에 올린다. */
+.trim__bar {
+  position: relative;
+  height: 56px;
+  border-radius: var(--radius-control);
+  background-color: var(--media-backdrop);
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.trim__dim {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--media-scrim);
+  pointer-events: none;
+}
+
+.trim__range {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  border: 3px solid var(--yellow);
+  border-right-width: 0;
+  border-left-width: 0;
+  border-radius: var(--radius-control);
+  pointer-events: none;
+}
+
+.trim__handle {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 12px;
+  background: var(--yellow);
+  cursor: ew-resize;
+  pointer-events: auto;
+}
+
+.trim__handle::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 2px;
+  height: 18px;
+  border-radius: var(--radius-round);
+  background: var(--media-scrim);
+  content: '';
+  transform: translate(-50%, -50%);
+}
+
+.trim__handle--start {
+  left: -12px;
+  border-radius: var(--radius-control) 0 0 var(--radius-control);
+}
+
+.trim__handle--end {
+  right: -12px;
+  border-radius: 0 var(--radius-control) var(--radius-control) 0;
+}
+
+.trim__playhead {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: var(--radius-round);
+  background: var(--media-marker);
+  box-shadow: var(--media-marker-shadow);
+  pointer-events: none;
+}
+
+.trim__times {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  color: var(--label-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-subhead);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- 프레임 편집 ---- */
+
+.gif-toolbar {
+  /* editor .toolbar 는 창 하단 고정 막대라, 위쪽 막대로 쓰도록 여백만 맞춘다. */
+  flex: 0 0 auto;
+}
+
+.gif-toolbar--disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.preview > .frame-editor {
+  width: 100%;
+  height: 100%;
+  padding: var(--space-3);
+}
+
+.frame-editor__loading {
+  margin: auto;
+  color: var(--label-secondary);
+}
+
+.preview__frame--hidden {
+  /* 편집 중에도 video 는 정지화면 캡처에 쓰이므로 레이아웃에서만 뺀다. */
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.playback-overlay {
+  position: absolute;
+  inset: 0;
+}
+
+.frame-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4) 0;
+}
+
+.frame-bar__label {
+  flex: 0 0 auto;
+  min-width: 112px;
+  color: var(--label-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-callout);
+  font-variant-numeric: tabular-nums;
+}
+
+.frame-bar__track {
+  position: relative;
+  flex: 1;
+  height: 18px;
+  border-radius: var(--radius-chip);
+  background: var(--fill-tertiary);
+  cursor: pointer;
+  touch-action: none;
+}
+
+.frame-bar__selection {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: var(--radius-chip);
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  pointer-events: none;
+}
+
+.frame-bar__dot {
+  position: absolute;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  margin: -2.5px 0 0 -2.5px;
+  border-radius: 50%;
+  background: var(--yellow);
+  pointer-events: none;
+}
+
+.frame-bar__current {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  min-width: 2px;
+  border-radius: var(--radius-round);
+  background: var(--accent);
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+.frame-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4) 0;
+}
+
+.frame-actions__nav {
+  display: flex;
+  gap: 2px;
+  margin-right: var(--space-2);
+}
+
+.chevron {
+  display: inline-flex;
+}
+
+.chevron--prev {
+  transform: rotate(90deg);
+}
+
+.chevron--next {
+  transform: rotate(-90deg);
+}
+
+/* ---- 출력 설정 ---- */
+
+.export-panel {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-6);
+  padding: var(--space-2) var(--space-4) var(--space-3);
+}
+
+.export-panel__column {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field--row {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.field__label {
+  display: flex;
+  justify-content: space-between;
+  color: var(--label-secondary);
+  font-size: var(--text-callout);
+}
+
+.field__label output {
+  color: var(--label);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.field__inline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.field__times {
+  padding-bottom: 3px;
+  color: var(--label-tertiary);
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+}
+
+/* ---- 액션 바 ---- */
+
+.action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: 10px var(--space-4);
+  box-shadow: inset 0 0.5px 0 var(--separator);
+}
+
+.action-bar__info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  min-width: 0;
+  color: var(--label-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-callout);
+  font-variant-numeric: tabular-nums;
+}
+
+.action-bar__hint {
+  color: var(--label-tertiary);
+  font-family: var(--font-ui);
+}
+
+.action-bar__buttons {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.toast {
+  position: absolute;
+  bottom: 64px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  max-width: calc(100% - 32px);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-group);
+  background: var(--bg-window);
+  box-shadow: var(--shadow-floating);
+  transform: translateX(-50%);
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.toast span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toast--error {
+  color: var(--red);
+}
+
+.toast__action {
+  border: none;
+  background: none;
+  color: var(--accent);
+}
+
+.toast__close {
+  border: none;
+  background: none;
+  color: var(--label-secondary);
+  font-size: var(--text-title3);
+}
+
+.busy {
+  /* 창 전체를 덮는다 — 헤더의 [다른 파일 열기] 까지 막아야 내보내는 중 교체가 끼어들지 않는다. */
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--bg-window) 55%, transparent);
+}
+
+.busy__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-5) 28px;
+  border-radius: var(--radius-window);
+  background: var(--bg-window);
+  box-shadow: var(--shadow-floating);
+}
+
+.spinner {
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--fill);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 2.4s;
+  }
+}

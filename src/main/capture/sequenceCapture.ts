@@ -25,12 +25,12 @@ export type SequenceOptions = {
 };
 
 export class SequenceCaptureManager {
-  private gif = new GifManager();
+  private readonly gif = new GifManager();
   private rect: SequenceOptions['rect'] | null = null;
   private intervalMs = 100;
   private fps = 10;
   private cursor = false;
-  /** 연속 캡처 루프 active 여부. setTimeout id 또는 'stopping' 으로 표현. */
+  /** 연속 캡처 루프 active 여부 — false 가 되면 진행 중 frame 이후 다음 예약을 하지 않는다. */
   private active = false;
   private nextTimer: NodeJS.Timeout | null = null;
   /** 직전 frame 이 *실제로 찍힌* 시각(epoch ms) — 프레임 간격 측정용. */
@@ -60,11 +60,7 @@ export class SequenceCaptureManager {
 
   /** 녹화 정지 + GIF 인코딩. */
   stop(outputPath: string): Promise<string> {
-    this.active = false;
-    if (this.nextTimer) {
-      clearTimeout(this.nextTimer);
-      this.nextTimer = null;
-    }
+    this.halt();
     // gif.stop() 이 frame 카운트를 리셋하므로 fps 를 *먼저* 계산해 넘긴다.
     return this.gif.stop(outputPath, { fps: this.playbackFps() });
   }
@@ -85,15 +81,7 @@ export class SequenceCaptureManager {
     // 간격이 하나도 없으면(프레임 0~1개) 목표 fps 를 그대로 쓴다.
     if (this.frameGapsMs.length === 0) return this.fps;
 
-    const sorted = [...this.frameGapsMs].sort((a, b) => a - b);
-    const mid = Math.floor(sorted.length / 2);
-    const lower = sorted[sorted.length % 2 === 0 ? mid - 1 : mid];
-    const upper = sorted[mid];
-    // 인덱스는 항상 유효하지만(length >= 1) noUncheckedIndexedAccess 대비 명시 검사.
-    if (lower === undefined || upper === undefined) {
-      throw new Error('playbackFps — 정렬된 간격 배열 인덱스가 비었다');
-    }
-    const medianGapMs = (lower + upper) / 2;
+    const medianGapMs = median(this.frameGapsMs);
     if (medianGapMs <= 0) return this.fps;
 
     // 실측이 목표를 넘을 수는 없지만(최소 간격 보장) 방어적으로 clamp.
@@ -104,12 +92,17 @@ export class SequenceCaptureManager {
   }
 
   async cancel(): Promise<void> {
+    this.halt();
+    await this.gif.cancel();
+  }
+
+  /** 캡처 루프 정지 — 예약된 다음 frame 을 취소한다. */
+  private halt(): void {
     this.active = false;
     if (this.nextTimer) {
       clearTimeout(this.nextTimer);
       this.nextTimer = null;
     }
-    await this.gif.cancel();
   }
 
   isRecording(): boolean {
@@ -165,14 +158,21 @@ async function runScreencaptureRegion(
   const region = `${rect.x},${rect.y},${rect.w},${rect.h}`;
   // -C: 커서 포함(비대화형 -R 에서만 허용, man screencapture). 기본 캡처엔 안 넣고
   // 스텝 가이드 GIF 처럼 동작 시연이 필요한 곳만 cursor=true 로 켠다.
-  const args = ['-x', '-R', region, '-t', 'png', outputPath];
-  if (cursor) args.splice(1, 0, '-C');
+  const args = ['-x', ...(cursor ? ['-C'] : []), '-R', region, '-t', 'png', outputPath];
   const { code, stderr } = await runProcess(
     SCREENCAPTURE_BIN,
     args,
     'screencapture',
   );
   if (code !== 0) {
-    throw new Error(`screencapture 실패 (exit ${code ?? 'null'}): ${stderr}`);
+    throw new Error(`screencapture 실패 (exit ${String(code)}): ${stderr}`);
   }
+}
+
+/** 비어 있지 않은 배열의 중앙값 — 짝수 개면 가운데 두 값의 평균. */
+function median(values: readonly number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const isEven = sorted.length % 2 === 0;
+  return isEven ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
 }

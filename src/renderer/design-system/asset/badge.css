@@ -1,0 +1,43 @@
+.ds-badge {
+  --ds-badge-tone: var(--gray);
+  --ds-badge-bg: var(--fill-secondary);
+
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: var(--badge-height);
+  padding: 0 var(--space-2);
+  border-radius: var(--badge-radius);
+  background: var(--ds-badge-bg);
+  color: var(--text-primary);
+  font-size: var(--text-subhead);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+}
+
+.ds-badge__dot {
+  width: 6px; /* token-ok: 배지 점 크기 */
+  height: 6px; /* token-ok: 배지 점 크기 */
+  border-radius: var(--radius-round);
+  background: var(--ds-badge-tone);
+}
+
+.ds-badge--accent {
+  --ds-badge-tone: var(--accent);
+  --ds-badge-bg: var(--accent-tint);
+}
+
+.ds-badge--success {
+  --ds-badge-tone: var(--success);
+  --ds-badge-bg: var(--success-tint);
+}
+
+.ds-badge--warning {
+  --ds-badge-tone: var(--warning);
+  --ds-badge-bg: var(--warning-tint);
+}
+
+.ds-badge--danger {
+  --ds-badge-tone: var(--danger);
+  --ds-badge-bg: var(--danger-tint);
+}

@@ -1,0 +1,60 @@
+/* 알약 빈 곳을 잡고 끌어 옮긴다 — 버튼만 클릭을 받는다. */
+.ds-recording-hud {
+  -webkit-app-region: drag;
+  app-region: drag;
+  white-space: nowrap;
+}
+
+.ds-recording-hud--busy {
+  padding-right: var(--space-4);
+}
+
+.ds-recording-hud .ds-hud-button {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.ds-recording-hud__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--frame-recording);
+  font-size: var(--text-subhead);
+  font-weight: var(--weight-bold);
+}
+
+.ds-recording-hud__time {
+  font-weight: var(--weight-semibold);
+}
+
+.ds-recording-hud__badge,
+.ds-recording-hud__time,
+.ds-recording-hud__actions {
+  flex: none;
+}
+
+/* 폭이 모자라면(영어 + 4자리 프레임 수 등) 보조 정보만 말줄임 — 버튼은 항상 온전히 보인다. */
+.ds-recording-hud__detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--hud-label-secondary);
+  font-size: var(--text-subhead);
+}
+
+.ds-recording-hud__busy {
+  display: inline-flex;
+  min-width: 0;
+  overflow: hidden;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-weight: var(--weight-medium);
+}
+
+.ds-recording-hud__actions {
+  display: inline-flex;
+  gap: var(--space-1);
+  /* 알약이 넓어지면(창을 채울 때) 버튼은 오른쪽 끝에 붙는다 */
+  margin-left: auto;
+  padding-left: var(--space-1);
+}

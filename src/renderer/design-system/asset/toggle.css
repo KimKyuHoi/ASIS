@@ -1,0 +1,69 @@
+.ds-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* 실제 input 은 트랙 위에 투명하게 겹쳐 클릭·포커스를 받는다. */
+.ds-toggle__input {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: var(--z-raised);
+  width: var(--toggle-width);
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+}
+
+.ds-toggle__track {
+  position: relative;
+  flex: none;
+  width: var(--toggle-width);
+  height: var(--toggle-height);
+  border-radius: var(--radius-capsule);
+  background: var(--toggle-track-off);
+  box-shadow: inset 0 0 0 var(--border-hairline) var(--border-control);
+  transition: background var(--duration-mid) var(--ease-mac);
+}
+
+.ds-toggle__knob {
+  position: absolute;
+  top: var(--space-half);
+  left: var(--space-half);
+  width: calc(var(--toggle-height) - var(--space-1));
+  height: calc(var(--toggle-height) - var(--space-1));
+  border-radius: var(--radius-round);
+  background: var(--toggle-knob);
+  box-shadow: var(--toggle-knob-shadow);
+  transition: transform var(--duration-mid) var(--ease-mac);
+}
+
+.ds-toggle__input:checked + .ds-toggle__track {
+  background: var(--toggle-track-on);
+}
+
+.ds-toggle__input:checked + .ds-toggle__track .ds-toggle__knob {
+  transform: translateX(calc(var(--toggle-width) - var(--toggle-height)));
+}
+
+.ds-toggle__input:focus-visible + .ds-toggle__track {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+}
+
+.ds-toggle__input:disabled,
+.ds-toggle__input:disabled ~ * {
+  opacity: var(--opacity-disabled);
+}
+
+.ds-toggle__label {
+  color: var(--text-primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-toggle__track,
+  .ds-toggle__knob {
+    transition: none;
+  }
+}

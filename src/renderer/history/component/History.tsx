@@ -1,40 +1,25 @@
-import { useEffect, useState } from 'react';
-import type { JSX } from 'react';
+import { useEffect, useRef, useState, type JSX } from 'react';
 import { useLanguage } from '../../../shared/i18n/use-language';
+import { Button, EmptyState, Icon, Toast } from '../../design-system/component';
+import { useCopyFeedback } from '../hook/useCopyFeedback';
+import { useHistoryEntries } from '../hook/useHistoryEntries';
 import { formatTimestamp } from '../lib/format-time';
 import { historyStrings } from '../lib/strings';
+import type { HistoryEntry } from '../types/history-entry';
 
-type HistoryEntry = {
-  id: string;
-  dataUrl: string;
-  timestamp: number;
-  width: number;
-  height: number;
-};
+const EDIT_FAILED_MS = 3000;
 
 export default function History(): JSX.Element {
   const lang = useLanguage();
   const t = historyStrings[lang];
-  const [entries, setEntries] = useState<HistoryEntry[]>([]);
-  const [copying, setCopying] = useState<string | null>(null);
-
-  useEffect(() => {
-    window.captureHistory.list().then((list) => {
-      setEntries(list);
-    }).catch((err: unknown) => {
-      console.error('[asis history] list failed', err);
-    });
+  const { entries, reload } = useHistoryEntries();
+  const { copying, copy: handleCopy } = useCopyFeedback();
+  // [편집] 실패 알림 — 편집본이 그사이 떨어져 나간 경우 등. 새로 띄우면 이전 타이머를 지운다.
+  const [editFailed, setEditFailed] = useState(false);
+  const editFailedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (editFailedTimer.current !== null) clearTimeout(editFailedTimer.current);
   }, []);
-
-  const handleCopy = (entry: HistoryEntry): void => {
-    setCopying(entry.id);
-    window.captureHistory.copy(entry.dataUrl).then(() => {
-      setTimeout(() => setCopying(null), 800);
-    }).catch((err: unknown) => {
-      console.error('[asis history] copy failed', err);
-      setCopying(null);
-    });
-  };
 
   const handlePin = (entry: HistoryEntry): void => {
     window.captureHistory.pin(entry.dataUrl, entry.width, entry.height).catch((err: unknown) => {
@@ -42,53 +27,71 @@ export default function History(): JSX.Element {
     });
   };
 
+  const handleEdit = (entry: HistoryEntry): void => {
+    window.captureHistory.edit(entry.id).catch((err: unknown) => {
+      console.error('[asis history] edit failed', err);
+      if (editFailedTimer.current !== null) clearTimeout(editFailedTimer.current);
+      setEditFailed(true);
+      editFailedTimer.current = setTimeout(() => setEditFailed(false), EDIT_FAILED_MS);
+      // 표시가 실제와 어긋났을 가능성이 크다 — 목록을 다시 받는다.
+      reload();
+    });
+  };
+
   if (entries.length === 0) {
     return (
       <div className="history history--empty">
-        <p className="history__empty-text">{t.emptyText}</p>
-        <p className="history__empty-hint">{t.emptyHint}</p>
+        <EmptyState icon={<Icon name="photo" size={32} />} title={t.emptyText} description={t.emptyHint} />
       </div>
     );
   }
 
   return (
     <div className="history">
+      {editFailed ? (
+        <div className="history__toast">
+          <Toast tone="danger" title={t.editFailedTitle} description={t.editFailedHint} />
+        </div>
+      ) : null}
       <h1 className="history__title">{t.title(entries.length)}</h1>
-      <div className="history__grid">
-        {entries.map((entry) => (
-          <div key={entry.id} className="history-card">
-            <div className="history-card__thumb-wrap">
-              <img
-                className="history-card__thumb"
-                src={entry.dataUrl}
-                alt={t.thumbAlt(formatTimestamp(entry.timestamp, lang))}
-                loading="lazy"
-              />
-            </div>
-            <div className="history-card__footer">
-              <span className="history-card__time">{formatTimestamp(entry.timestamp, lang)}</span>
-              <div className="history-card__actions">
-                <button
-                  type="button"
-                  className="history-card__btn"
-                  onClick={(): void => handleCopy(entry)}
-                  title={t.copyTitle}
-                >
-                  {copying === entry.id ? '✓' : t.copy}
-                </button>
-                <button
-                  type="button"
-                  className="history-card__btn"
-                  onClick={(): void => handlePin(entry)}
-                  title={t.pinTitle}
-                >
-                  {t.pin}
-                </button>
+      <ul className="history__grid">
+        {entries.map((entry) => {
+          const time = formatTimestamp(entry.timestamp, lang);
+          const copied = copying === entry.id;
+          return (
+            <li key={entry.id} className="history-card">
+              <div className="history-card__thumb-wrap">
+                <img
+                  className="history-card__thumb"
+                  src={entry.dataUrl}
+                  alt={t.thumbAlt(time)}
+                  loading="lazy"
+                />
               </div>
-            </div>
-          </div>
-        ))}
-      </div>
+              <div className="history-card__footer">
+                <time className="history-card__time tabular">{time}</time>
+                <div className="history-card__actions">
+                  <Button
+                    icon={<Icon name={copied ? 'check' : 'copy'} size={12} />}
+                    onClick={(): void => handleCopy(entry)}
+                    title={t.copyTitle}
+                  >
+                    {t.copy}
+                  </Button>
+                  <Button onClick={(): void => handlePin(entry)} title={t.pinTitle}>
+                    {t.pin}
+                  </Button>
+                  {entry.editable ? (
+                    <Button onClick={(): void => handleEdit(entry)} title={t.editTitle}>
+                      {t.edit}
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

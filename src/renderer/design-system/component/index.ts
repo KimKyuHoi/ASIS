@@ -1,0 +1,21 @@
+/** 디자인 시스템 진입점 — 도메인은 여기서만 import 한다. */
+export { Badge } from './Badge';
+export { Button, type ButtonVariant } from './Button';
+export { CaptureFrame, type CaptureFrameTone } from './CaptureFrame';
+export { Checkbox } from './Checkbox';
+export { EmptyState } from './EmptyState';
+export { Group, Row } from './Group';
+export { HudButton, HudPill, HudSpinner, RecDot } from './Hud';
+export { Icon, type IconName } from './Icon';
+export { IconButton } from './IconButton';
+export { KeyCap } from './KeyCap';
+export { RecordingHud } from './RecordingHud';
+export { SegmentedControl } from './SegmentedControl';
+export { Select } from './Select';
+export { Slider } from './Slider';
+export { TextField } from './TextField';
+export { Titlebar } from './Titlebar';
+export { Toast } from './Toast';
+export { Toggle } from './Toggle';
+export { Toolbar, ToolbarSeparator } from './Toolbar';
+export { Tooltip } from './Tooltip';

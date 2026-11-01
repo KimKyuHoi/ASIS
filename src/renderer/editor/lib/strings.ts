@@ -58,6 +58,7 @@ export const editorStrings = defineDict({
       attachImage: '이미지 첨부 (드롭 · ⌘V 도 가능)',
       pin: '화면에 핀 — 위에 떠있는 윈도우로 박아두기',
       saveFolder: '폴더에 저장 — ~/Pictures/ASIS/ 에 자동 저장 (⌘S 는 다른 이름으로 저장)',
+      crop: '자르기',
       zoomOut: '축소 (-)',
       zoomReset: '원래 크기로 (⌘0)',
       zoomIn: '확대 (+)',
@@ -74,12 +75,22 @@ export const editorStrings = defineDict({
     },
     // Editor — 토스트·컨텍스트 메뉴·로딩
     editor: {
-      savedToast: (path: string): string => `✓ 저장됨 — ${path}`,
+      savedTitle: '저장했습니다',
+      saveFailedTitle: '저장하지 못했습니다',
+      saveFailedHint: '저장 폴더의 권한과 남은 공간을 확인해 주세요.',
       bringToFront: '맨 앞으로',
       bringForward: '앞으로',
       sendBackward: '뒤로',
       sendToBack: '맨 뒤로',
       loading: '캡처를 불러오는 중…',
+    },
+    // 크롭 모드 안내 막대
+    crop: {
+      hintEmpty: '남길 영역을 드래그하세요',
+      hintAdjust: '핸들로 조정 · Enter 적용 · Esc 취소',
+      size: (w: number, h: number): string => `${w} × ${h}`,
+      apply: '적용',
+      cancel: '취소',
     },
   },
   en: {
@@ -127,6 +138,7 @@ export const editorStrings = defineDict({
       attachImage: 'Attach image (drop · ⌘V)',
       pin: 'Pin to screen — keep it floating on top',
       saveFolder: 'Save to folder — auto-saved to ~/Pictures/ASIS/ (⌘S to save as)',
+      crop: 'Crop',
       zoomOut: 'Zoom out (-)',
       zoomReset: 'Actual size (⌘0)',
       zoomIn: 'Zoom in (+)',
@@ -140,12 +152,21 @@ export const editorStrings = defineDict({
       defaultText: 'Text',
     },
     editor: {
-      savedToast: (path: string): string => `✓ Saved — ${path}`,
+      savedTitle: 'Saved',
+      saveFailedTitle: "Couldn't save",
+      saveFailedHint: 'Check the save folder permissions and free space.',
       bringToFront: 'Bring to front',
       bringForward: 'Bring forward',
       sendBackward: 'Send backward',
       sendToBack: 'Send to back',
       loading: 'Loading capture…',
+    },
+    crop: {
+      hintEmpty: 'Drag to choose the area to keep',
+      hintAdjust: 'Drag handles to adjust · Enter to apply · Esc to cancel',
+      size: (w: number, h: number): string => `${w} × ${h}`,
+      apply: 'Apply',
+      cancel: 'Cancel',
     },
   },
 });

@@ -1,7 +1,11 @@
-import { useState } from 'react';
-import type { JSX } from 'react';
+import { useState, type JSX } from 'react';
 import type { Language } from '../../../shared/i18n/language';
 import { useLanguage } from '../../../shared/i18n/use-language';
+import { CaptureFrame } from '../../design-system/component';
+import { onboardingStrings } from '../lib/strings';
+
+/** 워드마크를 감싸는 캡처 프레임 크기(px). */
+const LOGO_FRAME = { width: 120, height: 52 } as const;
 
 /**
  * 첫 실행 언어 선택 화면.
@@ -11,6 +15,7 @@ import { useLanguage } from '../../../shared/i18n/use-language';
  */
 export default function Onboarding(): JSX.Element {
   const lang = useLanguage();
+  const t = onboardingStrings[lang];
   const [saving, setSaving] = useState(false);
 
   const choose = (chosen: Language): void => {
@@ -29,10 +34,11 @@ export default function Onboarding(): JSX.Element {
 
   return (
     <div className="onboarding">
-      <div className="onboarding__logo">ASIS</div>
-      <p className="onboarding__subtitle">
-        {lang === 'ko' ? '사용할 언어를 선택해 주세요' : 'Choose your language'}
-      </p>
+      {/* 워드마크를 ASIS 시그니처인 캡처 프레임으로 감싼다 — 앱이 하는 일을 첫 화면에서 보여 준다. */}
+      <CaptureFrame width={LOGO_FRAME.width} height={LOGO_FRAME.height} tone="accent" className="onboarding__logo">
+        <span className="onboarding__wordmark">ASIS</span>
+      </CaptureFrame>
+      <h1 className="onboarding__subtitle">{t.subtitle}</h1>
       <div className="onboarding__choices">
         <button
           type="button"
@@ -53,11 +59,7 @@ export default function Onboarding(): JSX.Element {
           <span className="lang-btn__hint">영어</span>
         </button>
       </div>
-      <p className="onboarding__note">
-        {lang === 'ko'
-          ? '나중에 환경설정에서 변경할 수 있어요'
-          : 'You can change this later in Settings'}
-      </p>
+      <p className="onboarding__note">{t.note}</p>
     </div>
   );
 }

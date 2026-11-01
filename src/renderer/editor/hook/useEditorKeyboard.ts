@@ -1,43 +1,94 @@
-import { useEffect } from 'react';
-import type { RefObject } from 'react';
+import { useEffect, type RefObject } from 'react';
 import type Konva from 'konva';
-import type { Shape } from '../types/shapes';
 import { codeToKeyName } from '../../../shared/key-name';
 import { useEditorStore } from '../lib/store';
 import { toolForKeyName } from '../lib/editor-hotkeys';
 import { cancelEditor, copyToClipboard, savePngFile } from '../lib/editor-actions';
-import { addImageFromSource } from '../lib/image-utils';
+import { copySelectedShapes, pasteShapesOrImage } from '../lib/editor-clipboard';
+import { commitCrop } from '../lib/crop';
 
-// 에디터 세션 내 도형 클립보드 — 시스템 클립보드와 별개로 도형을 복붙한다.
-let shapesClipboard: Shape[] = [];
+type EditorState = ReturnType<typeof useEditorStore.getState>;
+type KeyCtx = {
+  e: KeyboardEvent;
+  st: EditorState;
+  isMeta: boolean;
+  stageRef: RefObject<Konva.Stage | null>;
+  pixelRatio: number;
+  /** 크롭 적용에 쓰는 지금 배경. 이미지 로드 전에는 null (그때는 크롭 모드에 들어갈 수 없다). */
+  bgImage: HTMLImageElement | null;
+};
+/** 단축키 한 건 — match 가 참인 첫 항목만 실행한다 (순서 = 우선순위). */
+type KeyCommand = {
+  match: (c: KeyCtx) => boolean;
+  run: (c: KeyCtx) => void;
+  /** 브라우저 기본 동작 막기 (기본 true). */
+  preventDefault?: boolean;
+};
 
-// 붙여넣기 누적 오프셋 — 같은 클립보드를 여러 번 붙여넣어도 겹치지 않도록.
-let pasteCount = 0;
+const ZOOM_STEP = 1.25;
 
-const PASTE_OFFSET = 12;
-
-function offsetShape(shape: Shape, dx: number, dy: number): Shape {
-  switch (shape.kind) {
-    case 'rect':
-    case 'highlight':
-    case 'blur':
-    case 'mosaic':
-    case 'text':
-    case 'step':
-    case 'image':
-      return { ...shape, x: shape.x + dx, y: shape.y + dy };
-    case 'ellipse':
-      return { ...shape, cx: shape.cx + dx, cy: shape.cy + dy };
-    case 'arrow':
-    case 'line':
-    case 'pen':
-      return { ...shape, points: shape.points.map((v, i) => (i % 2 === 0 ? v + dx : v + dy)) };
-    default: {
-      const _exhaustive: never = shape;
-      return _exhaustive;
-    }
-  }
-}
+// e.code 는 *물리 키 코드* (KeyV/KeyR…) — 한영 IME, 대소문자, Caps Lock 무관.
+const KEY_COMMANDS: KeyCommand[] = [
+  // ── 크롭 모드 — 아래 일반 단축키보다 먼저 본다.
+  {
+    match: (c) => c.st.cropping && c.e.key === 'Enter',
+    run: (c) => {
+      if (!c.bgImage) throw new Error('크롭 적용: 크롭 모드인데 배경 이미지가 없다');
+      commitCrop(c.bgImage).catch((err: unknown) => {
+        console.error('[asis editor] 크롭 적용 실패', err);
+      });
+    },
+  },
+  { match: (c) => c.st.cropping && c.e.key === 'Escape', run: (c) => c.st.cancelCrop() },
+  {
+    // 크롭 중 복사·저장·붙여넣기는 막는다 — 잘리기 전 이미지가 나가거나 영역 밖에 붙는 혼란 방지.
+    match: (c) => c.st.cropping && c.isMeta && ['KeyC', 'KeyS', 'KeyV'].includes(c.e.code),
+    run: () => {},
+  },
+  {
+    // 선택이 있으면 내부 도형 클립보드로, 없으면 이미지 전체를 시스템 클립보드로 export.
+    match: (c) => c.isMeta && c.e.code === 'KeyC',
+    run: (c) => {
+      if (c.st.selectedIds.length > 0) copySelectedShapes();
+      else copyToClipboard(c.stageRef.current, c.pixelRatio);
+    },
+  },
+  {
+    match: (c) => c.isMeta && c.e.code === 'KeyS',
+    run: (c) => savePngFile(c.stageRef.current, c.pixelRatio),
+  },
+  { match: (c) => c.isMeta && c.e.code === 'KeyV', run: () => pasteShapesOrImage() },
+  { match: (c) => c.isMeta && !c.e.shiftKey && c.e.code === 'KeyZ', run: (c) => c.st.undo() },
+  { match: (c) => c.isMeta && c.e.shiftKey && c.e.code === 'KeyZ', run: (c) => c.st.redo() },
+  { match: (c) => c.isMeta && c.e.code === 'KeyW', run: () => cancelEditor() },
+  {
+    // +(=) 줌 인 — 작은 캡처 돋보기. ⌘+ 도 동일. clamp 는 store setZoom 이 처리.
+    match: (c) => c.e.code === 'Equal' || c.e.code === 'NumpadAdd',
+    run: (c) => c.st.setZoom(c.st.zoom * ZOOM_STEP),
+  },
+  {
+    // - 줌 아웃. ⌘- 도 동일.
+    match: (c) => c.e.code === 'Minus' || c.e.code === 'NumpadSubtract',
+    run: (c) => c.st.setZoom(c.st.zoom / ZOOM_STEP),
+  },
+  { match: (c) => c.isMeta && c.e.code === 'Digit0', run: (c) => c.st.setZoom(1) },
+  { match: (c) => c.e.key === 'Escape', run: () => cancelEditor(), preventDefault: false },
+  {
+    match: (c) =>
+      (c.e.key === 'Delete' || c.e.key === 'Backspace') && c.st.selectedIds.length > 0,
+    run: (c) => c.st.deleteSelected(),
+  },
+  {
+    // 도구 전환 — 환경설정의 표(lib/editor-hotkeys)를 조회한다. 해제된 도구는 매칭 안 됨.
+    match: (c) => !c.isMeta && !c.e.shiftKey,
+    run: (c) => {
+      const keyName = codeToKeyName(c.e.code);
+      const next = keyName === null ? null : toolForKeyName(keyName);
+      if (next) c.st.setTool(next);
+    },
+    preventDefault: false,
+  },
+];
 
 /**
  * 에디터 전역 키보드 단축키 등록.
@@ -48,98 +99,24 @@ function offsetShape(shape: Shape, dx: number, dy: number): Shape {
  */
 export function useEditorKeyboard(
   stageRef: RefObject<Konva.Stage | null>,
-  pixelRatio: number,
+  { pixelRatio, bgImage }: Omit<KeyCtx, 'e' | 'st' | 'isMeta' | 'stageRef'>,
 ): void {
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       const st = useEditorStore.getState();
       console.info(
-        `[asis editor] keydown key=${e.key} code=${e.code} editingId=${st.editingId} selected=${st.selectedIds.length}`,
+        `[asis editor] keydown key=${e.key} code=${e.code} editingId=${String(st.editingId)} selected=${String(st.selectedIds.length)}`,
       );
       if (st.editingId !== null) return;
-      const isMeta = e.metaKey || e.ctrlKey;
-      // e.code 는 *물리 키 코드* (KeyV/KeyR…) — 한영 IME, 대소문자, Caps Lock 무관.
-      if (isMeta && e.code === 'KeyC') {
-        e.preventDefault();
-        if (st.selectedIds.length > 0) {
-          // 도형이 선택된 경우 → 내부 도형 클립보드에 복사
-          shapesClipboard = st.shapes.filter((s) => st.selectedIds.includes(s.id));
-          pasteCount = 0;
-        } else {
-          // 선택 없음 → 기존 동작: 이미지 전체를 시스템 클립보드로 export
-          copyToClipboard(stageRef.current, pixelRatio);
-        }
-      } else if (isMeta && e.code === 'KeyS') {
-        e.preventDefault();
-        savePngFile(stageRef.current, pixelRatio);
-      } else if (isMeta && e.code === 'KeyV') {
-        e.preventDefault();
-        if (shapesClipboard.length > 0) {
-          // 내부 도형 클립보드가 있으면 도형 붙여넣기
-          pasteCount += 1;
-          const dx = PASTE_OFFSET * pasteCount;
-          const dy = PASTE_OFFSET * pasteCount;
-          const newShapes = shapesClipboard.map((s) => ({
-            ...offsetShape(s, dx, dy),
-            id: `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
-          }));
-          useEditorStore.getState().pasteShapes(newShapes);
-        } else {
-          // 내부 클립보드 없음 → 시스템 클립보드에서 이미지 붙여넣기
-          navigator.clipboard.read().then((items) => {
-            const firstImageItem = items.find((it) =>
-              it.types.some((t) => t.startsWith('image/')),
-            );
-            if (!firstImageItem) return undefined;
-            const imageType = firstImageItem.types.find((t) =>
-              t.startsWith('image/'),
-            );
-            if (!imageType) return undefined;
-            return firstImageItem.getType(imageType).then((blob) => {
-              addImageFromSource(blob).catch((err: unknown) => {
-                console.error('[asis editor] paste image 실패', err);
-              });
-            });
-          }).catch((err: unknown) => {
-            console.error('[asis editor] paste 실패', err);
-          });
-        }
-      } else if (isMeta && !e.shiftKey && e.code === 'KeyZ') {
-        e.preventDefault();
-        st.undo();
-      } else if (isMeta && e.shiftKey && e.code === 'KeyZ') {
-        e.preventDefault();
-        st.redo();
-      } else if (isMeta && e.code === 'KeyW') {
-        e.preventDefault();
-        cancelEditor();
-      } else if (e.code === 'Equal' || e.code === 'NumpadAdd') {
-        // +(=) 줌 인 — 작은 캡처 돋보기. ⌘+ 도 동일. clamp 는 store setZoom 이 처리.
-        e.preventDefault();
-        st.setZoom(st.zoom * 1.25);
-      } else if (e.code === 'Minus' || e.code === 'NumpadSubtract') {
-        // - 줌 아웃. ⌘- 도 동일.
-        e.preventDefault();
-        st.setZoom(st.zoom / 1.25);
-      } else if (isMeta && e.code === 'Digit0') {
-        e.preventDefault();
-        st.setZoom(1);
-      } else if (e.key === 'Escape') {
-        cancelEditor();
-      } else if (
-        (e.key === 'Delete' || e.key === 'Backspace') &&
-        st.selectedIds.length > 0
-      ) {
-        e.preventDefault();
-        st.deleteSelected();
-      } else if (!isMeta && !e.shiftKey) {
-        // 도구 전환 — 환경설정의 표(lib/editor-hotkeys)를 조회한다. 해제된 도구는 매칭 안 됨.
-        const keyName = codeToKeyName(e.code);
-        const next = keyName === null ? null : toolForKeyName(keyName);
-        if (next) st.setTool(next);
-      }
+      const ctx: KeyCtx = {
+        e, st, isMeta: e.metaKey || e.ctrlKey, stageRef, pixelRatio, bgImage,
+      };
+      const cmd = KEY_COMMANDS.find((k) => k.match(ctx));
+      if (!cmd) return;
+      if (cmd.preventDefault !== false) e.preventDefault();
+      cmd.run(ctx);
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [stageRef, pixelRatio]);
+  }, [stageRef, pixelRatio, bgImage]);
 }

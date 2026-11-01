@@ -1,5 +1,7 @@
 import { useEditorStore } from './store';
 import { setEditorHotkeys } from './editor-hotkeys';
+import { clearDecoded } from './decoded-images';
+import { openProject, parseProject } from './editor-project';
 
 /**
  * Editor 윈도우의 IPC bridge 초기화 — *모듈 스코프 single init*.
@@ -19,11 +21,9 @@ export function ensureEditorIpcBridge(): void {
   if (initialized) return;
   initialized = true;
 
+  // window.editor 는 preload 가 항상 노출한다(src/preload/index.d.ts). 미노출이면
+  // 아래 접근이 TypeError 로 즉시 실패하므로 별도 가드는 두지 않는다.
   const api = window.editor;
-  if (!api) {
-    console.error('[asis editor] window.editor 미노출 — preload 셋업 확인.');
-    throw new Error('window.editor 가 노출되지 않았다.');
-  }
 
   // main → renderer 단발 init: image path + 크기. zustand store 에 직접 commit.
   // 모듈 스코프 single-init 이라 윈도우 수명 = 리스너 수명 → cleanup 불필요.
@@ -32,7 +32,17 @@ export function ensureEditorIpcBridge(): void {
     // main 이 캡처 PNG 를 data URL 로 보낸다 — dev(http 페이지)에서 file:// 가
     // 차단되고, cross-origin 이미지는 canvas 를 taint 시켜 export 를 깨뜨리므로.
     console.info(`[asis editor] onLoadImage bytes=${dataUrl.length} w=${w} h=${h}`);
+    clearDecoded();
     useEditorStore.getState().loadImage(dataUrl, w, h);
+  });
+
+  // 다시 편집 — 히스토리 [편집]. 배경과 도형을 함께 받는다 (onLoadImage 와 같은 수명).
+  // main 이 이미 검증했으므로 여기서 실패하면 버그다 — throw 로 콘솔에 남긴다.
+  api.onLoadProject((value) => {
+    const project = parseProject(value);
+    console.info(`[asis editor] onLoadProject shapes=${String(project.shapes.length)}`);
+    clearDecoded();
+    openProject(project);
   });
 
   // 도구 단축키 표 — 저장값을 한 번 받고, 이후 환경설정 저장 push 를 반영한다.

@@ -1,0 +1,43 @@
+.ds-tooltip {
+  position: relative;
+  display: inline-flex;
+}
+
+.ds-tooltip__bubble {
+  position: absolute;
+  left: 50%;
+  z-index: var(--z-tooltip);
+  padding: var(--space-half) var(--space-2);
+  border-radius: var(--tooltip-radius);
+  background: var(--tooltip-bg);
+  box-shadow: var(--tooltip-shadow);
+  color: var(--tooltip-label);
+  font-size: var(--text-callout);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(-50%);
+  transition:
+    opacity var(--duration-mid) var(--ease-mac),
+    visibility var(--duration-mid) var(--ease-mac);
+}
+
+.ds-tooltip__bubble--bottom {
+  top: calc(100% + var(--space-1));
+}
+
+.ds-tooltip__bubble--top {
+  bottom: calc(100% + var(--space-1));
+}
+
+.ds-tooltip__bubble[data-open='true'] {
+  opacity: 1;
+  visibility: visible;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-tooltip__bubble {
+    transition: none;
+  }
+}

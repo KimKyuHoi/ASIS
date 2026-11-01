@@ -1,36 +1,14 @@
 /*
- * ASIS 영역 선택 오버레이 스타일.
- * 디자인 결: macOS Sonoma + 드래프팅 도구의 hairline 정밀함.
+ * 영역 선택·화면 자 오버레이.
+ *
+ * 화면 위에 뜨는 오버레이라 index.html 의 <html data-appearance="dark"> 로 항상 다크.
+ * 선택 영역·자동 감지 윤곽·측정 박스는 모두 design-system 의 캡처 프레임(CaptureFrame —
+ * 얇은 선 + 네 모서리 브래킷)이고, 녹화 영역 테두리(recordingRegionOverlay.ts)와 같은 모양이다.
+ *   - 흰 선(neutral) = 캡처할 영역, 오렌지(accent) = 자동 감지한 UI 요소 · 확정 순간
+ *   - 파랑(measure) = 캡처가 아닌 측정
+ * 여기에는 배치와 오버레이 전용 장식(어둡게 덮기·가이드선·칩·돋보기)만 둔다.
  */
-
-:root {
-  --line: rgba(255, 255, 255, 0.96);
-  --line-edge: rgba(0, 0, 0, 0.28);
-  --dim: rgba(0, 0, 0, 0.42);
-  --guide: rgba(255, 255, 255, 0.06);
-  --chip-bg: rgba(22, 22, 24, 0.82);
-  --chip-border: rgba(255, 255, 255, 0.09);
-  --chip-text: rgba(255, 255, 255, 0.96);
-  --chip-secondary: rgba(255, 255, 255, 0.52);
-  --chip-divider: rgba(255, 255, 255, 0.14);
-  --accent: #5ea2ff;
-  --accent-soft: rgba(94, 162, 255, 0.42);
-
-  --font-system:
-    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue',
-    'Apple SD Gothic Neo', 'Pretendard', sans-serif;
-  --font-mono: 'SF Mono', 'JetBrains Mono', Menlo, ui-monospace, 'Roboto Mono', monospace;
-
-  --ease-mac: cubic-bezier(0.32, 0.72, 0, 1);
-  --duration-fast: 80ms;
-  --duration-mid: 140ms;
-}
-
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
+@import '../../design-system/asset/base.css';
 
 html,
 body,
@@ -40,19 +18,15 @@ body,
   overflow: hidden;
   background: transparent;
   user-select: none;
-  -webkit-user-select: none;
   -webkit-app-region: no-drag;
 }
 
 body {
-  font-family: var(--font-system);
-  font-feature-settings: 'cv11', 'ss01', 'ss03';
-  -webkit-font-smoothing: antialiased;
+  color: var(--hud-label);
   cursor: crosshair;
-  color: var(--chip-text);
 }
 
-/* ── overlay container ─────────────────────────────── */
+/* ── 오버레이 컨테이너 ─────────────────────────────── */
 
 .overlay {
   position: fixed;
@@ -60,30 +34,30 @@ body {
   pointer-events: none;
 }
 
-/* ── dim layer ─────────────────────────────────────── */
+/* ── 선택 바깥 어둡게 ──────────────────────────────── */
 
 .dim,
 .dim-strip {
   position: fixed;
-  background: var(--dim);
+  background: var(--frame-dim);
   pointer-events: none;
 }
 
 .dim--full {
   inset: 0;
-  animation: dimAppear var(--duration-mid) var(--ease-mac);
+  animation: overlay-fade-in var(--duration-mid) var(--ease-mac);
 }
 
 .dim-strip--top {
   top: 0;
-  left: 0;
   right: 0;
+  left: 0;
 }
 
 .dim-strip--bottom {
-  left: 0;
   right: 0;
   bottom: 0;
+  left: 0;
 }
 
 .dim-strip--left {
@@ -94,216 +68,125 @@ body {
   right: 0;
 }
 
-@keyframes dimAppear {
+@keyframes overlay-fade-in {
   from {
     opacity: 0;
   }
-  to {
-    opacity: 1;
-  }
 }
 
-/* ── hover info panel (우상단) ──────────────────────
-   hover 중인 윈도우/요소의 이름과 크기를 화면 우상단에 명확히 표시. */
+/* ── HUD 표면 — 정보 패널·칩·힌트·돋보기가 같이 쓴다 ─── */
+
+.hover-info,
+.chip,
+.hint,
+.magnifier,
+.ruler-edge__label,
+.measure-label {
+  background: var(--hud-bg);
+  box-shadow:
+    var(--hud-shadow),
+    inset 0 0 0 var(--border-hairline) var(--hud-border);
+  color: var(--hud-label);
+  backdrop-filter: blur(var(--blur-material));
+}
+
+/* ── hover 정보 패널 (우상단) ─────────────────────── */
+
 .hover-info {
   position: fixed;
-  top: 16px;
-  right: 16px;
-  z-index: 100;
-  padding: 8px 12px;
-  background: rgba(0, 0, 0, 0.78);
-  color: #fff;
-  border-radius: 6px;
+  top: var(--space-4);
+  right: var(--space-4);
+  z-index: var(--z-popover);
+  max-width: 280px; /* token-ok: 앱·요소 이름 한 줄 폭 */
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-control);
   pointer-events: none;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  animation: dimAppear var(--duration-mid) var(--ease-mac);
-  max-width: 280px;
+  animation: overlay-fade-in var(--duration-mid) var(--ease-mac);
+}
+
+.hover-info__name,
+.hover-info__element {
+  overflow: hidden;
+  line-height: var(--leading-tight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .hover-info__name {
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.3;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: var(--text-body);
+  font-weight: var(--weight-semibold);
 }
 
 .hover-info__element {
-  font-size: 12px;
-  opacity: 0.9;
-  margin-top: 2px;
-  line-height: 1.3;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  margin-top: var(--space-half);
+  font-size: var(--text-callout);
 }
 
 .hover-info__size {
-  font-size: 12px;
-  opacity: 0.7;
-  margin-top: 4px;
-  font-variant-numeric: tabular-nums;
+  margin-top: var(--space-1);
+  color: var(--hud-label-secondary);
+  font-size: var(--text-callout);
 }
 
-/* ── crosshair guides ────────────────────────────── */
+/* ── 크로스헤어 가이드 ────────────────────────────── */
 
 .guide {
   position: fixed;
-  background: var(--guide);
+  background: var(--hud-fill);
   pointer-events: none;
-  animation: guideAppear var(--duration-fast) var(--ease-mac);
+  animation: overlay-fade-in var(--duration-fast) var(--ease-mac);
 }
 
 .guide--horizontal {
-  left: 0;
   right: 0;
-  height: 1px;
+  left: 0;
+  height: var(--border-thin);
 }
 
 .guide--vertical {
   top: 0;
   bottom: 0;
-  width: 1px;
+  width: var(--border-thin);
 }
 
-@keyframes guideAppear {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
+/* ── 선택 사각형 (CaptureFrame 을 감싼 위치 상자) ─────── */
 
-/* ── 선택 박스 ───────────────────────────────────── */
-
-.selection {
+.selection,
+.snap,
+.measure {
   position: fixed;
   top: 0;
   left: 0;
   pointer-events: none;
-  border: 1px solid var(--line);
-  box-shadow:
-    0 0 0 1px var(--line-edge),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.04);
-  animation: selectionAppear var(--duration-fast) var(--ease-mac);
 }
 
-.overlay--committed .selection {
-  animation: selectionCommit 90ms var(--ease-mac) forwards;
+.selection {
+  animation: overlay-fade-in var(--duration-fast) var(--ease-mac);
 }
 
-@keyframes selectionAppear {
-  from {
-    opacity: 0.4;
-  }
-  to {
-    opacity: 1;
-  }
+/* 확정 순간 — 프레임이 브랜드 오렌지로 바뀌며 짧게 빛난다. */
+.overlay--committed .selection .ds-frame {
+  --ds-frame-color: var(--frame-committed);
 }
 
-@keyframes selectionCommit {
-  0% {
-    border-color: var(--line);
-    box-shadow: 0 0 0 1px var(--line-edge);
-  }
-  60% {
-    border-color: var(--accent);
+.overlay--committed .selection .ds-frame__line {
+  animation: selection-commit var(--duration-mid) var(--ease-mac);
+}
+
+@keyframes selection-commit {
+  50% {
     box-shadow:
-      0 0 0 1px var(--accent),
-      0 0 22px var(--accent-soft);
-  }
-  100% {
-    opacity: 0.92;
-    border-color: var(--accent);
-    box-shadow:
-      0 0 0 1px var(--accent),
-      0 0 0 var(--accent-soft);
+      0 0 0 var(--border-thin) var(--frame-committed),
+      0 0 var(--space-5) var(--frame-committed);
   }
 }
 
-/* corner ticks — architectural L-marks */
-
-.corner {
-  position: absolute;
-  width: 10px;
-  height: 10px;
-  pointer-events: none;
+/* 자동 감지 윤곽 — 창은 흰 프레임, 그 안의 UI 요소는 오렌지 프레임(CaptureFrame tone). */
+.snap {
+  z-index: var(--z-sticky);
 }
 
-.corner::before,
-.corner::after {
-  content: '';
-  position: absolute;
-  background: var(--line);
-}
-
-.corner::before {
-  height: 1px;
-  width: 10px;
-}
-
-.corner::after {
-  width: 1px;
-  height: 10px;
-}
-
-.corner--tl {
-  top: -1px;
-  left: -1px;
-}
-.corner--tl::before {
-  top: 0;
-  left: 0;
-}
-.corner--tl::after {
-  top: 0;
-  left: 0;
-}
-
-.corner--tr {
-  top: -1px;
-  right: -1px;
-}
-.corner--tr::before {
-  top: 0;
-  right: 0;
-}
-.corner--tr::after {
-  top: 0;
-  right: 0;
-}
-
-.corner--bl {
-  bottom: -1px;
-  left: -1px;
-}
-.corner--bl::before {
-  bottom: 0;
-  left: 0;
-}
-.corner--bl::after {
-  bottom: 0;
-  left: 0;
-}
-
-.corner--br {
-  bottom: -1px;
-  right: -1px;
-}
-.corner--br::before {
-  bottom: 0;
-  right: 0;
-}
-.corner--br::after {
-  bottom: 0;
-  right: 0;
-}
-
-/* ── 좌표·크기 chip ──────────────────────────────── */
+/* ── 크기·좌표 칩 ─────────────────────────────────── */
 
 .chip {
   position: fixed;
@@ -311,82 +194,56 @@ body {
   left: 0;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px 6px 8px;
-  height: 28px;
-  background: var(--chip-bg);
-  border: 1px solid var(--chip-border);
-  border-radius: 7px;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 8px 24px rgba(0, 0, 0, 0.34),
-    0 1px 1px rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(20px) saturate(140%);
-  -webkit-backdrop-filter: blur(20px) saturate(140%);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.01em;
+  gap: var(--space-2);
+  height: var(--size-control-lg);
+  padding: 0 var(--space-3) 0 var(--space-2);
+  border-radius: var(--radius-control);
+  font-size: var(--text-callout);
+  font-weight: var(--weight-medium);
   white-space: nowrap;
   pointer-events: none;
-  animation: chipAppear var(--duration-fast) var(--ease-mac);
+  animation: overlay-fade-in var(--duration-fast) var(--ease-mac);
 }
 
 .chip__indicator {
   flex: none;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
+  width: var(--space-1);
+  height: var(--space-1);
+  border-radius: var(--radius-round);
   background: var(--accent);
-  box-shadow: 0 0 6px var(--accent-soft);
-}
-
-.chip__primary {
-  color: var(--chip-text);
 }
 
 .chip__divider {
-  width: 1px;
-  height: 10px;
-  background: var(--chip-divider);
+  width: var(--border-thin);
+  height: var(--space-3);
+  background: var(--hud-border);
 }
 
 .chip__secondary {
-  color: var(--chip-secondary);
-  font-size: 11px;
+  color: var(--hud-label-secondary);
+  font-size: var(--text-subhead);
 }
 
-@keyframes chipAppear {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+/* 확정되면 칩·가이드는 물러난다. */
+.overlay--committed .chip,
+.overlay--committed .guide {
+  opacity: var(--opacity-disabled);
+  transition: opacity var(--duration-fast) var(--ease-mac);
 }
 
-/* ── ESC hint — macOS 키캡 결 ────────────────────── */
+/* ── 하단 안내 (esc + 설명) ───────────────────────── */
 
 .hint {
   position: fixed;
-  bottom: 36px;
+  bottom: var(--space-8);
   left: 50%;
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 7px 14px 7px 7px;
-  background: rgba(22, 22, 24, 0.78);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 999px;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 10px 28px rgba(0, 0, 0, 0.4),
-    0 1px 2px rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(20px) saturate(140%);
-  -webkit-backdrop-filter: blur(20px) saturate(140%);
-  font-size: 12px;
-  letter-spacing: 0.005em;
+  gap: var(--space-3);
+  height: var(--size-hud);
+  padding: 0 var(--space-4) 0 var(--space-2);
+  border-radius: var(--radius-capsule);
+  font-size: var(--text-callout);
   pointer-events: none;
   transform: translateX(-50%);
   transition:
@@ -394,253 +251,160 @@ body {
     transform var(--duration-mid) var(--ease-mac);
 }
 
-.hint--visible {
-  opacity: 1;
-}
-
 .hint--hidden {
   opacity: 0;
-  transform: translateX(-50%) translateY(8px);
-}
-
-.hint__key {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 28px;
-  height: 22px;
-  padding: 0 7px;
-  background: rgba(255, 255, 255, 0.07);
-  border: 1px solid rgba(255, 255, 255, 0.13);
-  border-bottom-color: rgba(255, 255, 255, 0.04);
-  border-radius: 5px;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.32);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  color: rgba(255, 255, 255, 0.92);
+  transform: translateX(-50%) translateY(var(--space-2));
 }
 
 .hint__label {
-  color: rgba(255, 255, 255, 0.74);
-  font-weight: 500;
+  color: var(--hud-label-secondary);
 }
 
 .hint__divider {
-  width: 1px;
-  height: 12px;
-  background: rgba(255, 255, 255, 0.12);
+  width: var(--border-thin);
+  height: var(--space-3);
+  background: var(--hud-border);
 }
 
-.hint__instruction {
-  color: rgba(255, 255, 255, 0.92);
-  font-weight: 500;
-}
-
-/* ── 전환: commit 시 부속 요소 fade-out ─────────────── */
-
-.overlay--committed .chip,
-.overlay--committed .guide,
-.overlay--committed .corner {
-  transition: opacity 90ms var(--ease-mac);
-  opacity: 0.4;
-}
-
-/* ── Magnifier (Color picker 포함) ────────────────── */
+/* ── 돋보기 (색상 확인) ───────────────────────────── */
 
 .magnifier {
   position: fixed;
-  width: 96px;
-  height: auto; /* canvas 96 + 색상 바(값 길면 줄바꿈되어 늘어남) */
-  pointer-events: none;
-  z-index: 100;
-  border-radius: 6px;
+  z-index: var(--z-popover);
+  width: 96px; /* token-ok: Magnifier.tsx 의 SIZE 와 같아야 한다 */
   overflow: hidden;
-  background: rgba(20, 20, 22, 0.95);
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.08) inset,
-    0 8px 24px rgba(0, 0, 0, 0.5);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-}
-
-.magnifier--clickable {
-  pointer-events: auto;
-  cursor: pointer;
-}
-
-.magnifier--clickable:hover {
-  border-color: rgba(94, 162, 255, 0.4);
+  border-radius: var(--radius-control);
+  pointer-events: none;
 }
 
 .magnifier__canvas {
   display: block;
-  width: 96px;
-  height: 96px;
+  width: 96px; /* token-ok: Magnifier.tsx SIZE */
+  height: 96px; /* token-ok: Magnifier.tsx SIZE */
   image-rendering: pixelated;
-  image-rendering: crisp-edges;
 }
 
 .magnifier__crosshair {
   position: absolute;
   top: 0;
   left: 0;
-  width: 96px;
-  height: 96px;
+  width: 96px; /* token-ok: Magnifier.tsx SIZE */
+  height: 96px; /* token-ok: Magnifier.tsx SIZE */
   pointer-events: none;
 }
 
 .magnifier__cross {
   position: absolute;
-  background: rgba(94, 162, 255, 0.85);
+  background: var(--accent);
 }
 
 .magnifier__cross--h {
-  left: 0;
   top: 50%;
+  left: 0;
   width: 100%;
-  height: 1px;
-  margin-top: -0.5px;
+  height: var(--border-thin);
+  transform: translateY(-50%);
 }
 
 .magnifier__cross--v {
   top: 0;
   left: 50%;
-  width: 1px;
+  width: var(--border-thin);
   height: 100%;
-  margin-left: -0.5px;
+  transform: translateX(-50%);
 }
 
 .magnifier__color {
   display: flex;
   align-items: center;
-  gap: 6px;
-  min-height: 26px;
-  padding: 5px 8px;
-  background: rgba(0, 0, 0, 0.42);
-  font-family: 'SF Mono', 'JetBrains Mono', Menlo, monospace;
-  font-size: 10px;
-  color: rgba(255, 255, 255, 0.94);
-  letter-spacing: 0.04em;
+  gap: var(--space-1);
+  min-height: var(--size-control-lg);
+  padding: var(--space-1) var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-footnote);
 }
 
 /* 값이 잘리지 않도록 줄바꿈 허용 — HEX 는 한 줄, 긴 RGB/HSL 은 여러 줄로 전부 표시. */
 .magnifier__value {
   flex: 1;
   min-width: 0;
-  white-space: normal;
   overflow-wrap: anywhere;
 }
 
-.magnifier__swatch {
-  width: 12px;
-  height: 12px;
-  border-radius: 2px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  flex-shrink: 0;
+.magnifier__swatch,
+.copy-toast__swatch {
+  flex: none;
+  width: var(--size-icon-sm);
+  height: var(--size-icon-sm);
+  border-radius: var(--radius-chip);
+  box-shadow: inset 0 0 0 var(--border-thin) var(--hud-border);
 }
 
-/* 복사 성공 토스트 — 화면 하단 중앙. 색상 스와치 + 복사된 값. */
-.magnifier-toast {
+.copy-toast__swatch {
+  width: var(--size-icon);
+  height: var(--size-icon);
+}
+
+/* 복사 알림 — 화면 하단 중앙. 모양은 design-system Toast. */
+.copy-toast {
   position: fixed;
+  bottom: calc(var(--space-8) + var(--size-hud) + var(--space-3));
   left: 50%;
-  bottom: 56px;
-  transform: translateX(-50%);
-  z-index: 101;
+  z-index: var(--z-toast);
   pointer-events: none;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 11px 18px;
-  border-radius: 12px;
-  background: rgba(20, 20, 22, 0.96);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
-  color: rgba(255, 255, 255, 0.96);
-  font-family: 'SF Mono', 'JetBrains Mono', Menlo, monospace;
-  font-size: 13px;
-  letter-spacing: 0.02em;
-  animation: magnifierToastIn 140ms var(--ease-mac);
-}
-.magnifier-toast strong {
-  font-weight: 700;
-}
-.magnifier-toast__swatch {
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  flex-shrink: 0;
-}
-@keyframes magnifierToastIn {
-  from {
-    opacity: 0;
-    transform: translate(-50%, 8px);
-  }
-  to {
-    opacity: 1;
-    transform: translate(-50%, 0);
-  }
+  transform: translateX(-50%);
 }
 
-/* ── 화면 자 / 간격 측정 (ruler mode) ─────────────────────
-   측정 전용 오버레이. 캡처 selection 과 구분되도록 accent(파랑) 배색을 쓴다. */
+/* ── 화면 자 (측정 모드) ──────────────────────────── */
 
-:root {
-  --ruler-line: rgba(94, 162, 255, 0.9);
-  --ruler-edge: rgba(94, 162, 255, 0.55);
-  --ruler-tick: rgba(255, 255, 255, 0.55);
-  --ruler-tick-major: rgba(255, 255, 255, 0.92);
-  --ruler-dim: rgba(0, 0, 0, 0.28);
-}
-
-/* 측정 모드는 전체를 은은하게 dim — 화면 대비 눈금·거리선이 잘 보이도록. */
+/* 측정 모드는 전체를 옅게 덮는다 — 화면이 덜 가려져 거리선이 잘 보이도록. */
 .overlay--ruler {
-  background: var(--ruler-dim);
-  animation: dimAppear var(--duration-mid) var(--ease-mac);
+  background: var(--surface-scrim-subtle);
+  animation: overlay-fade-in var(--duration-mid) var(--ease-mac);
 }
 
-/* 가장자리 거리선 — 사각형 중심에서 화면 끝까지 dashed line. */
+/* hover 한 UI 요소의 윤곽 — 측정 사각형이 없을 때 치수 감 잡기용 점선. */
+.element-outline {
+  position: fixed;
+  z-index: var(--z-sticky);
+  border: var(--border-thin) dashed var(--frame-measure);
+  border-radius: var(--radius-chip);
+  pointer-events: none;
+}
+
+/* 가장자리 거리선 — 사각형 중심에서 화면 끝까지 점선. */
 .ruler-edge {
   position: fixed;
+  z-index: var(--z-sticky);
   pointer-events: none;
-  z-index: 45;
 }
 
 .ruler-edge--v {
   width: 0;
-  border-left: 1px dashed var(--ruler-edge);
+  border-left: var(--border-thin) dashed var(--frame-measure);
 }
 
 .ruler-edge--h {
   height: 0;
-  border-top: 1px dashed var(--ruler-edge);
+  border-top: var(--border-thin) dashed var(--frame-measure);
 }
 
 .ruler-edge__label {
   position: fixed;
-  transform: translate(-50%, -50%);
-  padding: 2px 6px;
-  background: rgba(20, 20, 22, 0.9);
-  border: 1px solid rgba(94, 162, 255, 0.35);
-  border-radius: 5px;
-  color: rgba(255, 255, 255, 0.96);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.01em;
-  pointer-events: none;
+  z-index: var(--z-popover);
+  padding: var(--space-half) var(--space-2);
+  border-radius: var(--radius-chip);
+  font-size: var(--text-subhead);
   white-space: nowrap;
-  z-index: 60;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
 }
 
-/* 눈금 컨테이너 — 측정 사각형 상단(가로)·좌측(세로)에 붙는다. */
+/* 눈금 — 측정 사각형 상단(가로)·좌측(세로)에 붙는다. */
 .ruler-scale {
   position: fixed;
+  z-index: var(--z-sticky);
   pointer-events: none;
-  z-index: 55;
 }
 
 .ruler-scale--top {
@@ -651,99 +415,99 @@ body {
   width: 0;
 }
 
-/* 개별 눈금 — 짧은 선. major 는 더 길고 라벨을 단다. */
 .ruler-tick {
   position: absolute;
-  background: var(--ruler-tick);
+  background: var(--hud-label-secondary);
+}
+
+.ruler-tick--major {
+  background: var(--hud-label);
 }
 
 .ruler-tick--x {
   top: 0;
-  width: 1px;
-  height: 6px;
+  width: var(--border-thin);
+  height: var(--space-1);
 }
 
 .ruler-tick--x.ruler-tick--major {
-  height: 11px;
-  background: var(--ruler-tick-major);
+  height: var(--space-3);
 }
 
 .ruler-tick--y {
   left: 0;
-  height: 1px;
-  width: 6px;
+  width: var(--space-1);
+  height: var(--border-thin);
 }
 
 .ruler-tick--y.ruler-tick--major {
-  width: 11px;
-  background: var(--ruler-tick-major);
+  width: var(--space-3);
 }
 
 .ruler-tick__num {
   position: absolute;
-  font-family: var(--font-mono);
-  font-size: 9px;
-  line-height: 1;
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--hud-label);
+  font-size: var(--text-footnote);
+  line-height: var(--leading-tight);
   font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 var(--space-1) var(--frame-line-edge);
 }
 
 /* 가로 눈금의 숫자는 눈금 아래쪽에, 세로 눈금의 숫자는 눈금 오른쪽에. */
 .ruler-tick--x .ruler-tick__num {
-  top: 13px;
-  left: 2px;
+  top: var(--space-4);
+  left: var(--space-half);
 }
 
 .ruler-tick--y .ruler-tick__num {
-  left: 13px;
-  top: -4px;
+  top: calc(var(--space-1) * -1);
+  left: var(--space-4);
 }
 
-/* 측정 박스 — accent 실선 + 옅은 채움. 캡처 selection(흰 hairline)과 시각 구분. */
-.measure-box {
-  position: fixed;
-  top: 0;
-  left: 0;
-  pointer-events: none;
-  border: 1px solid var(--ruler-line);
-  background: rgba(94, 162, 255, 0.08);
-  box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.28),
-    0 0 18px rgba(94, 162, 255, 0.28);
-  animation: selectionAppear var(--duration-fast) var(--ease-mac);
-  z-index: 50;
+/* 측정 박스 — 파랑 캡처 프레임 + 옅은 채움. */
+.measure {
+  z-index: var(--z-sticky);
+  background: var(--frame-measure-tint);
+  animation: overlay-fade-in var(--duration-fast) var(--ease-mac);
 }
 
-/* 측정 박스 중앙의 w×h 라벨. */
+/* 측정 박스 중앙의 w × h. */
 .measure-label {
   position: fixed;
-  transform: translate(-50%, -50%);
+  z-index: var(--z-popover);
   display: inline-flex;
   align-items: baseline;
-  gap: 5px;
-  padding: 5px 11px;
-  background: var(--chip-bg);
-  border: 1px solid rgba(94, 162, 255, 0.3);
-  border-radius: 7px;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 8px 24px rgba(0, 0, 0, 0.34);
-  backdrop-filter: blur(20px) saturate(140%);
-  -webkit-backdrop-filter: blur(20px) saturate(140%);
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  pointer-events: none;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-control);
   white-space: nowrap;
-  z-index: 70;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
 }
 
 .measure-label__dim {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--chip-text);
+  font-size: var(--text-body);
+  font-weight: var(--weight-semibold);
 }
 
 .measure-label__x {
-  font-size: 11px;
-  color: var(--chip-secondary);
+  color: var(--hud-label-secondary);
+  font-size: var(--text-subhead);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dim--full,
+  .hover-info,
+  .guide,
+  .selection,
+  .overlay--committed .selection .ds-frame__line,
+  .chip,
+  .overlay--ruler,
+  .measure {
+    animation: none;
+  }
+
+  .hint {
+    transition: none;
+  }
 }

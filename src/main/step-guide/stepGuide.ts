@@ -1,23 +1,21 @@
-import { copyFile, readFile, unlink, writeFile } from 'node:fs/promises';
+import { readFile, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { app, dialog, nativeImage, screen } from 'electron';
-import { captureRegion } from '../capture/capture';
+import { join } from 'node:path';
+import { screen } from 'electron';
 import { SequenceCaptureManager } from '../capture/sequenceCapture';
-import { getElementBoundsAtPoint } from '../windowsInfo';
 import {
   ClickMonitorManager,
   type ClickPoint,
 } from './clickMonitor';
+import type { Guide } from './stepGuideExport';
 import {
-  toHtml,
-  toMarkdown,
-  stepImageFileName,
-  type Guide,
-  type GuideStep,
-  type StepKind,
-} from './stepGuideExport';
-import { tMain } from '../i18n/strings';
+  buildGuide,
+  captureImageStep,
+  cleanupTmpGifs,
+  isEnoent,
+  type RawStep,
+} from './stepCapture';
+import { tGuide } from './guideCopy';
 
 /**
  * 스텝바이스텝 가이드 생성기 오케스트레이터 — 수동 이미지/GIF 모드.
@@ -30,7 +28,9 @@ import { tMain } from '../i18n/strings';
  *      이 동안 들어온 전역 클릭은 개별 스텝을 만들지 않고 GIF 안에 그대로 담긴다.
  *   4. HUD 에서 [GIF 정지] → stopGif(): seq.stop 으로 하나의 GIF 로 인코딩 →
  *      *하나의* gif 스텝 누적. 이후 다시 이미지 모드.
- *   5. stop() — 감지 중지 + (녹화 중이면) GIF cancel 후 Markdown/HTML 로 export.
+ *   5. stop() — 감지 중지 + (녹화 중이면) GIF cancel 후 누적 스텝을 Guide 로 넘긴다.
+ *      문서화·편집 창은 호출자(StepGuideWindowManager)가 맡는다 — 저장 위치는 사용자가
+ *      편집을 끝내고 [저장]할 때 정한다.
  *
  * side-effects.md Rule 3 — 전역 클릭 탭 + 캡처/GIF 파이프라인은 React 무관 lifecycle →
  * 모듈 스코프 Class. ClickMonitorManager·SequenceCaptureManager 를 소유하고 켜고 끈다.
@@ -66,33 +66,22 @@ export type StepGuideCallbacks = {
   onNeedsAccessibility: () => void;
   /** 헬퍼 비정상 종료 알림(권한/버그). */
   onError: (message: string) => void;
-  /** export 완료 — 저장 경로 또는 사용자 취소. */
-  onExported: (result: { kind: 'saved'; path: string } | { kind: 'canceled' }) => void;
-  /** export 실패. */
-  onExportError: (message: string) => void;
+  /** 녹화 종료 — 편집 창을 띄울 가이드. 스텝이 0개면 대신 onEmpty. */
+  onReady: (guide: Guide) => void;
   /** 스텝이 기록 없이 종료됨 — "기록된 클릭 없음" 안내. */
   onEmpty: () => void;
-};
-
-/** 캡처된 스텝의 raw 데이터(export 전 중간 표현). */
-type RawStep = {
-  order: number;
-  /** 'image'=클릭 시점 정지 PNG, 'gif'=[GIF 시작]~[GIF 정지] 구간 연속 애니메이션. */
-  kind: StepKind;
-  imagePath: string;
-  imageDataUrl: string;
-  width: number;
-  height: number;
-  clickX: number;
-  clickY: number;
-  timestamp: number;
-  label?: string;
+  /**
+   * 이 좌표(top-left DIP)가 ASIS 자신의 창(녹화 알약·편집 창) 위인지 — 그 클릭은 단계가 아니다.
+   * 클릭 감지 헬퍼(asis-clickmon)는 별도 프로세스라, 전역 모니터가 "자기 앱 이벤트는 안 받는다"는
+   * 규칙이 ASIS 창에는 적용되지 않는다(헬퍼에게 ASIS 는 다른 앱).
+   */
+  isOwnWindowAt: (point: ClickPoint) => boolean;
 };
 
 export class StepGuideManager {
-  private monitor = new ClickMonitorManager();
+  private readonly monitor = new ClickMonitorManager();
   /** 연속 GIF 녹화기 — [GIF 시작]에서 start, [GIF 정지]에서 stop 으로 하나의 GIF 를 만든다. */
-  private seq = new SequenceCaptureManager();
+  private readonly seq = new SequenceCaptureManager();
   private steps: RawStep[] = [];
   /**
    * GIF 녹화 상태 머신 — [GIF 시작]/[GIF 정지] 는 seq.start/stop 이 비동기(각각 수백 ms)라
@@ -115,9 +104,23 @@ export class StepGuideManager {
    * 늦게 resolve 된 결과가 새 세션의 steps 를 오염시키지 않도록 세대를 대조한다.
    */
   private sessionId = 0;
+  /**
+   * 진행 중인 캡처(클릭 스텝)·GIF 마감 — [완료]가 이것들을 기다린 뒤 가이드를 만든다.
+   * 마지막 클릭 직후나 [GIF 정지] 인코딩 중에 [완료]를 눌러도 그 단계가 사라지지 않게.
+   */
+  private readonly pending = new Set<Promise<unknown>>();
+  /** stop() 후 pending 을 기다리는 중 — 이 동안은 새 녹화를 시작하지 않는다(isActive 가 true). */
+  private finishing = false;
 
   isActive(): boolean {
-    return this.monitor.isRunning();
+    // 마무리 중(진행 중 캡처·GIF 인코딩 대기)도 활성으로 본다 — 그 사이 단축키/트레이가
+    // 새 녹화를 시작해 이전 녹화 결과를 덮어쓰지 않게.
+    return this.monitor.isRunning() || this.finishing;
+  }
+
+  /** stop() 후 진행 중 캡처·GIF 인코딩을 기다리는 중인지 — 이때 HUD 가 닫혀도 결과를 버리면 안 된다. */
+  isFinishing(): boolean {
+    return this.finishing;
   }
 
   /** 녹화 시작. 이미 활성이면 명시 throw(silent 재시작 금지). */
@@ -139,8 +142,10 @@ export class StepGuideManager {
       },
       onExit: (info) => {
         // stop() 없이 죽음 — 권한 문제 또는 헬퍼 버그. 상태를 idle 로 되돌린다.
+        // stderr·exit code 는 개발자용 원문 — 로그에만 남기고 사용자에겐 사전 문구.
         const detail = info.stderr || `exit ${info.code ?? 'null'}`;
-        callbacks.onError(tMain().stepGuide.clickDetectionStopped(detail));
+        console.error('[asis] stepGuide: 클릭 감지 헬퍼 비정상 종료', detail);
+        callbacks.onError(tGuide().clickDetectionStopped);
         callbacks.onStateChange({ kind: 'idle' });
       },
     });
@@ -149,50 +154,81 @@ export class StepGuideManager {
   }
 
   /**
-   * 녹화 중지 + export. format 에 따라 Markdown 또는 HTML 로 저장 다이얼로그.
-   * 녹화 중이 아니면 no-op.
+   * 녹화 중지 → 진행 중인 캡처·GIF 마감을 기다린 뒤 누적 스텝을 Guide 로 onReady 에
+   * 넘긴다(0개면 onEmpty). 녹화 중이 아니면 no-op.
+   *
+   * 클릭 감지는 즉시 끈다(이후 클릭은 안 받음). 세대(sessionId)는 *기다린 뒤에* 올린다 —
+   * 먼저 올리면 in-flight 결과가 세대 대조에 걸려 버려진다(마지막 단계 유실).
    */
-  stop(format: 'markdown' | 'html'): void {
+  stop(): void {
     if (!this.monitor.isRunning()) return;
     const callbacks = this.callbacks;
     if (!callbacks) throw new Error('StepGuideManager.stop — callbacks 미설정');
 
+    // 감지를 끄기 *전에* 마무리 중으로 표시 — isActive 가 한 순간도 false 로 빠지지 않아
+    // 트레이가 idle → 녹화 중 → idle 로 깜빡이거나 그 틈에 새 녹화가 끼어들지 않는다.
+    this.finishing = true;
     this.monitor.stop();
-    // 세대 증가 — 이 시점 이후 resolve 되는 in-flight 캡처/인코딩은 세대 대조로 폐기된다.
-    this.sessionId += 1;
-    // 진행 중이던 GIF 는 [GIF 정지]를 안 눌렀으므로 미완성 → 버린다.
-    // cancel 은 비동기(tmp 폴더 정리)지만 export 를 막을 이유가 없어 fire-and-forget.
+    // [GIF 정지]를 안 누른 채 녹화 중이던 GIF 는 미완성 → 버린다. 인코딩 중(stopping)인
+    // GIF 는 seq 가 이미 비활성이라 여기서 취소되지 않고 아래 pending 으로 기다린다.
     this.cancelSequenceIfRecording();
     this.gifPhase = { kind: 'idle' };
     callbacks.onStateChange({ kind: 'idle' });
 
+    const session = this.sessionId;
+    Promise.allSettled([...this.pending])
+      .then(() => {
+        this.finishing = false;
+        // 마무리가 끝났음을 알린다 — 트레이 "녹화 중" 표시를 내리는 계기(isActive 가 false 로 바뀜).
+        callbacks.onStateChange({ kind: 'idle' });
+        // 기다리는 사이 새 녹화가 시작됐으면(start 가 steps 를 비우고 세대를 올림) 손대지 않는다.
+        if (session !== this.sessionId) return;
+        this.sessionId += 1;
+        this.finishCollected(callbacks);
+      })
+      .catch((err: unknown) => {
+        this.finishing = false;
+        callbacks.onStateChange({ kind: 'idle' });
+        // onReady/onEmpty 콜백 안의 예외 — 녹화 결과 전달 실패라 로그로 드러낸다.
+        console.error('[asis] stepGuide: 녹화 마무리 실패', err);
+      });
+  }
+
+  private finishCollected(callbacks: StepGuideCallbacks): void {
     const collected = this.steps;
     this.steps = [];
-
     if (collected.length === 0) {
       callbacks.onEmpty();
       return;
     }
+    callbacks.onReady(buildGuide(collected));
+    // gif 는 dataURL 로 이미 Guide 에 담겼으니 tmp 파일은 바로 지운다.
+    cleanupTmpGifs(collected);
+  }
 
-    // export 는 비동기(파일 쓰기 + 다이얼로그). 에러는 명시 콜백으로.
-    this.exportGuide(collected, format, callbacks).catch((err: unknown) => {
-      const message = err instanceof Error ? err.message : String(err);
-      callbacks.onExportError(message);
-    });
+  /** in-flight 작업 등록 — 끝나면(성공·실패 무관) 스스로 빠진다. */
+  private track(work: Promise<unknown>): void {
+    this.pending.add(work);
+    const forget = (): void => {
+      this.pending.delete(work);
+    };
+    work.then(forget, forget);
   }
 
   /**
-   * export 없이 감지만 중지 — 앱 종료/창 강제 닫힘 경로용.
-   * 다이얼로그를 띄우지 않으므로 종료를 막지 않는다. 누적 스텝은 폐기(임시 PNG 는
-   * OS tmp 정리에 맡긴다 — screencapture 다른 경로들과 동일한 취급).
-   * 멱등(비활성이면 no-op).
+   * 편집 창 없이 정지·폐기 — 앱 종료/HUD 강제 닫힘/클릭 헬퍼 비정상 종료 경로용.
+   * 다이얼로그를 띄우지 않으므로 종료를 막지 않는다. 멱등.
+   *
+   * monitor 가 이미 죽어 있어도(헬퍼 비정상 종료 → onExit → HUD 닫힘 → 여기) 나머지
+   * 정리는 반드시 한다 — GIF 녹화가 돌던 중이면 screencapture 루프가 남아 다음 세션의
+   * startGif 가 "이미 녹화 중" 으로 계속 실패한다.
    */
   stopSilently(): void {
-    if (!this.monitor.isRunning()) return;
-    this.monitor.stop();
+    if (this.monitor.isRunning()) this.monitor.stop();
     this.sessionId += 1; // in-flight 캡처/인코딩 폐기.
     this.cancelSequenceIfRecording(); // 진행 중 GIF 폐기(tmp 폴더 정리).
     this.gifPhase = { kind: 'idle' };
+    cleanupTmpGifs(this.steps); // 마감된 GIF 스텝의 tmp 파일(수 MB씩).
     this.steps = [];
     this.callbacks?.onStateChange({ kind: 'idle' });
   }
@@ -277,9 +313,11 @@ export class StepGuideManager {
     this.gifPhase = { kind: 'stopping' };
     this.emitRecording();
 
-    this.finalizeGifStep(rect, session).catch((err: unknown) => {
-      console.error('[asis] stepGuide: GIF 스텝 마감 실패', err);
-    });
+    this.track(
+      this.finalizeGifStep(rect, session).catch((err: unknown) => {
+        console.error('[asis] stepGuide: GIF 스텝 마감 실패', err);
+      }),
+    );
   }
 
   /** 진행 중인 GIF 녹화를 취소(tmp 프레임 폐기). 녹화 중 아니면 no-op. */
@@ -302,9 +340,14 @@ export class StepGuideManager {
    */
   private handleClick(point: ClickPoint): void {
     if (this.gifPhase.kind !== 'idle') return;
+    // 클릭은 start() 이후에만 온다 — callbacks 가 없으면 버그.
+    const callbacks = this.callbacks;
+    if (!callbacks) throw new Error('StepGuideManager.handleClick — callbacks 미설정');
+    // 알약 버튼([GIF]·[취소]·[정지])·편집 창 클릭은 기록하지 않는다.
+    if (callbacks.isOwnWindowAt(point)) return;
 
     const session = this.sessionId;
-    this.captureImageStep(point).then(
+    const work = captureImageStep(point).then(
       (step) => {
         // 캡처 도중 정지·재시작됐으면 결과 폐기(steps 오염 방지).
         if (session !== this.sessionId) return;
@@ -317,57 +360,7 @@ export class StepGuideManager {
         console.error('[asis] stepGuide: 클릭 처리 실패', err);
       },
     );
-  }
-
-  /**
-   * 정지 이미지 스텝 캡처 — point 가 속한 디스플레이 전체의 정지 PNG 를 image 스텝으로.
-   *   - 클릭의 이미지 내 픽셀 좌표 = (clickDip - displayOrigin) * scaleFactor.
-   *   - AX 요소 이름 조회(권한 있으면). 실패 시 라벨 없이 진행.
-   * 캡처 취소/빈 이미지면 null 반환(스텝 미기록).
-   */
-  private async captureImageStep(point: ClickPoint): Promise<RawStep | null> {
-    // point 는 top-left origin DIP(clickMonitor 가 flip 완료). 이 좌표가 속한
-    // 디스플레이를 찾아 그 전체를 캡처한다 — 다중 모니터 안전.
-    const display = screen.getDisplayNearestPoint({ x: point.x, y: point.y });
-    const b = display.bounds;
-
-    // AX 라벨은 캡처 *전에* 조회한다 — 캡처 후엔 화면이 바뀌었을 수 있음.
-    // 권한 없거나 실패 시 null → 라벨 없이 진행(정상 fallback).
-    const element = getElementBoundsAtPoint(point.x, point.y);
-    const label = element?.name;
-
-    const cap = await captureRegion({ x: b.x, y: b.y, w: b.width, h: b.height });
-    if (cap.kind !== 'success') {
-      // 사용자 취소(ESC) 등 — 스텝 미기록.
-      console.warn('[asis] stepGuide: 캡처가 성공하지 않음', cap.kind);
-      return null;
-    }
-
-    const image = nativeImage.createFromPath(cap.path);
-    if (image.isEmpty()) {
-      console.warn('[asis] stepGuide: 캡처 이미지가 비어 있음', cap.path);
-      return null;
-    }
-    const size = image.getSize();
-
-    // 클릭의 이미지 내 픽셀 좌표. screencapture 는 physical px 출력이므로 scaleFactor 적용.
-    const sf = display.scaleFactor || 1;
-    const clickX = Math.round((point.x - b.x) * sf);
-    const clickY = Math.round((point.y - b.y) * sf);
-
-    const order = this.steps.length + 1;
-    return {
-      order,
-      kind: 'image',
-      imagePath: cap.path,
-      imageDataUrl: image.toDataURL(),
-      width: size.width,
-      height: size.height,
-      clickX,
-      clickY,
-      timestamp: Date.now(),
-      label,
-    };
+    this.track(work);
   }
 
   /**
@@ -400,8 +393,15 @@ export class StepGuideManager {
       }
 
       const buf = await readFile(gifPath);
+      // readFile 을 기다리는 사이 정지·재시작됐을 수 있다 — 세대를 다시 확인한다.
+      if (session !== this.sessionId) {
+        cleanupTmpGifs([{ kind: 'gif', imagePath: gifPath }]);
+        return;
+      }
       if (buf.length === 0) {
         console.warn('[asis] stepGuide: GIF 파일이 비어 있음', gifPath);
+        // 스텝으로 쓰지 않으니 빈 tmp 파일도 여기서 치운다(누적 스텝에 안 들어가 정리 경로가 없음).
+        cleanupTmpGifs([{ kind: 'gif', imagePath: gifPath }]);
         return;
       }
       // GIF 는 nativeImage.toDataURL 이 첫 프레임만 담을 수 있어(애니메이션 소실),
@@ -412,9 +412,7 @@ export class StepGuideManager {
       const width = Math.round(rect.width * rect.scaleFactor);
       const height = Math.round(rect.height * rect.scaleFactor);
 
-      const order = this.steps.length + 1;
       this.steps.push({
-        order,
         kind: 'gif',
         imagePath: gifPath,
         imageDataUrl,
@@ -454,117 +452,4 @@ export class StepGuideManager {
       gifRecording,
     });
   }
-
-  /** 누적 스텝을 문서로 저장. */
-  private async exportGuide(
-    rawSteps: RawStep[],
-    format: 'markdown' | 'html',
-    callbacks: StepGuideCallbacks,
-  ): Promise<void> {
-    const guide = buildGuide(rawSteps);
-
-    const isMd = format === 'markdown';
-    const defaultName = isMd ? 'guide.md' : 'guide.html';
-    const filterName = isMd ? 'Markdown' : 'HTML';
-    const ext = isMd ? 'md' : 'html';
-
-    const result = await dialog.showSaveDialog({
-      title: tMain().stepGuide.saveDialogTitle,
-      // 문서 폴더를 기본 저장 위치로 — 임시 폴더(tmpdir)는 경로가 깊어 찾기 어렵다.
-      defaultPath: join(app.getPath('documents'), defaultName),
-      filters: [{ name: filterName, extensions: [ext] }],
-    });
-    if (result.canceled || !result.filePath) {
-      callbacks.onExported({ kind: 'canceled' });
-      return;
-    }
-    const outPath = result.filePath;
-
-    if (isMd) {
-      // Markdown 은 이미지를 상대 경로 참조 → 문서와 같은 폴더에 step-NN.png/gif 저장.
-      const outDir = dirname(outPath);
-      const fileNames = guide.steps.map((s) => stepImageFileName(s.order, s.kind));
-      // 파일들을 병렬로 쓴다. no-await-in-loop 룰 준수 위해 Promise.all.
-      // image → PNG 재인코딩 저장, gif → tmp GIF 파일을 그대로 복사(재인코딩 금지).
-      await Promise.all(
-        guide.steps.map((step, i) => {
-          const dest = join(outDir, fileNames[i]);
-          if (step.kind === 'gif') {
-            return copyFile(step.imagePath, dest);
-          }
-          return writeStepImage(dest, step.imageDataUrl);
-        }),
-      );
-      const md = toMarkdown(guide, fileNames);
-      await writeFile(outPath, md, 'utf8');
-    } else {
-      // HTML 은 data URL 임베드 → 단일 파일(gif 도 base64 dataURL 로 임베드됨).
-      const html = toHtml(guide);
-      await writeFile(outPath, html, 'utf8');
-    }
-
-    // export 성공 후 tmp GIF 파일 정리(image PNG 는 기존처럼 OS tmp 정리에 맡긴다).
-    // 저장이 끝난 뒤라 지워도 안전. 실패는 로그만(정리 실패가 export 성공을 무르지 않음).
-    await this.cleanupTmpGifs(guide.steps);
-
-    callbacks.onExported({ kind: 'saved', path: outPath });
-  }
-
-  /** export 후 gif 스텝의 tmp GIF 파일 삭제. no-await-in-loop → Promise.all. */
-  private async cleanupTmpGifs(steps: GuideStep[]): Promise<void> {
-    await Promise.all(
-      steps
-        .filter((s) => s.kind === 'gif')
-        .map((s) =>
-          unlink(s.imagePath).catch((err: unknown) => {
-            if (!isEnoent(err)) {
-              console.warn('[asis] stepGuide: tmp GIF 정리 실패', s.imagePath, err);
-            }
-          }),
-        ),
-    );
-  }
-}
-
-/** RawStep[] → export 용 Guide. 제목은 첫 스텝 시각 기준. */
-function buildGuide(rawSteps: RawStep[]): Guide {
-  const createdAt = Date.now();
-  const steps: GuideStep[] = rawSteps.map((r) => ({
-    order: r.order,
-    kind: r.kind,
-    imagePath: r.imagePath,
-    imageDataUrl: r.imageDataUrl,
-    width: r.width,
-    height: r.height,
-    clickX: r.clickX,
-    clickY: r.clickY,
-    timestamp: r.timestamp,
-    label: r.label,
-  }));
-  return {
-    title: tMain().stepGuideDoc.title(steps.length),
-    createdAt,
-    steps,
-  };
-}
-
-/** data URL(PNG)을 파일로 저장 — Markdown export 의 상대 이미지 쓰기(image 스텝). */
-async function writeStepImage(path: string, dataUrl: string): Promise<void> {
-  // nativeImage 로 재인코딩하면 손실 없이 PNG 버퍼를 얻는다(원본이 PNG data URL).
-  // gif 스텝은 이 경로를 쓰지 않는다 — nativeImage 는 애니메이션 GIF 를 보존하지 못하므로
-  // exportGuide 에서 copyFile 로 원본 GIF 를 그대로 복사한다.
-  const img = nativeImage.createFromDataURL(dataUrl);
-  if (img.isEmpty()) {
-    throw new Error(`가이드 이미지 저장 실패(빈 이미지): ${path}`);
-  }
-  await writeFile(path, img.toPNG());
-}
-
-/** ENOENT(파일 없음) 판별 — 이미 지워진 tmp 파일 정리 시 무시용. */
-function isEnoent(err: unknown): boolean {
-  return (
-    err instanceof Error &&
-    'code' in err &&
-    (err as NodeJS.ErrnoException).code === 'ENOENT'
-  );
 }

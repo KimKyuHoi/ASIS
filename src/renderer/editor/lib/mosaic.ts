@@ -1,12 +1,11 @@
 export function buildMosaicCanvas(
   img: HTMLImageElement,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  blockSize: number,
-  // Retina(2x) 등 물리 픽셀 vs 논리 픽셀 비율. img.naturalWidth / imageWidth.
-  pixelRatio = 1,
+  { x, y, w, h }: { x: number; y: number; w: number; h: number },
+  {
+    blockSize,
+    // Retina(2x) 등 물리 픽셀 vs 논리 픽셀 비율. img.naturalWidth / imageWidth.
+    pixelRatio = 1,
+  }: { blockSize: number; pixelRatio?: number },
 ): HTMLCanvasElement {
   const W = Math.max(1, Math.round(Math.abs(w)));
   const H = Math.max(1, Math.round(Math.abs(h)));

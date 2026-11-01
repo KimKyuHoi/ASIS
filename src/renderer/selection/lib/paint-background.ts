@@ -35,27 +35,32 @@ export async function paintBackground(
       const v = src[i];
       dst[i] = (v & 0xff00ff00) | ((v >>> 16) & 0xff) | ((v & 0xff) << 16);
     }
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('bgCanvas 2d context 획득 실패');
-    ctx.putImageData(new ImageData(rgba, width, height), 0, 0);
+    contextSizedTo(canvas, width, height).putImageData(new ImageData(rgba, width, height), 0, 0);
     return { w: width, h: height };
   }
 
   const res = await fetch(payload.dataUrl);
-  const blob = await res.blob();
-  const bmp = await createImageBitmap(blob);
-  const w = bmp.width;
-  const h = bmp.height;
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) {
+  const bmp = await createImageBitmap(await res.blob());
+  try {
+    contextSizedTo(canvas, bmp.width, bmp.height).drawImage(bmp, 0, 0);
+    return { w: bmp.width, h: bmp.height };
+  } finally {
     bmp.close();
-    throw new Error('bgCanvas 2d context 획득 실패');
   }
-  ctx.drawImage(bmp, 0, 0);
-  bmp.close();
-  return { w, h };
+}
+
+/**
+ * canvas 를 그릴 이미지 크기로 맞추고 2D 컨텍스트를 반환한다.
+ * 크기 변경은 기존 픽셀을 지우므로 그리기 직전에만 호출한다.
+ */
+function contextSizedTo(
+  canvas: HTMLCanvasElement,
+  width: number,
+  height: number,
+): CanvasRenderingContext2D {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('bgCanvas 2d context 획득 실패');
+  ctx.canvas.width = width;
+  ctx.canvas.height = height;
+  return ctx;
 }

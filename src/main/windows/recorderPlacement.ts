@@ -6,14 +6,35 @@ import type { Display } from 'electron';
  * 순수 함수 — lifecycle 없음. RecorderWindowManager / VideoRecorderWindowManager
  * 양쪽에서 재사용한다 (imperative-style.md: 의도 명확하면 모듈 함수 명령형 OK).
  *
- * 알약은 *녹화 영역과 겹치면 안 된다*. setContentProtection(true) 를 걸어 두긴
- * 했지만 macOS 에서 그건 NSWindowSharingNone 일 뿐이고, Electron 문서가 밝히듯
- * ScreenCaptureKit 기반 캡처(우리가 쓰는 screencapture 포함)는 그 보호를 무시하고
- * 창을 그대로 찍는다. 겹쳐 띄우면 결과물에 알약이 박힌다.
- * 출처: electronjs.org/docs/latest/api/browser-window (setContentProtection).
+ * 알약은 기본적으로 *녹화 영역 밖* 에 둔다. 캡처 방식마다 setContentProtection(true)
+ * (NSWindowSharingNone) 의 효과가 다르기 때문이다 — 이 Mac(macOS 26.3) 실측
+ * (record-region 세션, 공유 노트 recording-region-overlay.md):
+ *   - screencapture -R (GIF·스크롤 캡처) → 보호 창이 프레임에서 *빠진다* (0/240000px)
+ *   - ffmpeg avfoundation (화면 녹화)     → 보호 창이 그대로 *찍힌다* (240000/240000px)
+ * 그래서 영역 밖에 자리가 없을 때 screencapture 기반 녹화는 placeInsideBottom 으로 영역
+ * 안에 띄울 수 있지만, 화면 녹화는 그럴 수 없다.
  */
 
 export type Placement = { x: number; y: number; hidden: boolean };
+
+/** 영역 안쪽에 띄울 때 아래 가장자리와의 여백(pt). */
+const INNER_BOTTOM_MARGIN = 24;
+
+/**
+ * 영역 밖에 자리가 없을 때(전체화면·큰 창) 알약을 영역 *안* 하단 가운데에 둔다.
+ * screencapture 기반 녹화(GIF·스크롤, 그리고 전체화면 영상의 screencapture 엔진) 전용 —
+ * 보호 창이 프레임에서 빠지므로 결과에 안 찍힌다. ffmpeg avfoundation 에는 찍히므로 그 엔진에는 쓰지 않는다.
+ */
+export function placeInsideBottom(
+  rect: { x: number; y: number; w: number; h: number },
+  pill: { w: number; h: number },
+): Placement {
+  return {
+    x: Math.round(rect.x + (rect.w - pill.w) / 2),
+    y: Math.round(rect.y + rect.h - pill.h - INNER_BOTTOM_MARGIN),
+    hidden: false,
+  };
+}
 
 type Box = { x: number; y: number; w: number; h: number };
 
@@ -32,8 +53,7 @@ type Box = { x: number; y: number; w: number; h: number };
  */
 export function pickRecorderPlacement(
   rect: Box,
-  recW: number,
-  recH: number,
+  pill: { w: number; h: number },
   displays: Display[],
 ): Placement {
   if (displays.length === 0) {
@@ -42,8 +62,9 @@ export function pickRecorderPlacement(
   }
 
   const target = displayHolding(rect, displays);
+  const { w: recW, h: recH } = pill;
 
-  const onTarget = placeOnDisplay(rect, recW, recH, target);
+  const onTarget = placeOnDisplay(rect, pill, target);
   if (onTarget) return onTarget;
 
   for (const display of displays) {
@@ -52,9 +73,9 @@ export function pickRecorderPlacement(
     if (rectsIntersect(displayBox(display), rect)) continue;
     const bounds = display.bounds;
     return {
-      x: Math.round(bounds.x + (bounds.width - recW) / 2),
+      x: centerX(bounds, recW),
       // 하단에서 살짝 띄운다 — dock 과 겹쳐도 알약이 위(screen-saver level)라 보인다.
-      y: bounds.y + bounds.height - recH - 24,
+      y: bounds.y + bounds.height - recH - OTHER_DISPLAY_BOTTOM_GAP,
       hidden: false,
     };
   }
@@ -63,12 +84,14 @@ export function pickRecorderPlacement(
   return { x: target.bounds.x, y: target.bounds.y, hidden: true };
 }
 
-/** 녹화 영역과 가장 많이 겹치는 디스플레이 — 영역이 걸쳐 있어도 "주 화면"을 고른다. */
+/**
+ * 녹화 영역과 가장 많이 겹치는 디스플레이 — 영역이 걸쳐 있어도 "주 화면"을 고른다.
+ * 동점이면 앞쪽 디스플레이. displays 가 비어 있지 않음은 호출자가 보장한다.
+ */
 function displayHolding(rect: Box, displays: Display[]): Display {
   let best = displays[0];
-  if (!best) throw new Error('displayHolding — displays 가 비어 있다');
-  let bestArea = -1;
-  for (const display of displays) {
+  let bestArea = intersectionArea(displayBox(best), rect);
+  for (const display of displays.slice(1)) {
     const area = intersectionArea(displayBox(display), rect);
     if (area > bestArea) {
       bestArea = area;
@@ -78,45 +101,55 @@ function displayHolding(rect: Box, displays: Display[]): Display {
   return best;
 }
 
+/** rect 와 알약 사이 간격(px). */
+const RECT_GAP = 6;
+/** menubar·dock 영역에 붙일 때 화면 가장자리와의 간격(px). */
+const EDGE_GAP = 4;
+/** 다른 디스플레이로 피할 때 하단 가장자리와의 간격(px). */
+const OTHER_DISPLAY_BOTTOM_GAP = 24;
+
+/** 디스플레이 가로 중앙에 폭 w 를 놓는 x. */
+function centerX(bounds: { x: number; width: number }, w: number): number {
+  return Math.round(bounds.x + (bounds.width - w) / 2);
+}
+
+function isInside(inner: Box, outer: Box): boolean {
+  return inner.x >= outer.x &&
+    inner.x + inner.w <= outer.x + outer.w &&
+    inner.y >= outer.y &&
+    inner.y + inner.h <= outer.y + outer.h;
+}
+
 /** 한 디스플레이 안에서 rect 와 안 겹치는 자리 찾기. 없으면 null. */
 function placeOnDisplay(
   rect: Box,
-  recW: number,
-  recH: number,
+  pill: { w: number; h: number },
   display: Display,
 ): Placement | null {
   const bounds = display.bounds;
-  const margin = 6;
-  const centerX = Math.round(bounds.x + (bounds.width - recW) / 2);
+  const { w: recW, h: recH } = pill;
+  const midX = centerX(bounds, recW);
 
-  const candidates: Placement[] = [
+  // 우선순위 순 후보 좌표.
+  const candidates = [
     // menubar 영역 위쪽 (display.bounds.y ~ workArea.y).
-    { x: centerX, y: bounds.y + 4, hidden: false },
+    { x: midX, y: bounds.y + EDGE_GAP },
     // dock 아래 (workArea 끝 ~ display.bounds 끝).
-    { x: centerX, y: bounds.y + bounds.height - recH - 4, hidden: false },
-    // rect 위
-    { x: centerX, y: rect.y - recH - margin, hidden: false },
-    // rect 아래
-    { x: centerX, y: rect.y + rect.h + margin, hidden: false },
-    // rect 우측
-    { x: rect.x + rect.w + margin, y: rect.y, hidden: false },
-    // rect 좌측
-    { x: rect.x - recW - margin, y: rect.y, hidden: false },
+    { x: midX, y: bounds.y + bounds.height - recH - EDGE_GAP },
+    // rect 위·아래
+    { x: midX, y: rect.y - recH - RECT_GAP },
+    { x: midX, y: rect.y + rect.h + RECT_GAP },
+    // rect 우측·좌측
+    { x: rect.x + rect.w + RECT_GAP, y: rect.y },
+    { x: rect.x - recW - RECT_GAP, y: rect.y },
   ];
 
-  for (const c of candidates) {
-    const cBox = { x: c.x, y: c.y, w: recW, h: recH };
-    const inDisplay =
-      cBox.x >= bounds.x &&
-      cBox.x + cBox.w <= bounds.x + bounds.width &&
-      cBox.y >= bounds.y &&
-      cBox.y + cBox.h <= bounds.y + bounds.height;
-    if (!inDisplay) continue;
-    if (rectsIntersect(cBox, rect)) continue;
-    return c;
-  }
-
-  return null;
+  const displayRect = displayBox(display);
+  const fit = candidates.find(({ x, y }) => {
+    const box = { x, y, w: recW, h: recH };
+    return isInside(box, displayRect) && !rectsIntersect(box, rect);
+  });
+  return fit ? { ...fit, hidden: false } : null;
 }
 
 function displayBox(display: Display): Box {

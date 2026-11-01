@@ -8,6 +8,7 @@ export const patchHistoryStrings = defineDict({
     empty: '아직 게시된 릴리스가 없습니다.',
     viewOnGitHub: 'GitHub에서 보기 ↗',
     noContent: '(내용 없음)',
+    unpublished: '게시 전',
   },
   en: {
     loading: 'Loading changelog…',
@@ -15,5 +16,6 @@ export const patchHistoryStrings = defineDict({
     empty: 'No releases published yet.',
     viewOnGitHub: 'View on GitHub ↗',
     noContent: '(No content)',
+    unpublished: 'Not yet published',
   },
 });

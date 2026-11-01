@@ -15,6 +15,10 @@ export const historyStrings = defineDict({
     copy: '복사',
     pinTitle: '핀으로 띄우기',
     pin: '핀',
+    editTitle: '주석을 그대로 다시 편집',
+    edit: '편집',
+    editFailedTitle: '편집본을 열지 못했습니다',
+    editFailedHint: '오래된 항목은 편집본이 정리됩니다. 목록을 새로 고쳤습니다.',
   },
   en: {
     emptyText: 'No captures yet.',
@@ -25,5 +29,9 @@ export const historyStrings = defineDict({
     copy: 'Copy',
     pinTitle: 'Pin to Screen',
     pin: 'Pin',
+    editTitle: 'Reopen with editable annotations',
+    edit: 'Edit',
+    editFailedTitle: "Couldn't open the editable copy",
+    editFailedHint: 'Older items lose their editable copy. The list has been refreshed.',
   },
 });

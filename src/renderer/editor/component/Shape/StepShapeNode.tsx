@@ -27,9 +27,9 @@ export function StepShapeNode({
   const r = shape.fontSize * 0.8;
   // 자릿수에 따라 원 안에 맞도록 폰트 축소
   const digits = String(shape.num).length;
-  const numFontSize = digits >= 3
-    ? shape.fontSize * 0.58
-    : digits === 2 ? shape.fontSize * 0.78 : shape.fontSize;
+  let numFontSize = shape.fontSize;
+  if (digits >= 3) numFontSize = shape.fontSize * 0.58;
+  else if (digits === 2) numFontSize = shape.fontSize * 0.78;
   const textFill = getContrastColor(shape.fill);
   return (
     <Group

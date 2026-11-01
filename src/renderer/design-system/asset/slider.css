@@ -1,0 +1,61 @@
+.ds-slider {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.ds-slider__label {
+  color: var(--text-primary);
+}
+
+.ds-slider__input {
+  flex: 1;
+  min-width: 120px; /* token-ok: 슬라이더 최소 조작 폭 */
+  height: var(--slider-thumb-size);
+  background: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.ds-slider__input::-webkit-slider-runnable-track {
+  height: var(--slider-track-height);
+  border-radius: var(--radius-capsule);
+  background: linear-gradient(
+    to right,
+    var(--slider-fill) var(--ds-slider-progress),
+    var(--slider-track) var(--ds-slider-progress)
+  );
+}
+
+.ds-slider__input::-webkit-slider-thumb {
+  width: var(--slider-thumb-size);
+  height: var(--slider-thumb-size);
+  margin-top: calc((var(--slider-track-height) - var(--slider-thumb-size)) / 2);
+  border-radius: var(--radius-round);
+  background: var(--slider-thumb);
+  box-shadow: var(--slider-thumb-shadow);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* 포커스 링은 손잡이에 — 트랙 전체에 두르면 macOS 답지 않다. */
+.ds-slider__input:focus-visible {
+  outline: none;
+}
+
+.ds-slider__input:focus-visible::-webkit-slider-thumb {
+  box-shadow:
+    var(--slider-thumb-shadow),
+    0 0 0 var(--focus-ring-width) var(--focus-ring);
+}
+
+.ds-slider__input:disabled {
+  opacity: var(--opacity-disabled);
+}
+
+.ds-slider__value {
+  min-width: var(--space-8);
+  text-align: right;
+  color: var(--text-secondary);
+  font-size: var(--text-callout);
+}

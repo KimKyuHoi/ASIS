@@ -1,0 +1,71 @@
+.ds-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  height: var(--btn-height);
+  min-width: var(--size-hit-min);
+  padding: 0 var(--btn-padding-x);
+  border: none;
+  border-radius: var(--btn-radius);
+  background: var(--btn-bg);
+  box-shadow: var(--btn-shadow);
+  color: var(--btn-label);
+  font-size: var(--text-body);
+  font-weight: var(--weight-regular);
+  white-space: nowrap;
+  transition: background var(--duration-fast) var(--ease-mac);
+}
+
+.ds-button:active:not(:disabled) {
+  background: var(--btn-bg-pressed);
+}
+
+.ds-button:disabled {
+  opacity: var(--opacity-disabled);
+}
+
+.ds-button--large {
+  height: var(--btn-height-lg);
+  padding: 0 var(--space-4);
+}
+
+.ds-button--primary {
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-label);
+  font-weight: var(--weight-medium);
+}
+
+.ds-button--primary:active:not(:disabled) {
+  background: var(--btn-primary-bg-pressed);
+}
+
+.ds-button--destructive {
+  background: var(--btn-destructive-bg);
+  color: var(--btn-destructive-label);
+  font-weight: var(--weight-medium);
+}
+
+.ds-button--destructive:active:not(:disabled) {
+  background: color-mix(in srgb, var(--btn-destructive-bg) 85%, var(--p-black));
+}
+
+.ds-button--plain {
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-link);
+}
+
+.ds-button--plain:hover:not(:disabled) {
+  background: var(--btn-plain-bg-hover);
+}
+
+.ds-button__icon {
+  display: inline-flex;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-button {
+    transition: none;
+  }
+}

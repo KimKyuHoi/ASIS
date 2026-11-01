@@ -1,0 +1,57 @@
+/* Storybook 캔버스 전용 — 앱 코드에는 들어가지 않는다. 토큰만 쓴다. */
+html,
+body {
+  background: var(--surface-window);
+}
+
+.sb-root {
+  min-height: 100vh;
+  padding: var(--space-6);
+  background: var(--surface-window);
+  color: var(--text-primary);
+}
+
+.sb-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  min-height: 100vh;
+}
+
+.sb-split > .sb-root {
+  min-height: 0;
+}
+
+.sb-pane-label {
+  margin-bottom: var(--space-4);
+  font-size: var(--text-subhead);
+  font-weight: var(--weight-semibold);
+  color: var(--text-secondary);
+}
+
+.sb-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+
+.sb-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* HUD·캡처 프레임을 "아무 앱 위"처럼 보이게 하는 가짜 데스크톱 — 밝고 어두운 영역을 섞는다. */
+.sb-desktop {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  min-height: 220px;
+  padding: var(--space-8);
+  border-radius: var(--radius-group);
+  background: linear-gradient(115deg, #f4f6fa 0 38%, #8fa6c4 38% 62%, #22272f 62%);
+  overflow: hidden;
+}

@@ -1,0 +1,82 @@
+.ds-toast {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 240px; /* token-ok: 한 줄 메시지 최소 폭 */
+  max-width: 360px; /* token-ok: 읽기 폭 */
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
+  border-radius: var(--toast-radius);
+  background: var(--toast-bg);
+  box-shadow:
+    var(--toast-shadow),
+    inset 0 0 0 var(--border-hairline) var(--hud-border);
+  color: var(--toast-label);
+  color-scheme: dark;
+  animation: ds-toast-in var(--duration-slow) var(--ease-mac);
+}
+
+.ds-toast__icon {
+  display: inline-flex;
+  flex: none;
+}
+
+.ds-toast--success .ds-toast__icon {
+  color: var(--p-darkaqua-green);
+}
+
+.ds-toast--danger .ds-toast__icon {
+  color: var(--p-darkaqua-red);
+}
+
+.ds-toast__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.ds-toast__title {
+  font-size: var(--text-body);
+  font-weight: var(--weight-semibold);
+}
+
+.ds-toast__description {
+  margin-top: var(--space-half);
+  font-size: var(--text-callout);
+  color: var(--toast-label-secondary);
+}
+
+.ds-toast__dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--size-hit-min);
+  height: var(--size-hit-min);
+  border: none;
+  border-radius: var(--radius-round);
+  background: transparent;
+  color: var(--toast-label-secondary);
+}
+
+.ds-toast__dismiss:hover {
+  background: var(--hud-fill-hover);
+  color: var(--toast-label);
+}
+
+.ds-toast__dismiss path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+
+@keyframes ds-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--space-2)) scale(0.98);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-toast {
+    animation: none;
+  }
+}

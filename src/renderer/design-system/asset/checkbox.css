@@ -1,0 +1,52 @@
+.ds-checkbox {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.ds-checkbox__input {
+  flex: none;
+  width: var(--checkbox-size);
+  height: var(--checkbox-size);
+  margin-top: var(--space-half);
+  border-radius: var(--checkbox-radius);
+  background: var(--checkbox-bg) center / 10px no-repeat;
+  box-shadow:
+    inset 0 0 0 var(--border-thin) var(--checkbox-border),
+    var(--shadow-raised);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.ds-checkbox__input:checked {
+  background-color: var(--checkbox-bg-checked);
+  box-shadow: none;
+}
+
+/* 체크 표시 — 글자색(--checkbox-mark)을 따르도록 mask 로 그린다. */
+.ds-checkbox__input:checked::after {
+  content: '';
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--checkbox-mark);
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M3.5 7.2l2.3 2.3 4.7-5' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+
+.ds-checkbox__input:disabled,
+.ds-checkbox__input:disabled + .ds-checkbox__text {
+  opacity: var(--opacity-disabled);
+}
+
+.ds-checkbox__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-half);
+  color: var(--text-primary);
+}
+
+.ds-checkbox__hint {
+  font-size: var(--text-subhead);
+  color: var(--text-secondary);
+}

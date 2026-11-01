@@ -53,7 +53,14 @@ export async function addImageFromSource(
     ? source
     : await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = (): void => resolve(String(reader.result));
+      reader.onload = (): void => {
+        // readAsDataURL 의 result 는 string — 그 외(ArrayBuffer/null)는 API 계약 위반.
+        if (typeof reader.result !== 'string') {
+          reject(new Error('FileReader: data URL 이 아닌 결과'));
+          return;
+        }
+        resolve(reader.result);
+      };
       reader.onerror = (): void => reject(new Error('FileReader 실패'));
       reader.readAsDataURL(source);
     });

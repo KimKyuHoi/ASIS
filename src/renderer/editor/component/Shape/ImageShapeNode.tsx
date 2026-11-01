@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react';
-import type { JSX } from 'react';
+import { useEffect, useState, type JSX } from 'react';
 import { Image as KImage } from 'react-konva';
 import type Konva from 'konva';
 import type { ImageShape } from '../../types/shapes';

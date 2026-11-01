@@ -118,7 +118,7 @@ export function setupAutoUpdater(prepareQuitForUpdate: () => void): void {
           }, QUIT_FALLBACK_MS);
         }
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         // 다이얼로그 표시/응답 실패 — 다음 실행 시 재시도되므로 치명적이지 않다.
         log.warn('[updater] 업데이트 다이얼로그 실패', err);
       });
@@ -130,7 +130,7 @@ export function setupAutoUpdater(prepareQuitForUpdate: () => void): void {
 }
 
 export function checkForUpdates(): void {
-  autoUpdater.checkForUpdates().catch((err) => {
+  autoUpdater.checkForUpdates().catch((err: unknown) => {
     log.warn('[updater] update check failed', err);
   });
 }

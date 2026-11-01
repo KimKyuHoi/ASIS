@@ -24,7 +24,6 @@ export function useStepGuideState(): StepGuideHudState {
 
   useEffect(() => {
     const api = window.stepGuide;
-    if (!api) throw new Error('window.stepGuide 미노출 — preload 셋업 확인.');
     // IPC 구독 — teardown 에서 해제 (Strict Mode 이중 마운트 시 중복 등록 방지).
     const off = api.onState((next) => setState(next));
     return off;

@@ -1,0 +1,40 @@
+.ds-titlebar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--titlebar-height);
+  padding: 0 var(--space-4) 0 var(--titlebar-inset-start);
+  border-bottom: var(--border-hairline) solid var(--border-subtle);
+  background: var(--surface-window);
+  -webkit-app-region: drag;
+}
+
+.ds-titlebar__title {
+  font-size: var(--text-title3);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+
+.ds-titlebar__subtitle {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--text-callout);
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ds-titlebar__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.ds-titlebar button,
+.ds-titlebar input,
+.ds-titlebar select,
+.ds-titlebar a,
+.ds-titlebar [role='toolbar'] {
+  -webkit-app-region: no-drag;
+}

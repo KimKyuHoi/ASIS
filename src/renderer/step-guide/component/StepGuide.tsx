@@ -1,76 +1,74 @@
 import type { JSX } from 'react';
 import { useLanguage } from '../../../shared/i18n/use-language';
+import { HudButton, HudPill, RecDot } from '../../design-system/component';
+import { useElapsedSeconds } from '../hook/useElapsedSeconds';
 import { useStepGuideState } from '../hook/useStepGuideState';
 import { stepGuideStrings } from '../lib/strings';
+import '../../design-system/asset/recording-hud.css';
+import '../asset/styles.css';
+
+/** 경과 초 → mm:ss (RecordingHud 와 같은 표기). */
+function formatElapsed(seconds: number): string {
+  const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+  const s = (seconds % 60).toString().padStart(2, '0');
+  return `${m}:${s}`;
+}
 
 /**
- * 스텝 가이드 녹화 컨트롤 — 작은 floating bar (video-recorder HUD 결).
+ * 스텝 가이드 녹화 알약 — GIF·화면 녹화·스크롤 캡처와 같은 녹화 알약 모양.
  *
- * 수동 이미지/GIF 모드:
- *   - 이미지 모드(기본): 전역 클릭마다 그 순간 정지 캡처 → 이미지 스텝.
- *   - [GIF 시작] → 그때부터 [GIF 정지]까지 전체를 하나의 연속 GIF 로 녹화 → GIF 스텝.
- *     GIF 녹화 중이면 버튼이 [GIF 정지]로 바뀌고 "● GIF 녹화 중" 표시가 뜬다.
- *   - "MD 저장" / "HTML 저장" — 각각 그 형식으로 종료·export.
+ * design-system RecordingHud 는 [취소]·[정지] 두 버튼만 받으므로, 스텝 가이드의 [GIF]
+ * 버튼을 함께 넣으려고 같은 부품(HudPill·HudButton·RecDot)과 같은 클래스(ds-recording-hud*)로
+ * 조립했다 — 모양·간격·드래그 영역이 다른 녹화 알약과 같다.
  *
- * 동작은 전부 main 이 소유한다(전역 클릭 탭·캡처·GIF 인코딩·export). 이 창은 상태
- * 표시 + 명령(GIF 시작/정지, 종료 형식 선택)만 담당한다. 종료 후 main 이 이 창을 닫는다.
+ *   REC · mm:ss · N단계(GIF 녹화 중이면 표시) · [GIF] [취소] [정지]
+ *   - [GIF] → 그때부터 [GIF 정지]까지를 움직이는 한 단계로 녹화.
+ *   - [취소]·ESC → 기록한 단계·임시 파일을 버린다(편집 창 없음).
+ *   - [정지] → 녹화를 끝내고 편집 창을 연다.
  *
- * react-compiler.md — useMemo/useCallback 미사용. 인라인 핸들러 그대로.
+ * 동작은 전부 main 이 소유한다(전역 클릭 탭·캡처·GIF 인코딩·편집 창). 이 창은 표시와 명령만.
+ * 알약 클릭은 단계로 기록되지 않는다 — 클릭 감지(NSEvent 전역 모니터)는 다른 앱 이벤트만 받는다.
  */
 export default function StepGuide(): JSX.Element {
   const t = stepGuideStrings[useLanguage()];
   const { stepCount, gifRecording } = useStepGuideState();
-
-  const api = (): NonNullable<typeof window.stepGuide> => {
-    const a = window.stepGuide;
-    if (!a) throw new Error('window.stepGuide 미노출 — preload 셋업 확인.');
-    return a;
-  };
-
-  const stop = (format: 'markdown' | 'html'): void => {
-    api().stop(format);
-  };
+  const seconds = useElapsedSeconds();
 
   const toggleGif = (): void => {
-    if (gifRecording) api().stopGif();
-    else api().startGif();
+    if (gifRecording) window.stepGuide.stopGif();
+    else window.stepGuide.startGif();
   };
 
   return (
-    <div className="sg">
-      <div className="sg__indicator" aria-hidden="true">
-        <span className="sg__dot" />
-        REC
-      </div>
-      {gifRecording ? (
-        <div className="sg__gifstatus">{t.gifStatus}</div>
-      ) : (
-        <div className="sg__count">{t.stepCount(stepCount)}</div>
-      )}
-      <button
-        type="button"
-        className={`sg__btn${gifRecording ? ' sg__btn--rec' : ''}`}
-        onClick={toggleGif}
-        title={gifRecording ? t.gifStopTitle : t.gifStartTitle}
-      >
-        {gifRecording ? t.gifStop : t.gifStart}
-      </button>
-      <button
-        type="button"
-        className="sg__btn"
-        onClick={(): void => stop('markdown')}
-        title={t.saveMdTitle}
-      >
-        {t.saveMd}
-      </button>
-      <button
-        type="button"
-        className="sg__btn sg__btn--primary"
-        onClick={(): void => stop('html')}
-        title={t.saveHtmlTitle}
-      >
-        {t.saveHtml}
-      </button>
-    </div>
+    <HudPill label={t.hudLabel} className="ds-recording-hud sg">
+      <span className="ds-recording-hud__badge">
+        <RecDot />
+        {t.rec}
+      </span>
+      <span className="ds-recording-hud__time tabular">{formatElapsed(seconds)}</span>
+      <span className="ds-recording-hud__detail tabular" title={t.howTo}>
+        {gifRecording ? t.stepCountGif(stepCount) : t.stepCount(stepCount)}
+      </span>
+      <span className="ds-recording-hud__actions">
+        <HudButton
+          variant={gifRecording ? 'stop' : 'default'}
+          title={gifRecording ? t.gifStopTitle : t.gifStartTitle}
+          onClick={toggleGif}
+        >
+          {gifRecording ? t.gifStop : t.gifStart}
+        </HudButton>
+        <HudButton title={t.cancelTitle} onClick={(): void => window.stepGuide.cancel()}>
+          {t.cancel}
+        </HudButton>
+        <HudButton
+          variant="stop"
+          title={t.stopTitle}
+          // preload 의 stop(format) 은 예전 MD/HTML 선택 시그니처 — main 은 인자를 무시한다.
+          onClick={(): void => window.stepGuide.stop('html')}
+        >
+          {t.stop}
+        </HudButton>
+      </span>
+    </HudPill>
   );
 }

@@ -52,3 +52,16 @@ export type RulerAction =
 export type OverlayMode =
   | 'capture' |
   'ruler';
+
+/** main 이 보낸 visible 윈도우 — 오버레이 로컬 좌표. */
+export type SnapWindow = {
+  id: number;
+  name: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+};
+
+/** 커서 아래 AX 요소 — 오버레이 로컬 좌표. name 은 AX 라벨이 없으면 생략된다. */
+export type HoverElement = { x: number; y: number; w: number; h: number; name?: string };

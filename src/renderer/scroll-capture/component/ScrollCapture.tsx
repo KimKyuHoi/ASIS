@@ -1,117 +1,73 @@
-import { useEffect, useState } from 'react';
-import type { JSX } from 'react';
+import { useState, type JSX } from 'react';
+import { RecordingHud } from '../../design-system/component';
 import { useLanguage } from '../../../shared/i18n/use-language';
-import { formatDuration } from '../lib/format-time';
+import { useScrollCaptureSession } from '../hook/useScrollCaptureSession';
+import { DirectionPicker } from './DirectionPicker';
 import { scrollCaptureStrings } from '../lib/strings';
 
-type Phase = 'capturing' | 'stitching';
+type Mode = 'auto' | 'manual';
+
+/** main 이 쿼리스트링으로 넘긴 캡처 모드 — 창 수명 동안 고정이라 모듈 스코프에서 한 번 읽는다. */
+function readMode(): Mode {
+  const mode = new URLSearchParams(window.location.search).get('mode');
+  if (mode !== 'auto' && mode !== 'manual') {
+    throw new Error(`scroll-capture: 알 수 없는 mode 쿼리 (${String(mode)})`);
+  }
+  return mode;
+}
+const MODE = readMode();
 
 /**
- * 스크롤 캡처 컨트롤 윈도우 — 작은 floating bar(알약).
+ * 스크롤 캡처 컨트롤 윈도우 — GIF·화면 녹화와 같은 녹화 알약(design-system RecordingHud).
  *
  * 상태
- *   - capturing: REC 점멸 + mm:ss + 캡처된 프레임 수 + "천천히 스크롤" 안내 +
- *     정지/취소 버튼. 사용자가 대상 영역을 아래로 스크롤하는 동안 main 이 주기적으로
- *     프레임을 찍는다.
+ *   - choose(auto 만): 화살표(↑/↓) 로 자동 스크롤 방향을 고른다. 고르기 전에도 캡처는 돌고 있어
+ *     직접 스크롤해도 된다.
+ *   - capturing: REC + mm:ss + "N장 · 높이 Hpx"(끊긴 구간이 생기면 경고) + 정지/취소.
+ *     auto(손쉬운 사용 권한 있음) 는 main 이 끝까지 스크롤하고, manual 은 사용자가 스크롤하는
+ *     만큼 찍는다. 툴팁에 모드별 사용법과 정지 방법.
  *   - stitching: 정지 후 프레임들을 세로로 이어붙이는 동안(스피너). 끝나면 main 이
  *     저장 다이얼로그를 처리하고 윈도우를 닫는다.
- *
- * GIF recorder 처럼 getFrameCount polling 을 쓰되, 결과물은 GIF 가 아니라
- * 한 장의 긴 PNG 다.
  */
 export default function ScrollCapture(): JSX.Element {
   const t = scrollCaptureStrings[useLanguage()];
-  const [phase, setPhase] = useState<Phase>('capturing');
-  const [seconds, setSeconds] = useState(0);
-  const [frames, setFrames] = useState(0);
+  const { phase, seconds, progress, stop, cancel } = useScrollCaptureSession();
+  const stitching = phase === 'stitching';
+  const howTo = MODE === 'auto' ? t.howToAuto : t.howTo;
+  // auto 는 방향을 고를 때까지 선택 알약을 보인다(창 수명 동안 한 번).
+  const [chosen, setChosen] = useState(MODE !== 'auto');
 
-  // 경과 초 + 프레임 수 polling — capturing 단계에서만.
-  useEffect(() => {
-    if (phase !== 'capturing') return undefined;
-    const start = Date.now();
-    const tick = setInterval(() => {
-      setSeconds(Math.floor((Date.now() - start) / 1000));
-      window.scrollCapture.getFrameCount().then((n) => setFrames(n));
-    }, 250);
-    return () => clearInterval(tick);
-  }, [phase]);
-
-  // main → renderer: 스티칭 시작 알림 + 외부 trigger(글로벌 단축키/트레이).
-  useEffect(() => {
-    const api = window.scrollCapture;
-    if (!api) throw new Error('window.scrollCapture 미노출 — preload 셋업 확인.');
-    // IPC 구독 — teardown 에서 모두 해제(Strict Mode 이중 마운트 시 중복 등록 방지).
-    const offStitching = api.onStitching(() => setPhase('stitching'));
-    const offTriggerStop = api.onTriggerStop(() => {
-      setPhase('stitching');
-      api.stop();
-    });
-    const offTriggerCancel = api.onTriggerCancel(() => api.cancel());
-    return () => {
-      offStitching();
-      offTriggerStop();
-      offTriggerCancel();
-    };
-  }, []);
-
-  // 키보드: ESC = 취소, Enter = 정지. stitching 중에는 무시.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (phase !== 'capturing') return;
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        window.scrollCapture.cancel();
-      } else if (e.key === 'Enter') {
-        e.preventDefault();
-        setPhase('stitching');
-        window.scrollCapture.stop();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [phase]);
-
-  if (phase === 'stitching') {
+  if (!chosen && !stitching) {
     return (
-      <div className="scroll-capture">
-        <span className="scroll-capture__spinner" aria-hidden="true" />
-        <div className="scroll-capture__time">
-          {t.stitching}
-          <span className="scroll-capture__sub">{t.stitchingCount(frames)}</span>
-        </div>
-      </div>
+      <DirectionPicker
+        label={t.hudLabelAuto}
+        prompt={t.choosePrompt}
+        up={{ label: t.up, title: t.upTitle }}
+        down={{ label: t.down, title: t.downTitle }}
+        cancel={{ label: t.cancel, title: t.cancelTitle, onClick: cancel }}
+        stop={{ label: t.stop, title: t.stopTitle, onClick: stop }}
+        onChoose={(direction): void => {
+          setChosen(true);
+          window.scrollCapture.chooseDirection(direction);
+        }}
+      />
     );
   }
+  const capturingDetail =
+    progress.gaps > 0
+      ? t.progressWithGaps(progress.frames, progress.height, progress.gaps)
+      : t.progress(progress.frames, progress.height);
 
   return (
-    <div className="scroll-capture">
-      <div className="scroll-capture__indicator" aria-hidden="true">
-        <span className="scroll-capture__dot" />
-        REC
-      </div>
-      <div className="scroll-capture__time">
-        {formatDuration(seconds)}
-        <span className="scroll-capture__sub">{t.capturingCount(frames)}</span>
-      </div>
-      <button
-        type="button"
-        className="scroll-capture__btn scroll-capture__btn--cancel"
-        onClick={(): void => window.scrollCapture.cancel()}
-        title={t.cancelTitle}
-      >
-        {t.cancel}
-      </button>
-      <button
-        type="button"
-        className="scroll-capture__btn scroll-capture__btn--stop"
-        onClick={(): void => {
-          setPhase('stitching');
-          window.scrollCapture.stop();
-        }}
-        title={t.stopTitle}
-      >
-        {t.stop}
-      </button>
-    </div>
+    <RecordingHud
+      label={MODE === 'auto' ? t.hudLabelAuto : t.hudLabel}
+      badge={t.rec}
+      seconds={seconds}
+      detail={stitching ? t.stitchingCount(progress.frames) : capturingDetail}
+      detailTitle={stitching ? undefined : howTo}
+      busyMessage={stitching ? t.stitching : undefined}
+      cancel={{ label: t.cancel, title: t.cancelTitle, onClick: cancel }}
+      stop={{ label: t.stop, title: t.stopTitle, onClick: stop }}
+    />
   );
 }

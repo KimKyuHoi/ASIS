@@ -1,0 +1,72 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Guides/Migration" />
+
+# 도메인 마이그레이션 가이드
+
+도메인 CSS 는 아직 각자 `:root` 를 정의하고 날값을 쓴다. 옮기는 순서는 다음과 같다.
+
+1. 도메인 `styles.css` 맨 위에 `@import '../../design-system/asset/base.css';` 를 넣는다. 도메인의 `:root { … }` 블록과 `* { box-sizing … }` 리셋은 지운다.
+2. 아래 변수 표대로 이름을 바꾼다.
+3. 반복되는 버튼·셀렉트·토글 마크업은 React 컴포넌트로 바꾼다.
+4. 남은 날값은 `token-audit` 으로 찾아 토큰으로 바꾼다.
+5. 화면을 라이트·다크·대비 증가에서 모두 확인한다.
+
+## 변수 이름 바꾸기
+
+<table>
+  <thead><tr><th>기존 (도메인별)</th><th>바꿀 토큰</th></tr></thead>
+  <tbody>
+    <tr><td>`--font-system`, `--sans`</td><td>`--font-ui`</td></tr>
+    <tr><td>`--mono`, `--font-mono` (스택 3종)</td><td>`--font-mono`</td></tr>
+    <tr><td>`--bg`, `--panel`, `#1e1e1e`, `#2a2a2a` 류</td><td>`--surface-window` / `--surface-under-page` / `--surface-group`</td></tr>
+    <tr><td>`--text`, `#fff`, `rgba(255,255,255,.85)`</td><td>`--text-primary`</td></tr>
+    <tr><td>`--muted`, `--text-dim`, `#999`, `#888`</td><td>`--text-secondary` (힌트) / `--text-tertiary` (메타·플레이스홀더)</td></tr>
+    <tr><td>`--border`, `rgba(255,255,255,.1)`</td><td>`--border-subtle` (구분선) / `--border-control` (입력칸)</td></tr>
+    <tr><td>빨강 3종 (`#ff3b30`, `#ff453a`, `#ff4245` …)</td><td>면·점: `--danger` · 흰 글자 얹는 면: `--danger-fill` · 글자: `--text-danger` · 녹화: `--frame-recording`</td></tr>
+    <tr><td>파랑 강조 (`#0a84ff`, `#007aff`)</td><td>`--accent` (이제 ASIS 오렌지) / 면 `--accent-fill` / 글자 `--text-link`</td></tr>
+    <tr><td>HUD 배경 `rgba(30,30,30,.88)` 류</td><td>`--hud-bg`, `--hud-label`, `--hud-fill` …</td></tr>
+    <tr><td>`transition: … 0.15s ease`</td><td>`var(--duration-mid) var(--ease-mac)`</td></tr>
+    <tr><td>`z-index: 9999`</td><td>`--z-overlay` / `--z-toast` / `--z-tooltip`</td></tr>
+  </tbody>
+</table>
+
+## 클래스 → 컴포넌트
+
+<table>
+  <thead><tr><th>레거시 클래스 (base.css, `@deprecated`)</th><th>컴포넌트</th></tr></thead>
+  <tbody>
+    <tr><td>`.mac-btn`, `.mac-btn--primary`, `.mac-btn--destructive`</td><td>`<Button variant="secondary" | "primary" | "destructive">`</td></tr>
+    <tr><td>`.mac-select`</td><td>`<Select options value onChange>`</td></tr>
+    <tr><td>`.mac-group`, `.mac-group__title`, `.mac-row`, `.mac-row__label`, `.mac-row__hint`</td><td>`<Group title>` + `<Row label hint htmlFor>`</td></tr>
+    <tr><td>`.mac-titlebar`</td><td>`<Titlebar title subtitle actions>`</td></tr>
+    <tr><td>`.hud-pill`, `.hud-btn`, `.hud-btn--stop`, `.rec-dot`</td><td>`<HudPill label>`, `<HudButton variant="stop">`, `<RecDot />`</td></tr>
+    <tr><td>설정 화면의 대문자 섹션 제목</td><td>`<Group title>` (문장형)</td></tr>
+    <tr><td>`input[type=checkbox]` 스위치 흉내</td><td>`<Toggle>` (role=switch)</td></tr>
+    <tr><td>단축키 문자열 표시</td><td>`<KeyCap shortcut="CommandOrControl+Shift+4">`</td></tr>
+    <tr><td>녹화 알약 (REC · 시간 · 취소 · 정지 · 처리 중 스피너)</td><td>`<RecordingHud label badge seconds detail busyMessage cancel stop>`</td></tr>
+    <tr><td>선택·감지·측정 윤곽</td><td>`<CaptureFrame tone="neutral" | "accent" | "recording" | "measure">`</td></tr>
+    <tr><td>체크박스만 있는 설정 행</td><td>`<Row><Checkbox label /></Row>` (label 생략)</td></tr>
+  </tbody>
+</table>
+
+레거시 클래스는 이제 컴포넌트 토큰을 참조한다. 그래서 gif-studio·pin·step-guide 는 고치지 않아도 오렌지 강조색과 AA 보정이 적용된다.
+화면에서 달라지는 점은 두 가지다. 기본 버튼이 파랑에서 브랜드 오렌지(#FF6F0F, 흰 글자 — AA 의도적 미적용)로 바뀌고, HUD 정지 버튼이 조금 어두운 빨강이 된다(흰 글자 4.6:1).
+모든 도메인이 컴포넌트로 옮겨 가면 base.css 의 레거시 블록을 지운다.
+
+## 권장 순서 (작은 것 → 큰 것, 겹치는 것 먼저)
+
+1. **pin, step-guide, gif-studio** — 이미 base.css 를 쓴다. 남은 날값만 감사로 정리한다.
+2. **countdown, patch-history, onboarding** — 작고 독립적이다. 첫 실행 화면이라 라이트·다크 효과가 바로 보인다.
+3. **settings** — `Group`/`Row`/`Toggle`/`Select`/`KeyCap` 을 가장 많이 쓰는 곳이다. 대문자 섹션 제목도 여기서 없앤다.
+4. **history** — `EmptyState`, `Badge`, `Toolbar`.
+5. **recorder + video-recorder** — 거의 중복이라 HUD 컴포넌트로 하나로 합친다. 항상 다크.
+6. **scroll-capture** — HUD 와 캡처 프레임.
+7. **selection** — 캡처 오버레이. `CaptureFrame` 과 `--frame-*` 를 쓰고, 성능에 민감하니 마지막에 한다.
+8. **editor** — 가장 크다. Konva 캔버스 안의 주석 색(사용자가 고르는 색)은 토큰 대상이 아니다. 툴바·패널만 옮긴다.
+
+## 진행 상황 (2026-11-01)
+
+- 완료 — countdown, patch-history, onboarding, settings, history, recorder, video-recorder, selection(화면 자 포함). 토큰 감사 error 0.
+- 이미 적용 — pin, step-guide, gif-studio, scroll-capture (각 세션 소유, 남은 날값은 감사 목록 참고).
+- 남음 — editor (capture-bugs 세션).

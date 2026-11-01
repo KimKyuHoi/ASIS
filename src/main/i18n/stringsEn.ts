@@ -1,0 +1,208 @@
+import type { RunningFeature } from '../../shared/running-features';
+import type { HotkeyKey } from '../shortcuts';
+import type { MainStrings } from './stringsKo';
+
+/** main process UI 문자열 — 영어. MainStrings 로 타입을 고정해 ko 와 키·시그니처가 어긋나면 여기서 에러가 난다. */
+export const en: MainStrings = {
+  tray: {
+    tooltip: 'ASIS — Capture & Annotate',
+    fullscreen: 'Capture Full Screen',
+    window: 'Capture Window',
+    region: 'Capture Area',
+    delayedFullscreen: 'Delayed Full Screen Capture (3s)',
+    delayedRegion: 'Delayed Area Capture (3s)',
+    ruler: 'Screen Ruler / Measure…',
+    scrollCapture: 'Scrolling Capture…',
+    video: 'Record Screen…',
+    gif: 'Record GIF…',
+    stepGuide: 'Record Step Guide…',
+    recordingStatus: (feature: string) => `● ${feature} in progress`,
+    videoStop: 'Stop Screen Recording',
+    gifStop: 'Stop GIF Recording',
+    gifStudio: 'GIF Studio…',
+    imageStudio: 'Image Studio…',
+    stepGuideStop: 'Stop Step Guide Recording',
+    scrollCaptureStop: 'Stop Scrolling Capture',
+    recordingNames: {
+      gif: 'GIF recording',
+      video: 'Screen recording',
+      stepGuide: 'Step Guide recording',
+      scrollCapture: 'Scrolling capture',
+    } satisfies Record<RunningFeature, string>,
+    clipboardPin: 'Pin Clipboard Image',
+    disableClickThrough: 'Disable Click-Through on All Pins',
+    disableClickThroughCount: (count: number) => `Disable Click-Through on ${count} Locked Pin(s)`,
+    closeAllPins: 'Close All Pins',
+    history: 'Capture History',
+    restoreHidden: (count: number) => `Show Hidden Windows (${count})`,
+    restoreHiddenNone: 'No Hidden Windows',
+    patchHistory: 'Release Notes…',
+    settings: 'Settings…',
+    permissions: 'Permissions…',
+    quit: 'Quit',
+  },
+  menu: {
+    view: 'View',
+  },
+  windows: {
+    settingsTitle: 'ASIS Settings',
+    onboardingTitle: 'ASIS',
+    historyTitle: 'Capture History',
+    patchHistoryTitle: 'Release Notes',
+    editorTitle: 'ASIS — Annotate',
+    editorSavedTitle: 'ASIS — Saved',
+  },
+  notify: {
+    errorTitle: 'ASIS — Error',
+    unknownError: 'Something went wrong. See the log for details.',
+  },
+  app: {
+    startFailedTitle: 'ASIS Failed to Start',
+    updateComplete: (version: string) => `Updated to ASIS ${version}!`,
+  },
+  shortcuts: {
+    names: {
+      region: 'Area Capture',
+      fullscreen: 'Full Screen Capture',
+      window: 'Window Capture',
+      delayedFullscreen: 'Delayed Full Screen Capture',
+      delayedRegion: 'Delayed Area Capture',
+      disableClickThrough: 'Disable Pin Click-through',
+      gif: 'GIF Recording',
+      video: 'Screen Recording',
+      clipboardPin: 'Clipboard to Pin',
+      ruler: 'Screen Ruler',
+      stepGuide: 'Step Guide Recording',
+      scrollCapture: 'Scrolling Capture',
+      closeAllPins: 'Close All Pins',
+      history: 'Capture History',
+      openSettings: 'Settings',
+      gifStudio: 'GIF Studio',
+    } satisfies Record<HotkeyKey, string>,
+    invalidRepaired: (name: string) =>
+      `${name} — the saved shortcut was corrupted and has been cleared. Set it again in Settings.`,
+    taken: (name: string, accelerator: string) =>
+      `${name} (${accelerator}) — another app already uses this shortcut, so it was not registered.`,
+    someFailed: (lines: string[]) => `Some shortcuts could not be registered.\n${lines.join('\n')}`,
+    startFailed: (message: string) =>
+      `Shortcut registration failed: ${message}\nYou can keep using ASIS from the menu bar.`,
+  },
+  capture: {
+    labelFullscreen: 'Full Screen Capture',
+    labelWindow: 'Window Capture',
+    labelRegion: 'Area Capture',
+    saveFolderDialogTitle: 'Choose Save Folder',
+    imageReadFailed: (label: string) => `${label} — couldn't read the captured image`,
+    copiedToClipboard: (label: string) => `${label} — copied to clipboard`,
+    editorFailed: (label: string, message: string) => `${label} editor failed: ${message}`,
+    failed: (label: string, message: string) => `${label} failed: ${message}`,
+    regionSelectFailed: (message: string) => `Area selection failed: ${message}`,
+  },
+  pin: {
+    empty: 'No image in the clipboard',
+    disableClickThrough: (count: number) => `Click-through disabled on ${count} pin(s)`,
+    closed: (count: number) => `Closed ${count} pin(s)`,
+  },
+  recording: {
+    busy: (names: string) => `${names} is in progress — stop it first, then try again`,
+    selecting: 'An area is being selected — finish or press Esc to cancel, then try again',
+  },
+  gif: {
+    encoding: 'Encoding GIF…',
+    recording: 'Recording GIF — press the shortcut to stop',
+    saved: (path: string) => `GIF saved — ${path}`,
+    copied: 'GIF recording — copied to clipboard',
+    encodeFailed: (message: string) => `GIF encoding failed: ${message}`,
+    recordFailed: (message: string) => `GIF recording failed: ${message}`,
+    startFailed: (message: string) => `Couldn't start GIF recording: ${message}`,
+  },
+  gifStudio: {
+    openFailed: (message: string) => `Couldn't open GIF Studio: ${message}`,
+  },
+  editorQueue: {
+    waiting: (count: number) =>
+      `Another image is being edited — this will open when you finish (${count} waiting)`,
+  },
+  editorProject: {
+    label: 'Editable copy',
+    openFailed: (message: string) => `Couldn't open the editable copy: ${message}`,
+  },
+  imageStudio: {
+    label: 'Image Studio',
+    openDialogTitle: 'Choose an image for Image Studio',
+    fileTypeName: 'Images',
+    openFailed: (message: string) => `Couldn't open the image: ${message}`,
+    readFailed: "Couldn't read the file.",
+    unsupported: 'This image format is not supported, or the file is damaged.',
+    tooLarge: 'The image is too large (max 200 MB, 16384 px per side).',
+  },
+  video: {
+    stopping: 'Stopping screen recording…',
+    recording: 'Recording screen — press the shortcut to stop',
+    saved: (path: string) => `Screen recording saved — ${path}`,
+    failed: (message: string) => `Screen recording failed: ${message}`,
+    startFailed: (message: string) => `Couldn't start screen recording: ${message}`,
+    errors: {
+      exitedEarly: 'Recording stopped right after it started. Check the Screen Recording permission.',
+      stopTimeout: "Couldn't stop the recording (no response).",
+      emptyFile: 'The recording file is empty.',
+      verifyFailed: "Couldn't verify the recording file.",
+      noDisplay: "Couldn't find the screen that contains the selected area.",
+      noScreenInput: 'This screen is not in the recording device list. Reconnect the display and try again.',
+      saveFailed: (tempPath: string) =>
+        `Couldn't save the recording. The original is still here: ${tempPath}`,
+    },
+  },
+  scroll: {
+    stopping: 'Stopping scrolling capture…',
+    recording: 'Scrolling capture in progress — scroll slowly, then press the shortcut to stop',
+    saved: (path: string) => `Scrolling capture saved — ${path}`,
+    copied: 'Scrolling capture — copied to clipboard',
+    failed: (message: string) => `Scrolling capture failed: ${message}`,
+    startFailed: (message: string) => `Couldn't start scrolling capture: ${message}`,
+    pngFilterName: 'PNG Image',
+  },
+  stepGuide: {
+    needsAccessibility: 'Step Guide: Accessibility permission required',
+    startFailed: (message: string) => `Couldn't start Step Guide: ${message}`,
+    empty: 'No clicks recorded',
+    saveDialogTitle: 'Save Guide',
+    saved: (path: string) => `Guide saved — ${path}`,
+    saveFailed: (message: string) => `Failed to save guide: ${message}`,
+  },
+  releaseNotice: {
+    title: (version: string) => `ASIS has been updated to ${version}`,
+    body: "See what's new and what changed in the release notes.",
+    open: 'View Release Notes',
+    later: 'Later',
+  },
+  permissions: {
+    launchDeniedTitle: 'ASIS — Screen Recording Denied',
+    launchInfoTitle: 'ASIS — Permissions',
+    launchDeniedMessage: 'Screen Recording permission is denied',
+    launchInfoMessage: 'Screen Recording permission required',
+    launchDeniedDetail:
+      'ASIS needs Screen Recording permission to capture your screen.\n\nOpen System Settings → Privacy & Security → Screen Recording, enable ASIS, then restart the app.',
+    launchInfoDetail:
+      'ASIS uses Screen Recording permission to capture your screen.\n\nmacOS will ask for permission the first time you capture — just click "Allow".\n\nYou can also grant it now in System Settings.',
+    guardDeniedDetail:
+      'Open System Settings → Privacy & Security → Screen Recording, enable ASIS, then restart the app.',
+    openSettingsButton: 'Open System Settings',
+    laterButton: 'Later',
+    confirmButton: 'OK',
+    closeButton: 'Close',
+  },
+  updater: {
+    title: (version: string) => `ASIS ${version} Update`,
+    message: (version: string) => `ASIS ${version} is ready to install.`,
+    detail: 'Install now?\nThe app will restart automatically after installing.',
+    installNowButton: 'Install Now',
+    laterButton: 'Later',
+  },
+  accessibility: {
+    title: 'ASIS — Accessibility Permission Required',
+    rulerBody: 'Enable ASIS in System Settings to measure element dimensions.',
+    selectionBody:
+      'Enable ASIS in System Settings and restart the app to auto-detect UI elements.',
+  },
+};

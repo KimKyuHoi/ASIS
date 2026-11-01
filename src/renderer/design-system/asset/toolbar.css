@@ -1,0 +1,12 @@
+.ds-toolbar {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--toolbar-gap);
+}
+
+.ds-toolbar__separator {
+  width: var(--border-thin);
+  height: var(--size-icon);
+  margin: 0 var(--space-1);
+  background: var(--toolbar-divider);
+}

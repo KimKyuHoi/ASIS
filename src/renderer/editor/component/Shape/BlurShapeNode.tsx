@@ -1,9 +1,8 @@
-import { useEffect, useState } from 'react';
-import type { JSX } from 'react';
+import { useEffect, useState, type JSX } from 'react';
 import { Image as KImage, Rect as KRect } from 'react-konva';
 import Konva from 'konva';
 import type { BlurShape } from '../../types/shapes';
-import { useEditorStore } from '../../lib/store';
+import type { ShapeBackground } from '../../types/background';
 
 /**
  * 블러 도형 — 배경 이미지에서 *crop 영역만* Konva.Filters.Blur 로 가우시안 블러.
@@ -13,7 +12,7 @@ import { useEditorStore } from '../../lib/store';
  */
 export function BlurShapeNode({
   shape,
-  bgImage,
+  background,
   draggable,
   onSelect,
   onContextMenu,
@@ -21,7 +20,8 @@ export function BlurShapeNode({
   onTransformEnd,
 }: {
   shape: BlurShape;
-  bgImage: HTMLImageElement | null;
+  /** 잘라 쓸 배경과 배율 — 없으면(배경 없는 재생 오버레이 등) 검정 자리표시. */
+  background: ShapeBackground | null;
   draggable: boolean;
   onSelect: (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => void;
   onContextMenu: (e: Konva.KonvaEventObject<MouseEvent>) => void;
@@ -29,20 +29,20 @@ export function BlurShapeNode({
   onTransformEnd: (node: Konva.Image) => void;
 }): JSX.Element {
   const [node, setNode] = useState<Konva.Image | null>(null);
-  const imageWidth = useEditorStore((s) => s.imageWidth);
-  // bgImage.naturalWidth 는 물리 픽셀, imageWidth 는 논리 픽셀(÷scaleFactor).
-  const pixelRatio = bgImage && imageWidth > 0 ? bgImage.naturalWidth / imageWidth : 1;
 
   // 블러 props 변화 시 cache 다시 — Konva 표준 패턴.
-  // type narrowed 라 deps 에 conditional 없이 깔끔.
+  // 배경·배율이 바뀌어도 다시 — 크롭 적용·undo 로 배경이 바뀌면 캐시가 옛 배경의
+  // 픽셀을 계속 보여 준다(실측: 크롭 후 복사본의 블러 영역만 다시 연 결과와 달랐다).
+  const image = background?.image ?? null;
+  const pixelRatio = background?.pixelRatio ?? 1;
   useEffect(() => {
     if (!node) return;
     node.cache();
     node.getLayer()?.batchDraw();
-  }, [node, shape.x, shape.y, shape.w, shape.h, shape.blurRadius]);
+  }, [node, image, pixelRatio, shape.x, shape.y, shape.w, shape.h, shape.blurRadius]);
 
-  // bgImage 미로드 — 검정 placeholder.
-  if (!bgImage) {
+  // 배경 없음 — 검정 placeholder.
+  if (!image) {
     return (
       <KRect
         id={shape.id}
@@ -61,7 +61,7 @@ export function BlurShapeNode({
     <KImage
       id={shape.id}
       ref={setNode}
-      image={bgImage}
+      image={image}
       x={shape.x}
       y={shape.y}
       width={shape.w}

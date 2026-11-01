@@ -8,7 +8,7 @@ import AppKit
 //   Electron globalShortcut 은 키보드 단축키만 감지하고 마우스 클릭은 잡지 못한다.
 //   macOS 에서 전역 클릭을 잡는 방법은 CGEventTap 또는 NSEvent global monitor 인데,
 //   NSEvent.addGlobalMonitorForEvents 가 구현이 단순하고 실측상 안정적으로 동작한다
-//   (asis-ocr 와 동일한 "빌드 시 컴파일해 번들에 포함" 패턴, 런타임 의존성 없음).
+//   ("빌드 시 컴파일해 번들에 포함" 패턴, 런타임 의존성 없음).
 //
 // 동작:
 //   - NSApplication accessory 모드로 run loop 를 돌린다(Dock/메뉴바에 안 뜸).
@@ -34,6 +34,10 @@ import AppKit
 //
 // 프로토콜(stdout, 한 줄 = 한 이벤트):
 //   {"x":<int>,"y":<int>}          — 클릭 좌표(top-left, points)
+//   {"type":"key","code":<int>,"cmd":<bool>,"ctrl":<bool>,"opt":<bool>,"shift":<bool>,"chars":"<str>"}
+//                                  — `--keys` 인자로 띄웠을 때만. 녹화 키 표시용(input-highlight).
+//                                    ⌘·⌃ 조합과 esc·F1~F12 만 내보낸다(일반 타이핑은 프로세스 밖으로 안 나감).
+//                                    클릭 라인 형식은 그대로라 인자 없이 띄우는 스텝 가이드는 영향 없음.
 // 프로토콜(stderr):
 //   ready trusted=<true|false>     — 시작 알림 + AX 신뢰 여부
 //   error <message>                — 비정상
@@ -59,6 +63,50 @@ let monitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown]) { _ 
   let x = Int(m.x.rounded())
   let y = Int(topLeftY.rounded())
   print("{\"x\":\(x),\"y\":\(y)}")
+}
+
+// `--keys`: 전역 keyDown 도 스트리밍한다. 키 이벤트 전역 모니터도 손쉬운 사용 신뢰가
+// 필요하다 — 신뢰 여부는 위 ready 라인 하나로 함께 알린다.
+// chars 는 레이아웃 의존 보조값이다. 표시 라벨은 main 이 keyCode(물리 키) 로 정하고,
+// 표에 없는 키만 chars 로 대신한다.
+// 단독으로 눌러도 내보내는 키 — esc, F1~F12 (kVK_Escape, kVK_F1...F12; HIToolbox Events.h).
+// main 의 keyLabel.ts STANDALONE_CODES 와 같은 목록이다.
+let standaloneKeyCodes: Set<UInt16> = [
+  0x35, 0x7A, 0x78, 0x63, 0x76, 0x60, 0x61, 0x62, 0x64, 0x65, 0x6D, 0x67, 0x6F,
+]
+
+var keyMonitor: Any? = nil
+if CommandLine.arguments.contains("--keys") {
+  keyMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown]) { event in
+    // 키 반복(꾹 누름)은 같은 조합을 연달아 보내 표시가 깜빡이기만 한다 — 첫 입력만.
+    if event.isARepeat { return }
+    let f = event.modifierFlags
+    // 여기서 먼저 거른다 — 일반 타이핑의 글자가 파이프·main 로그로 흘러갈 여지를 없앤다.
+    // ⌥ 단독은 자판에 따라 일반 글자 입력(독일어 ⌥L = @)이라 내보내지 않는다.
+    let isShortcut = f.contains(.command) || f.contains(.control)
+    if !isShortcut && !standaloneKeyCodes.contains(event.keyCode) { return }
+    let payload: [String: Any] = [
+      "type": "key",
+      "code": Int(event.keyCode),
+      "cmd": f.contains(.command),
+      "ctrl": f.contains(.control),
+      "opt": f.contains(.option),
+      "shift": f.contains(.shift),
+      "chars": event.charactersIgnoringModifiers ?? "",
+    ]
+    // chars 에 따옴표·제어문자가 올 수 있어 직접 문자열을 조립하지 않는다.
+    guard let data = try? JSONSerialization.data(withJSONObject: payload),
+      let line = String(data: data, encoding: .utf8)
+    else {
+      FileHandle.standardError.write(Data("error key-encode-failed\n".utf8))
+      return
+    }
+    print(line)
+  }
+  if keyMonitor == nil {
+    FileHandle.standardError.write(Data("error key-monitor-install-failed\n".utf8))
+    exit(3)
+  }
 }
 
 // addGlobalMonitorForEvents 는 실패 시 nil 을 반환할 수 있다 — silent 하게 넘기지 않는다.

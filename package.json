@@ -2,18 +2,19 @@
   "name": "asis",
   "description": "macOS screenshot capture and annotation tool",
   "main": "./out/main/index.js",
-  "packageManager": "pnpm@10.28.2",
+  "packageManager": "pnpm@12.16.1",
+  "engines": {
+    "node": ">=24.22.1"
+  },
   "author": "KimKyuHoi",
   "homepage": "https://kimkyuhoi.github.io/ASIS",
   "scripts": {
-    "dev": "pnpm build:ocr && pnpm build:clickmon && docker compose up -d && concurrently -n hermes,app -c blue,green \"docker compose logs -f\" \"electron-vite dev\"",
-    "dev:app": "pnpm build:ocr && pnpm build:clickmon && electron-vite dev",
-    "dev:hermes": "docker compose up -d && docker compose logs -f",
-    "start": "electron-vite preview",
+    "dev": "pnpm build:clickmon && electron-vite dev --watch",
+    "start": "pnpm build:clickmon && electron-vite preview",
+    "test": "node --test tests/*.test.mts",
     "build": "pnpm typecheck && pnpm lint && electron-vite build",
-    "build:unpack": "pnpm build && electron-builder --dir",
-    "build:mac": "pnpm build:ocr && pnpm build:clickmon && electron-vite build && electron-builder --mac",
-    "build:ocr": "bash scripts/build-ocr.sh",
+    "build:unpack": "pnpm build:clickmon && pnpm build && electron-builder --dir",
+    "build:mac": "pnpm build:clickmon && electron-vite build && electron-builder --mac",
     "build:clickmon": "bash scripts/build-clickmon.sh",
     "build:win": "pnpm build && electron-builder --win",
     "build:linux": "electron-vite build && electron-builder --linux",
@@ -25,12 +26,10 @@
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "pnpm typecheck:node && pnpm typecheck:web",
     "commitlint": "commitlint --edit",
-    "hermes:up": "docker compose up -d",
-    "hermes:down": "docker compose down",
-    "hermes:logs": "docker compose logs -f",
-    "hermes:dashboard": "open http://127.0.0.1:9119",
     "postinstall": "patch-package && electron-builder install-app-deps",
-    "prepare": "husky"
+    "prepare": "husky",
+    "storybook": "storybook dev -p 6007 --no-open",
+    "build-storybook": "storybook build -o storybook-static"
   },
   "lint-staged": {
     "*.{ts,tsx,js,jsx,mjs,cjs}": [
@@ -83,12 +82,16 @@
         "to": "trayTemplate@2x.png"
       },
       {
-        "from": "resources/bin/asis-ocr",
-        "to": "asis-ocr"
-      },
-      {
         "from": "resources/bin/asis-clickmon",
         "to": "asis-clickmon"
+      },
+      {
+        "from": "resources/locales/ko.lproj",
+        "to": "ko.lproj"
+      },
+      {
+        "from": "resources/locales/en.lproj",
+        "to": "en.lproj"
       }
     ],
     "mac": {
@@ -101,8 +104,8 @@
       "notarize": true,
       "minimumSystemVersion": "13.0",
       "extendInfo": {
-        "NSScreenCaptureUsageDescription": "캡처 기능에 화면 녹화 권한이 필요합니다.",
-        "NSAccessibilityUsageDescription": "UI 자동 감지에 손쉬운 사용 권한이 필요합니다."
+        "NSScreenCaptureUsageDescription": "ASIS needs Screen Recording permission to capture your screen.",
+        "NSAccessibilityUsageDescription": "ASIS needs Accessibility permission to detect UI elements automatically."
       },
       "target": [
         {
@@ -135,13 +138,41 @@
       "owner": "KimKyuHoi",
       "repo": "ASIS",
       "releaseType": "release"
-    }
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "electron",
-      "esbuild",
-      "ffmpeg-static"
+    },
+    "fileAssociations": [
+      {
+        "ext": [
+          "gif"
+        ],
+        "name": "GIF Image",
+        "role": "Viewer",
+        "rank": "Default"
+      },
+      {
+        "ext": [
+          "mov",
+          "mp4"
+        ],
+        "name": "Video",
+        "role": "Viewer",
+        "rank": "Alternate"
+      },
+      {
+        "ext": [
+          "png",
+          "jpg",
+          "jpeg",
+          "heic",
+          "heif",
+          "tiff",
+          "tif",
+          "bmp",
+          "webp"
+        ],
+        "name": "Image",
+        "role": "Viewer",
+        "rank": "Alternate"
+      }
     ]
   },
   "devDependencies": {
@@ -150,6 +181,9 @@
     "@electron-toolkit/eslint-config-prettier": "^3.0.0",
     "@electron-toolkit/eslint-config-ts": "^3.1.0",
     "@electron-toolkit/tsconfig": "^2.0.0",
+    "@storybook/addon-a11y": "10.6.5",
+    "@storybook/addon-docs": "10.6.5",
+    "@storybook/react-vite": "10.6.5",
     "@stylistic/eslint-plugin": "^5.10.0",
     "@types/ffmpeg-static": "^5.1.0",
     "@types/node": "^22.19.1",
@@ -158,7 +192,6 @@
     "@vitejs/plugin-react": "^5.1.1",
     "babel-plugin-react-compiler": "^1.0.0",
     "changelogen": "^0.6.2",
-    "concurrently": "^9.2.1",
     "electron": "^39.2.6",
     "electron-builder": "^26.0.12",
     "electron-vite": "^5.0.0",
@@ -173,7 +206,9 @@
     "prettier": "^3.7.4",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
+    "storybook": "10.6.5",
     "typescript": "^5.9.3",
+    "typescript-eslint": "8.59.1",
     "vite": "^7.2.6"
   }
 }

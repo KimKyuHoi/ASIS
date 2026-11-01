@@ -1,8 +1,10 @@
-import { type ElectronAPI } from '@electron-toolkit/preload';
 import type { HotkeyConfig, MiscConfig } from '../main/settings';
 import type { Language } from '../shared/i18n/language';
 import type { RunningFeature } from '../shared/running-features';
 import type { EditorHotkeyConfig } from '../shared/editor-hotkeys';
+import type { HistoryEntry } from '../main/captureHistory';
+import type { PinClickThroughState, PinLoadPayload } from '../shared/pin';
+import type { GuideDraft, GuideEdits, GuideSaveResult } from '../shared/step-guide';
 
 type Rect = {
   x: number;
@@ -36,10 +38,11 @@ type EditorAPI = {
   onLoadImage: (
     callback: (imagePath: string, width: number, height: number) => void,
   ) => () => void;
+  onLoadProject: (callback: (project: unknown) => void) => () => void;
   ready: () => void;
-  copy: (dataUrl: string) => Promise<void>;
+  copy: (dataUrl: string, project: unknown) => Promise<void>;
   cancel: () => void;
-  pin: (dataUrl: string, w: number, h: number) => Promise<void>;
+  pin: (...args: [dataUrl: string, w: number, h: number, project: unknown]) => Promise<void>;
   save: (dataUrl: string) => Promise<{ saved: boolean; path?: string }>;
   saveFolder: (dataUrl: string) => Promise<{ path: string }>;
   getHotkeys: () => Promise<EditorHotkeyConfig>;
@@ -47,9 +50,8 @@ type EditorAPI = {
 };
 
 type PinAPI = {
-  onLoadImage: (
-    callback: (src: string, w: number, h: number, opacity: number) => void,
-  ) => () => void;
+  onLoadImage: (callback: (payload: PinLoadPayload) => void) => () => void;
+  onClickThroughChanged: (callback: (state: PinClickThroughState) => void) => () => void;
   ready: () => void;
   close: () => void;
   setSize: (w: number, h: number) => void;
@@ -72,32 +74,10 @@ type VideoRecorderAPI = {
   onTriggerCancel: (callback: () => void) => () => void;
 };
 
-/** main 의 windows/timeMachineHudWindow.ts, renderer 의 hook 정의와 동형. */
-type TimeMachineHudPhase =
-  | { kind: 'recording' } |
-  { kind: 'saving' } |
-  { kind: 'saved'; seconds: number } |
-  { kind: 'notice'; message: string };
-
-type TimeMachineHudState = {
-  phase: TimeMachineHudPhase;
-  bufferSeconds: number;
-  startedAt: number;
-};
-
-type TimeMachineHudAPI = {
-  ready: () => void;
-  onState: (callback: (state: TimeMachineHudState) => void) => () => void;
-  save: () => void;
-  stop: () => void;
-  reveal: () => void;
-};
-
 type SettingsAPI = {
   get: () => Promise<HotkeyConfig>;
   set: (hotkeys: HotkeyConfig) => Promise<void>;
   getFolder: () => Promise<string>;
-  setFolder: (path: string) => Promise<void>;
   pickFolder: () => Promise<string | null>;
   getMisc: () => Promise<MiscConfig>;
   setMisc: (misc: MiscConfig) => Promise<void>;
@@ -108,26 +88,22 @@ type SettingsAPI = {
   setEditorHotkeys: (hotkeys: EditorHotkeyConfig) => Promise<void>;
 };
 
-type HistoryEntry = {
-  id: string;
-  dataUrl: string;
-  timestamp: number;
-  width: number;
-  height: number;
-};
-
 type HistoryAPI = {
   list: () => Promise<HistoryEntry[]>;
   copy: (dataUrl: string) => Promise<void>;
   pin: (dataUrl: string, w: number, h: number) => Promise<void>;
+  edit: (id: string) => Promise<void>;
 };
 
 type PatchNote = {
   version: string;
   name: string;
-  body: string;
-  date: string;
+  /** 언어별 마크다운 (src/main/patch-notes/patchNotes.ts 와 동일 형태). */
+  body: Record<'ko' | 'en', string>;
+  /** null = 아직 GitHub 에 게시되지 않은 버전(번들 노트만 있음). */
+  date: string | null;
   url: string;
+  bundled: boolean;
 };
 
 type PatchHistoryAPI = {
@@ -145,6 +121,7 @@ type StepGuideAPI = {
   startGif: () => void;
   stopGif: () => void;
   stop: (format: 'markdown' | 'html') => void;
+  cancel: () => void;
 };
 
 type I18nAPI = {
@@ -158,26 +135,31 @@ type I18nAPI = {
 type ScrollCaptureAPI = {
   stop: () => void;
   cancel: () => void;
-  getFrameCount: () => Promise<number>;
+  chooseDirection: (direction: 'up' | 'down') => void;
+  getProgress: () => Promise<{ frames: number; height: number; gaps: number }>;
   onStitching: (callback: () => void) => () => void;
   onTriggerStop: (callback: () => void) => () => void;
   onTriggerCancel: (callback: () => void) => () => void;
 };
 
+type StepGuideEditorAPI = {
+  getDraft: () => Promise<GuideDraft>;
+  save: (edits: GuideEdits) => Promise<GuideSaveResult>;
+};
+
 declare global {
   // eslint: .d.ts 는 consistent-type-definitions 룰 예외 (interface 필요 — Window augment).
   interface Window {
-    electron: ElectronAPI;
     selection: SelectionAPI;
     editor: EditorAPI;
     pin: PinAPI;
     recorder: RecorderAPI;
     videoRecorder: VideoRecorderAPI;
-    timeMachineHud: TimeMachineHudAPI;
     settings: SettingsAPI;
     captureHistory: HistoryAPI;
     patchHistory: PatchHistoryAPI;
     stepGuide: StepGuideAPI;
+    stepGuideEditor: StepGuideEditorAPI;
     scrollCapture: ScrollCaptureAPI;
     i18n: I18nAPI;
   }

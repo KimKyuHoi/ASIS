@@ -1,286 +1,210 @@
-import { nativeImage } from 'electron';
+import { coarseRowCost, rowCost, type RowInfo } from './rowProfile';
+
+export { computeRowInfo, type Frame, type RowInfo } from './rowProfile';
 
 /**
- * 스크롤 캡처 스티칭 — 세로로 겹치는 프레임들을 한 장의 긴 이미지로 이어붙인다.
+ * 스크롤 캡처 매칭 — 연속 두 프레임 사이에서 콘텐츠가 얼마나 위로 이동했는지 찾는다.
  *
- * macOS 는 스크롤 캡처를 네이티브로 지원하지 않는다(screencapture 옵션 없음).
- * 그래서 사용자가 스크롤하는 동안 같은 영역을 주기적으로 캡처한 뒤,
- * 인접 프레임 사이의 *세로 겹침(overlap)* 을 픽셀 비교로 찾아 합성한다.
- * sharp/opencv 없이 nativeImage 의 raw bitmap 만으로 순수 처리한다.
+ * electron 을 import 하지 않는 순수 함수(디코드/인코드는 frameIo.ts, 이음 누적·합성은
+ * scrollStitcher.ts, 행 요약은 rowProfile.ts).
  *
- * 알고리즘 (실측으로 검증한 접근 — 리포트의 "실측 결과" 참고)
- *   - 각 프레임을 nativeImage 로 디코드 → toBitmap() 으로 raw 픽셀(4채널/px) 획득.
- *   - "shift" = 이전 프레임 A 에서 다음 프레임 B 의 0행이 정렬되는 y offset.
- *     겹침 행 수 = A.height - shift. shift 가 작을수록 겹침이 크다(= 작은 스크롤).
- *   - 후보 shift 마다 겹침 밴드의 행별 평균 절대차(SAD) 를 구해 최소를 찾는다.
- *   - 고정 헤더/푸터(sticky) 는 매 프레임 같은 위치라 가짜 겹침을 만든다 —
- *     ignoreTop/ignoreBottom 으로 상/하단 영역을 비교에서 제외해 무력화한다.
- *   - 신뢰도: "최소 SAD"의 절대값이 아니라 *최소의 뾰족함(ratio)* 으로 판정한다.
- *     실측상 노이즈가 낀 진짜 겹침의 SAD 가 우연 매칭의 SAD 보다 클 수 있어,
- *     절대 SAD threshold 는 신뢰할 수 없다. 뚜렷한 최소(ratio ≫ 1) 만 채택한다.
- *
- * 룰
- *   - imperative-style.md — 픽셀 루프/버퍼 조작은 모듈 함수 명령형 OK.
- *   - null-safety.md — 빈 이미지·폭 불일치·프레임 0개는 명시 throw.
- *   - react-compiler.md — main process 코드라 memo 무관.
+ * 알고리즘
+ *   1. 행 프로필(칸 밝기 평균) 의 같은 y 끼리 차이가 작게 위/아래로 이어지면 고정 헤더/푸터.
+ *   2. 이동량 d 마다 "B 의 y행 ≈ A 의 y+d 행" 비용(평균 칸 차이) 을 내용 있는 행에서만 잰다.
+ *      거친 칸(16) 으로 전 범위를 훑어 후보 최소점들을 고르고, 정밀 칸(128) 으로 주변을 확정한다.
+ *   3. 최소 비용이 절대 기준 이하이고, 전체 비용 분포(중앙값) 보다 뚜렷하게 낮아야 채택한다 —
+ *      반복 패턴·빈 화면에서 아무 d 나 고르지 않기 위해서다.
+ *   4. 프레임은 직전에 채택한 프레임과 비교한다(누적 결과 전체와 비교하지 않음).
  */
 
-/** 한 프레임의 디코드된 raw 픽셀. buf.length === width * height * channels. */
-export type Frame = {
-  width: number;
-  height: number;
-  /** raw bitmap. 채널 순서(BGRA/RGBA)는 read/write 가 대칭이라 무관 — 그대로 복사. */
-  buf: Buffer;
-};
+/** 같은 행으로 볼 최대 평균 칸 차이. */
+const ROW_SAME_COST = 4;
+/** 이 비율 이상의 행이 같으면 "변하지 않음". 스피너 같은 작은 움직임은 허용. */
+export const SAME_FRAME_RATIO = 0.9;
 
-/** px 당 바이트 수. nativeImage.toBitmap() 은 4채널(RGBA/BGRA) 고정. */
-const CHANNELS = 4;
-
-export type StitchOptions = {
-  /**
-   * 상단에서 비교 제외할 픽셀 높이 — 고정 헤더(sticky top nav) 배제.
-   * 기본 0. 헤더가 있으면 그 높이보다 약간 크게 잡는다.
-   */
-  ignoreTop?: number;
-  /**
-   * 하단에서 비교 제외할 픽셀 높이 — 고정 푸터/스크롤바 배제. 기본 0.
-   */
-  ignoreBottom?: number;
-  /**
-   * 겹침 검출에 쓸 밴드 높이(행). 클수록 정확·느림. 기본 200.
-   * 실제로는 사용 가능한 겹침 크기로 클램프된다.
-   */
-  band?: number;
-  /** 가로 픽셀 샘플링 간격 — 클수록 빠름·덜 정확. 기본 6. */
-  xStep?: number;
-  /** 세로 행 샘플링 간격 — 클수록 빠름·덜 정확. 기본 2. */
-  yStep?: number;
-  /**
-   * 채택 최소 신뢰도(ratio = 두 번째로 좋은 distinct 후보 SAD / 최적 SAD).
-   * ratio 가 이보다 낮으면 "뚜렷한 겹침 없음"으로 보고 겹침 제거 없이 butt-join.
-   * 기본 1.8 — 실측상 진짜 큰 겹침은 ratio ≫ 2, 겹침 없음은 ~1.
-   */
-  minRatio?: number;
-};
-
-const DEFAULTS = {
-  ignoreTop: 0,
-  ignoreBottom: 0,
-  band: 200,
-  xStep: 6,
-  yStep: 2,
-  minRatio: 1.8,
-} as const;
-
-/** 파일 경로에서 Frame 디코드. 빈 이미지면 throw. */
-export function loadFrame(path: string): Frame {
-  const img = nativeImage.createFromPath(path);
-  if (img.isEmpty()) {
-    throw new Error(`스티칭: 이미지를 읽지 못함 (빈 이미지): ${path}`);
+/** 같은 y 끼리 [lo, hi) 의 "같은 행" 비율. 내용 있는 행이 없으면 1(빈 화면 = 같음). */
+function sameRatioIn(a: RowInfo, b: RowInfo, range: { lo: number; hi: number }): number {
+  if (a.height !== b.height || a.width !== b.width) return 0;
+  let same = 0;
+  let total = 0;
+  for (let y = range.lo; y < range.hi; y++) {
+    if (a.detailed[y] === 0 && b.detailed[y] === 0) continue;
+    total++;
+    if (rowCost(a, b, { ya: y, yb: y }) <= ROW_SAME_COST) same++;
   }
-  const { width, height } = img.getSize();
-  const buf = img.toBitmap();
-  // toBitmap() 은 width*height*4 를 보장한다(실측 확인). 어긋나면 디코드 이상.
-  if (buf.length !== width * height * CHANNELS) {
-    throw new Error(
-      `스티칭: bitmap 크기 불일치 (${buf.length} != ${width * height * CHANNELS})`,
-    );
-  }
-  return { width, height, buf };
+  return total === 0 ? 1 : same / total;
 }
 
-/** 한 행의 평균 절대차(SAD). alpha 채널은 무시, RGB 3채널만 비교. */
-function rowSad(
-  a: Frame,
-  b: Frame,
-  rowA: number,
-  rowB: number,
-  xStep: number,
-): number {
-  const w = Math.min(a.width, b.width);
-  let sum = 0;
-  let count = 0;
-  const baseA = rowA * a.width * CHANNELS;
-  const baseB = rowB * b.width * CHANNELS;
-  for (let x = 0; x < w; x += xStep) {
-    const ia = baseA + x * CHANNELS;
-    const ib = baseB + x * CHANNELS;
-    sum += Math.abs(a.buf[ia] - b.buf[ib]);
-    sum += Math.abs(a.buf[ia + 1] - b.buf[ib + 1]);
-    sum += Math.abs(a.buf[ia + 2] - b.buf[ib + 2]);
-    count += 3;
-  }
-  return count === 0 ? Number.POSITIVE_INFINITY : sum / count;
+/** 같은 y 끼리의 일치율 — 0..1. "변하지 않았는지" 판정. */
+export function sameRowRatio(a: RowInfo, b: RowInfo): number {
+  return sameRatioIn(a, b, { lo: 0, hi: a.height });
 }
 
-export type OverlapResult = {
-  /** A 에서 B 의 0행이 정렬되는 y offset. 겹침 행 수 = A.height - shift. */
+/** 고정 헤더/푸터를 뺀 본문 구간에서 같은 y 끼리의 일치율. */
+export function bodySameRatio(a: RowInfo, b: RowInfo, st: { top: number; bottom: number }): number {
+  const lo = st.top;
+  const hi = a.height - st.bottom;
+  if (hi <= lo) return 1;
+  return sameRatioIn(a, b, { lo, hi });
+}
+
+/** 고정 헤더/푸터 후보 — 같은 y 에서 위/아래로 연속 같은 행 수. 각각 높이의 40% 상한. */
+export function measureStatic(a: RowInfo, b: RowInfo): { top: number; bottom: number } {
+  const h = a.height;
+  const cap = Math.floor(h * 0.4);
+  const same = (y: number): boolean => rowCost(a, b, { ya: y, yb: y }) <= ROW_SAME_COST;
+  let top = 0;
+  while (top < cap && same(top)) top++;
+  let bottom = 0;
+  while (bottom < cap && same(h - 1 - bottom)) bottom++;
+  return { top, bottom };
+}
+
+export type ShiftResult = {
+  /** 콘텐츠가 위로 이동한 픽셀. B 의 y행 ≈ A 의 (y + shift)행. */
   shift: number;
-  /** 최적 shift 의 평균 SAD (낮을수록 잘 맞음). */
-  sad: number;
-  /** 최소의 뾰족함 (두 번째 distinct 후보 / 최적). 높을수록 확실한 겹침. */
-  ratio: number;
-  /** ratio 가 minRatio 이상이라 겹침 제거를 신뢰할 수 있는지. */
-  confident: boolean;
+  /** 겹침 구간의 평균 칸 차이(낮을수록 잘 맞음). */
+  cost: number;
+};
+
+export type FindShiftOptions = {
+  /** 비교에서 제외할 상단 행(고정 헤더). */
+  top: number;
+  /** 비교에서 제외할 하단 행(고정 푸터). */
+  bottom: number;
 };
 
 /**
- * A 의 하단과 B 의 상단이 겹친다고 보고 최적 정렬 shift 를 찾는다.
- *
- * shift 범위는 [minShift, A.height - band] — 즉 *겹침이 최소 band 행 이상* 이어야
- * 채택한다. 실측상 이 제약이 우연 매칭을 크게 줄여 신뢰도를 높인다(작은 스크롤 가정).
+ * 채택 최대 평균 칸 차이. 실측: 진짜 이동량의 비용은 관성 스크롤 중에도 0.00~0.1. 비슷한
+ * 텍스트 줄끼리의 가짜 정합은 그보다 훨씬 크지만 7 기준은 통과해 위로 되돌린 구간이 중복됐다.
  */
-export function findOverlap(a: Frame, b: Frame, opts: StitchOptions = {}): OverlapResult {
-  const ignoreTop = opts.ignoreTop ?? DEFAULTS.ignoreTop;
-  const ignoreBottom = opts.ignoreBottom ?? DEFAULTS.ignoreBottom;
-  const xStep = opts.xStep ?? DEFAULTS.xStep;
-  const yStep = opts.yStep ?? DEFAULTS.yStep;
-  const minRatio = opts.minRatio ?? DEFAULTS.minRatio;
+const MAX_MATCH_COST = 3;
+/** 최소 비용이 전체 비용 중앙값의 이 비율 이하여야 "뚜렷한" 최소다. */
+const DISTINCT_RATIO = 0.35;
+/**
+ * 행 하나의 비용 상한 — 겹침 안의 애니메이션(GIF·영상) 행이 평균을 끌어올려 진짜 이동량이
+ * 기준을 넘지 않게 한다.
+ */
+const ROW_COST_CAP = 8;
+/** 정지 판정 — 행 비용의 이 백분위가 STILL_ROW_COST 이하이면 안 움직임. */
+const STILL_PERCENTILE = 0.5;
+const STILL_ROW_COST = 1;
+/** 겹침이 이 행 수보다 작으면 비교하지 않는다. */
+const MIN_OVERLAP_ROWS = 24;
+/**
+ * 겹침이 프레임 높이의 이 비율보다 작은 후보도 보지 않는다 — 겹침이 아주 얇은 위치의 우연한
+ * 정합을 막는다. 실측에서 본 가짜 정합(96행, 7.6%) 은 열 잠금 전 사이드바가 섞인 탓이었고 그건
+ * 따로 고쳤다. 높게(20%) 두면 초속 8000px 플릭의 진짜 큰 이동까지 막혀 끊김이 늘었다.
+ */
+const MIN_OVERLAP_RATIO = 0.06;
+/** 근거로 삼을 내용 있는 행의 최소 수(정밀 평가 기준). */
+const MIN_DETAILED_ROWS = 12;
+const COARSE_STEP = 4;
+const CANDIDATES = 6;
+const REFINE_RADIUS = COARSE_STEP;
 
-  // 밴드는 헤더/푸터를 제외한 실제 비교 가능 높이로 제한.
-  const usableB = b.height - ignoreTop - ignoreBottom;
-  const band = Math.max(1, Math.min(opts.band ?? DEFAULTS.band, usableB));
+type Range = { lo: number; hi: number };
 
-  // 겹침이 최소 band 이상이 되도록 shift 상한을 둔다. 하한은 헤더 자기매칭 방지로 1.
-  const minShift = Math.max(1, ignoreTop);
-  const maxShift = a.height - band;
-  if (maxShift < minShift) {
-    // A 가 너무 작아 band 만큼 겹칠 수 없음 — 겹침 검출 불가, butt-join 신호.
-    return { shift: a.height, sad: Number.POSITIVE_INFINITY, ratio: 0, confident: false };
+/** d 에서의 평균 비용. 내용 있는 행이 모자라면 null. */
+function shiftCost(
+  a: RowInfo,
+  b: RowInfo,
+  at: { d: number; range: Range; coarse: boolean },
+): number | null {
+  const step = at.coarse ? COARSE_STEP : 1;
+  const cost = at.coarse ? coarseRowCost : rowCost;
+  let sum = 0;
+  let n = 0;
+  for (let y = at.range.lo; y < at.range.hi - at.d; y += step) {
+    if (b.detailed[y] === 0 && a.detailed[y + at.d] === 0) continue;
+    sum += Math.min(ROW_COST_CAP, cost(a, b, { ya: y + at.d, yb: y }));
+    n++;
   }
+  const minRows = at.coarse ? Math.ceil(MIN_DETAILED_ROWS / COARSE_STEP) : MIN_DETAILED_ROWS;
+  return n < minRows ? null : sum / n;
+}
 
-  const scores: Array<{ shift: number; sad: number }> = [];
-  let best = { shift: a.height, sad: Number.POSITIVE_INFINITY };
+/** 거친 비용 곡선에서 낮은 순으로 국소 최소점 d 들. */
+function coarseCandidates(costs: (number | null)[]): number[] {
+  const mins: { d: number; c: number }[] = [];
+  for (let d = 0; d < costs.length; d++) {
+    const c = costs[d];
+    if (c === null) continue;
+    const prev = d > 0 ? costs[d - 1] : null;
+    const left = prev ?? Number.POSITIVE_INFINITY;
+    const next = d + 1 < costs.length ? costs[d + 1] : null;
+    const right = next ?? Number.POSITIVE_INFINITY;
+    if (c <= left && c <= right) mins.push({ d, c });
+  }
+  mins.sort((p, q) => p.c - q.c);
+  return mins.slice(0, CANDIDATES).map((m) => m.d);
+}
 
-  for (let shift = minShift; shift <= maxShift; shift++) {
-    let sum = 0;
-    let n = 0;
-    // B 의 [ignoreTop .. ignoreTop+band) 행을 A 의 대응 행과 비교.
-    for (let r = ignoreTop; r < ignoreTop + band; r += yStep) {
-      const rowA = shift + r;
-      // A 쪽에서도 헤더 영역(< ignoreTop) 자기매칭은 배제.
-      if (rowA < ignoreTop || rowA >= a.height) continue;
-      sum += rowSad(a, b, rowA, r, xStep);
-      n++;
+function median(values: number[]): number {
+  const sorted = [...values].sort((p, q) => p - q);
+  return sorted[Math.floor(sorted.length / 2)];
+}
+
+/** 후보 주변을 정밀 비용으로 훑어 최적 d. */
+function refine(
+  a: RowInfo,
+  b: RowInfo,
+  ctx: { candidates: number[]; range: Range; maxShift: number },
+): ShiftResult | null {
+  let best: ShiftResult | null = null;
+  for (const c of ctx.candidates) {
+    const from = Math.max(0, c - REFINE_RADIUS);
+    const to = Math.min(ctx.maxShift, c + REFINE_RADIUS);
+    for (let d = from; d <= to; d++) {
+      const cost = shiftCost(a, b, { d, range: ctx.range, coarse: false });
+      // 동률이면 작은 d(겹침이 큰 쪽) — 반복 패턴에서 근거가 더 많다.
+      if (cost !== null && (best === null || cost < best.cost)) best = { shift: d, cost };
     }
-    if (n < 8) continue;
-    const sad = sum / n;
-    scores.push({ shift, sad });
-    if (sad < best.sad) best = { shift, sad };
   }
-
-  if (scores.length === 0) {
-    return { shift: a.height, sad: Number.POSITIVE_INFINITY, ratio: 0, confident: false };
-  }
-
-  // 최소의 뾰족함 — 최적에서 15px 이상 떨어진 가장 좋은 후보와의 비.
-  let secondBest = Number.POSITIVE_INFINITY;
-  for (const s of scores) {
-    if (Math.abs(s.shift - best.shift) > 15 && s.sad < secondBest) {
-      secondBest = s.sad;
-    }
-  }
-  const ratio =
-    secondBest === Number.POSITIVE_INFINITY
-      ? Number.POSITIVE_INFINITY
-      : secondBest / (best.sad + 0.001);
-
-  return {
-    shift: best.shift,
-    sad: best.sad,
-    ratio,
-    confident: ratio >= minRatio,
-  };
+  return best;
 }
 
 /**
- * A 아래에 B 를 이어붙인 새 Frame 을 만든다.
- *
- * confident 하면 검출된 shift 로 겹침을 제거하고 붙인다:
- *   overlap = A.height - shift, 결과 높이 = A.height + (B.height - overlap).
- * 신뢰 불가면 겹침 제거 없이 B 전체를 그대로 이어붙인다(butt-join).
- *
- * 폭이 다르면 좁은 쪽으로 클립한다(Retina 프레임 폭 흔들림 방어).
+ * 같은 자리(이동량 0) 비교 비용이 정합 기준 이하인지 — 화면 속 애니메이션 때문에 "같은 프레임"
+ * 판정(행 90% 일치) 은 못 받았지만 실제로는 안 움직인 프레임. 실측: 맨 위의 GIF 캔버스가
+ * 잘린 열 범위의 큰 비중을 차지하자, 멈춘 화면이 어느 방향으로도 안 맞아 끊김으로 쌓였다.
  */
-export function appendFrame(a: Frame, b: Frame, overlap: OverlapResult): Frame {
-  const w = Math.min(a.width, b.width);
-  // 신뢰 가능한 겹침만 제거. 아니면 겹침 0(butt-join).
-  const removed = overlap.confident ? Math.max(0, a.height - overlap.shift) : 0;
-  const firstNewRowInB = Math.min(removed, b.height);
-  const newRowsFromB = b.height - firstNewRowInB;
-  const outH = a.height + newRowsFromB;
-  const out = Buffer.alloc(w * outH * CHANNELS);
-
-  // A 전체를 폭 w 로 클립해 복사.
+export function isStill(a: RowInfo, b: RowInfo): boolean {
+  if (a.height !== b.height || a.width !== b.width) return false;
+  // 고정 영역을 빼지 않고 전체 행으로 본다 — 빼면 남는 구간이 좁고 비어 있을 때 움직인 화면도
+  // 비용이 낮게 나온다(실측: 880px 올라간 첫 단계를 정지로 판정).
+  const costs: number[] = [];
   for (let y = 0; y < a.height; y++) {
-    const srcStart = y * a.width * CHANNELS;
-    a.buf.copy(out, y * w * CHANNELS, srcStart, srcStart + w * CHANNELS);
+    if (a.detailed[y] === 0 && b.detailed[y] === 0) continue;
+    costs.push(rowCost(a, b, { ya: y, yb: y }));
   }
-  // B 의 새 콘텐츠 행을 A 아래에 이어붙임.
-  for (let r = 0; r < newRowsFromB; r++) {
-    const srcRow = firstNewRowInB + r;
-    const dstY = a.height + r;
-    const srcStart = srcRow * b.width * CHANNELS;
-    b.buf.copy(out, dstY * w * CHANNELS, srcStart, srcStart + w * CHANNELS);
-  }
-  return { width: w, height: outH, buf: out };
+  if (costs.length < MIN_DETAILED_ROWS) return true;
+  costs.sort((p, q) => p - q);
+  // 평균이 아니라 중앙값 — 애니메이션 행(내용 있는 행의 절반 미만) 은 무시하되, 2~4px 의 작은 실제 이동은
+  // 대부분의 글자 행 비용을 올리므로 정지로 보지 않는다(평균 기준일 때 작은 이동을 놓쳐
+  // 결과가 126px 짧아졌다 — 실측).
+  return costs[Math.floor(costs.length * STILL_PERCENTILE)] <= STILL_ROW_COST;
 }
 
-export type StitchReport = {
-  /** 최종 이미지 PNG 바이트. */
-  png: Buffer;
-  width: number;
-  height: number;
-  /** 입력 프레임 수. */
-  frameCount: number;
-  /** 겹침을 신뢰해 제거한 프레임 이음새 수. */
-  confidentJoins: number;
-  /** 신뢰 불가로 butt-join 한 이음새 수(중복 콘텐츠가 남을 수 있는 지점). */
-  fallbackJoins: number;
-};
-
 /**
- * 프레임 파일 경로 배열 → 하나의 긴 PNG.
- *
- * @param paths 시간순 프레임 PNG 경로. 최소 1개.
- * @returns 합성 PNG 바이트 + 진단 리포트.
+ * A(이전) → B(다음) 사이에서 콘텐츠가 위로 이동한 양을 찾는다. 못 찾으면 null.
+ * shift 0 도 후보다 — 화면 속 애니메이션 때문에 "같은 프레임" 판정을 못 받은 정지 프레임이
+ * 인접 행끼리 비슷하다는 이유로 d=1~2 에 가짜로 맞는 것을 막는다(실측: 애니메이션이 있는
+ * 정지 화면에서 1~2px 짜리 가짜 이음이 쌓였다). shift 0 이면 호출측은 "안 움직임" 으로 본다.
  */
-export function stitchFrames(paths: string[], opts: StitchOptions = {}): StitchReport {
-  if (paths.length === 0) {
-    throw new Error('스티칭: 프레임 0개 — 최소 1개 필요');
-  }
-
-  let acc = loadFrame(paths[0]);
-  let confidentJoins = 0;
-  let fallbackJoins = 0;
-
-  for (let i = 1; i < paths.length; i++) {
-    const next = loadFrame(paths[i]);
-    // 폭이 완전히 다르면(리사이즈 등) 겹침 비교가 무의미 — butt-join 으로 강등.
-    const overlap =
-      next.width === acc.width
-        ? findOverlap(acc, next, opts)
-        : { shift: acc.height, sad: Number.POSITIVE_INFINITY, ratio: 0, confident: false };
-    if (overlap.confident) confidentJoins++;
-    else fallbackJoins++;
-    acc = appendFrame(acc, next, overlap);
-  }
-
-  const img = nativeImage.createFromBitmap(acc.buf, {
-    width: acc.width,
-    height: acc.height,
-  });
-  const png = img.toPNG();
-  if (png.length === 0) {
-    throw new Error('스티칭: PNG 인코딩 결과가 비어 있음');
-  }
-
-  return {
-    png,
-    width: acc.width,
-    height: acc.height,
-    frameCount: paths.length,
-    confidentJoins,
-    fallbackJoins,
-  };
+export function findShift(a: RowInfo, b: RowInfo, opts: FindShiftOptions): ShiftResult | null {
+  if (a.height !== b.height || a.width !== b.width) return null;
+  const range = { lo: opts.top, hi: a.height - opts.bottom };
+  const minOverlap = Math.max(MIN_OVERLAP_ROWS, Math.floor(a.height * MIN_OVERLAP_RATIO));
+  const maxShift = range.hi - range.lo - minOverlap;
+  if (maxShift < 1) return null;
+  const costs: (number | null)[] = [];
+  for (let d = 0; d <= maxShift; d++) costs.push(shiftCost(a, b, { d, range, coarse: true }));
+  const valid = costs.filter((c): c is number => c !== null);
+  if (valid.length === 0) return null;
+  const best = refine(a, b, { candidates: coarseCandidates(costs), range, maxShift });
+  if (!best || best.cost > MAX_MATCH_COST) return null;
+  // 거친 비용(칸이 넓어 평균이 뭉개짐) 과 정밀 비용은 척도가 비슷하다 — 중앙값 대비 뚜렷한지 본다.
+  if (best.cost > median(valid) * DISTINCT_RATIO) return null;
+  return best;
 }
