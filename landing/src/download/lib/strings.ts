@@ -6,6 +6,12 @@ type DownloadStrings = {
   /** "지금까지 {n}회 다운로드됨" 처럼 숫자 앞뒤 문구가 언어마다 달라 분리한다. */
   countPrefix: string
   countSuffix: string
+  /** "지금까지 {n}명이 설치" — 집계 서버 값이 있을 때 다운로드 수 대신 보인다. */
+  installsPrefix: string
+  installsSuffix: string
+  /** " · 이번 달 {n}명이 사용 중" */
+  activePrefix: string
+  activeSuffix: string
   reqScreen: string
   reqArch: string
   reqPermission: string
@@ -18,6 +24,10 @@ export const DOWNLOAD_STRINGS = defineDict<DownloadStrings>({
     sub: 'MIT 라이선스 · 무료 · 오픈소스',
     countPrefix: '지금까지 ',
     countSuffix: '회 다운로드됨',
+    installsPrefix: '지금까지 ',
+    installsSuffix: '명이 설치',
+    activePrefix: ' · 이번 달 ',
+    activeSuffix: '명이 사용 중',
     reqScreen: 'macOS 13 Ventura 이상',
     reqArch: 'Apple Silicon & Intel',
     reqPermission: '화면 녹화 권한 필요',
@@ -33,6 +43,10 @@ export const DOWNLOAD_STRINGS = defineDict<DownloadStrings>({
     sub: 'MIT licensed · Free · Open source',
     countPrefix: '',
     countSuffix: ' downloads and counting',
+    installsPrefix: '',
+    installsSuffix: ' installs and counting',
+    activePrefix: ' · ',
+    activeSuffix: ' active this month',
     reqScreen: 'macOS 13 Ventura or later',
     reqArch: 'Apple Silicon & Intel',
     reqPermission: 'Screen Recording permission',

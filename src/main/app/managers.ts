@@ -16,6 +16,7 @@ import { GifStudioWindowManager } from '../windows/gifStudioWindow';
 import { CountdownWindow } from '../windows/countdownWindow';
 import { OnboardingWindowManager } from '../windows/onboardingWindow';
 import { inputHighlight } from '../input-highlight/inputHighlight';
+import { usagePing } from '../telemetry/usagePing';
 import type { RunningFeature } from '../../shared/running-features';
 
 /**
@@ -121,4 +122,5 @@ export const stopAllManagers = (): void => {
   onboardingWindow.stop();
   // 진행 중 ffmpeg·작업 폴더를 동기로 정리한다.
   gifStudioWindow.stop();
+  usagePing.stop();
 };

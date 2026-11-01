@@ -1,0 +1,13 @@
+name = "asis-telemetry"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+
+[vars]
+# 집계 시작(2026-11) 전 누적 추정치 — GitHub 릴리스 .dmg 다운로드에서 릴리스당 기본 2회를 뺀 합.
+INSTALLS_BASELINE = "85"
+
+# `npx wrangler d1 create asis-telemetry` 가 출력한 database_id 로 바꾼다 (README 참고).
+[[d1_databases]]
+binding = "DB"
+database_name = "asis-telemetry"
+database_id = "338fa735-4a47-4216-b9ff-1206aa05a522"

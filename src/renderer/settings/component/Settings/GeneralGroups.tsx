@@ -140,13 +140,7 @@ export function GeneralGroup({ t, misc, setMisc }: GeneralGroupProps): JSX.Eleme
           onChange={(checked): void => update('captureSound', checked)}
         />
       </Row>
-      <Row>
-        <Checkbox
-          label={t.openAtLogin}
-          checked={misc.openAtLogin}
-          onChange={(checked): void => update('openAtLogin', checked)}
-        />
-      </Row>
+      <AppBehaviorRows t={t} misc={misc} update={update} />
     </Group>
   );
 }
@@ -174,6 +168,35 @@ function RecordInputRows({ t, misc, update }: RecordInputRowsProps): JSX.Element
           hint={t.recordShowKeysHint}
           checked={misc.recordShowKeys}
           onChange={(checked): void => update('recordShowKeys', checked)}
+        />
+      </Row>
+    </>
+  );
+}
+
+type AppBehaviorRowsProps = {
+  t: Strings;
+  misc: MiscConfig;
+  update: (field: 'openAtLogin' | 'shareUsageStats', value: boolean) => void;
+};
+
+/** 로그인 시 실행·익명 사용 통계 — 통계는 무엇을 보내는지 힌트로 바로 밝힌다. */
+function AppBehaviorRows({ t, misc, update }: AppBehaviorRowsProps): JSX.Element {
+  return (
+    <>
+      <Row>
+        <Checkbox
+          label={t.openAtLogin}
+          checked={misc.openAtLogin}
+          onChange={(checked): void => update('openAtLogin', checked)}
+        />
+      </Row>
+      <Row>
+        <Checkbox
+          label={t.shareUsageStats}
+          hint={t.shareUsageStatsHint}
+          checked={misc.shareUsageStats}
+          onChange={(checked): void => update('shareUsageStats', checked)}
         />
       </Row>
     </>

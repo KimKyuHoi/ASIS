@@ -7,6 +7,7 @@ import { warmScreencapture } from './capture/capture';
 import { warmDisplaySnapshot } from './capture/displaySnapshot';
 import { checkPermissionsOnLaunch } from './permissions';
 import { setupAutoUpdater } from './updateChecker';
+import { usagePing } from './telemetry/usagePing';
 import { initLanguage, isLanguageChosen } from './i18n/i18n';
 import { subscribeLanguage } from '../shared/i18n/language';
 import {
@@ -106,6 +107,8 @@ app.whenReady().then(async () => {
   const showReleaseNotes = checkVersionOnLaunch();
   applyMacIntegration();
   startTrayAndShortcuts();
+  // 익명 사용 통계 — 패키징 앱·설정 켜짐일 때만 하루 한 번 보낸다.
+  usagePing.start();
 
   // 첫 실행(언어 미선택) — 언어 선택 창을 띄운다. 이후 실행에는 나타나지 않는다.
   if (!isLanguageChosen()) onboardingWindow.show();

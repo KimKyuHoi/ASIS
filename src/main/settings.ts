@@ -55,6 +55,8 @@ export type MiscConfig = {
   recordShowClicks: boolean;
   /** GIF·화면 녹화에 누른 단축키(⌘·⌃ 조합, esc·F 키) 배지 표시. 손쉬운 사용 권한 필요. */
   recordShowKeys: boolean;
+  /** 익명 사용 통계(무작위 설치 ID·앱 버전·macOS 버전)를 하루 한 번 보낼지 (telemetry/usagePing.ts). */
+  shareUsageStats: boolean;
 };
 
 export type Settings = {
@@ -66,6 +68,10 @@ export type Settings = {
   lastLaunchedVersion: string;
   /** 새 버전 공지(변경 이력 자동 표시)를 마지막으로 판정한 버전. '' = 기록 없음. */
   lastSeenReleaseNotes: string;
+  /** 익명 사용 통계용 무작위 설치 ID. '' = 아직 만들지 않음 (첫 전송 때 만든다). */
+  installId: string;
+  /** 익명 사용 통계를 마지막으로 보낸 UTC 날짜(YYYY-MM-DD). '' = 보낸 적 없음. */
+  lastUsagePingDay: string;
   /** UI 언어. '' = 첫 실행에서 아직 선택 안 함 → onboarding 언어 선택 창 표시. */
   language: Language | '';
   /** 에디터 도구 전환 키(V/R/O …). '' = 해제. */
@@ -106,6 +112,7 @@ const DEFAULT_MISC: MiscConfig = {
   afterCapture: 'editor',
   recordShowClicks: false,
   recordShowKeys: false,
+  shareUsageStats: true,
 };
 
 export const settingsStore = new ElectronStore<Settings>({
@@ -115,6 +122,8 @@ export const settingsStore = new ElectronStore<Settings>({
     misc: DEFAULT_MISC,
     lastLaunchedVersion: '',
     lastSeenReleaseNotes: '',
+    installId: '',
+    lastUsagePingDay: '',
     language: '',
     editorHotkeys: DEFAULT_EDITOR_HOTKEYS,
   },

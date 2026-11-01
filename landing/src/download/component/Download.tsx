@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
 import { useDownloadCount } from '../hook/useDownloadCount';
+import { useInstallStats, type InstallStats } from '../hook/useInstallStats';
 import { useLanguage } from '../../i18n/hook/useLanguage';
 import { DOWNLOAD_STRINGS } from '../lib/strings';
 
@@ -11,6 +12,7 @@ type DownloadProps = {
 
 export function Download({ armHref, intelHref, version }: DownloadProps): React.JSX.Element {
   const downloadCount = useDownloadCount();
+  const installStats = useInstallStats();
   const lang = useLanguage();
   const t = DOWNLOAD_STRINGS[lang];
 
@@ -39,13 +41,7 @@ export function Download({ armHref, intelHref, version }: DownloadProps): React.
         <h2 className="download-title">{t.title}</h2>
         <p className="download-sub">{t.sub}</p>
 
-        {downloadCount !== null && downloadCount > 0 ? (
-          <div className="download-count">
-            {t.countPrefix}
-            <span className="download-count-num">{downloadCount.toLocaleString()}</span>
-            {t.countSuffix}
-          </div>
-        ) : null}
+        <UsageBadge t={t} installStats={installStats} downloadCount={downloadCount} />
 
         <div className="download-requirements">
           <div className="dl-req-item">
@@ -106,5 +102,39 @@ export function Download({ armHref, intelHref, version }: DownloadProps): React.
         </div>
       </motion.div>
     </section>
+  );
+}
+
+type UsageBadgeProps = {
+  t: (typeof DOWNLOAD_STRINGS)['ko'];
+  installStats: InstallStats | null;
+  downloadCount: number | null;
+};
+
+/** 설치 수(집계 서버)를 우선 보이고, 불러오지 못하면 GitHub 다운로드 수로 대신한다. */
+function UsageBadge({ t, installStats, downloadCount }: UsageBadgeProps): React.JSX.Element | null {
+  if (installStats !== null && installStats.installs > 0) {
+    return (
+      <div className="download-count">
+        {t.installsPrefix}
+        <span className="download-count-num">{installStats.installs.toLocaleString()}</span>
+        {t.installsSuffix}
+        {installStats.active30d > 0 ? (
+          <>
+            {t.activePrefix}
+            <span className="download-count-num">{installStats.active30d.toLocaleString()}</span>
+            {t.activeSuffix}
+          </>
+        ) : null}
+      </div>
+    );
+  }
+  if (downloadCount === null || downloadCount === 0) return null;
+  return (
+    <div className="download-count">
+      {t.countPrefix}
+      <span className="download-count-num">{downloadCount.toLocaleString()}</span>
+      {t.countSuffix}
+    </div>
   );
 }

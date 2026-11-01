@@ -15,6 +15,7 @@ export const DEFAULT_MISC: MiscConfig = {
   afterCapture: 'editor',
   recordShowClicks: false,
   recordShowKeys: false,
+  shareUsageStats: true,
 };
 
 export const DEFAULT_HOTKEYS: HotkeyConfig = {

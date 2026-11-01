@@ -11,4 +11,5 @@ export type MiscConfig = {
   afterCapture: 'editor' | 'clipboard';
   recordShowClicks: boolean;
   recordShowKeys: boolean;
+  shareUsageStats: boolean;
 };
