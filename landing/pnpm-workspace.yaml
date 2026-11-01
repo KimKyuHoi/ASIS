@@ -1,0 +1,6 @@
+# landing 은 루트(ASIS 앱)와 별도의 pnpm 프로젝트다 — 자체 pnpm-lock.yaml 로 설치한다.
+# pnpm 11 부터 빌드 스크립트 허용 목록을 이 파일에서만 읽으므로,
+# 루트의 pnpm-workspace.yaml 과 별개로 여기에도 둬야 한다.
+allowBuilds:
+  # vite 가 쓰는 esbuild 는 플랫폼별 바이너리를 install 스크립트로 배치한다.
+  esbuild: true

@@ -37,10 +37,6 @@ words:
   - homebrew
   - sips
 
-  # Hermes
-  - hermes
-  - nousresearch
-
   # MCP / Claude
   - mcp
   - claude

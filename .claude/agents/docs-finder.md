@@ -68,4 +68,4 @@ ASIS 의 6개 룰 (`/Users/andy/OpenSource/ASIS/.claude/rules/*.md`) 을 따릅�
 - "Electron `Tray.setToolTip(undefined)` 동작이 어떻게?" → Electron docs 직접 fetch
 - "React 19 의 `useSyncExternalStore` snapshot 함수 호출 빈도?" → React docs fetch
 - "Konva `Filters.Blur` 가 이미지 일부에만 적용 가능한가?" → Konva.js docs fetch
-- "Hermes Agent 의 `external_dirs` 설정 형식?" → hermes-agent.nousresearch.com docs fetch
+- "electron-builder `notarize` 옵션이 받는 값?" → electron.build docs fetch

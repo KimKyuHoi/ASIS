@@ -1,0 +1,9 @@
+# 로컬 개발 툴체인 고정.
+# mise 의 pnpm/node shim 은 버전이 지정된 설정 파일이 없으면
+# "No version is set for shim" 으로 실패하므로 프로젝트 루트에서 명시한다.
+#
+# node 는 CI(.github/workflows/*.yml)·electron-builder 와 동일한 24.x 를 쓴다.
+# pnpm 은 package.json 의 packageManager 필드와 반드시 같은 값을 유지한다.
+[tools]
+node = "24.22.2"
+pnpm = "12.16.1"
