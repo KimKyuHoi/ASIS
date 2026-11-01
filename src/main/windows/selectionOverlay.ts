@@ -455,6 +455,7 @@ function createOverlayWindow(
     hasShadow: false,
     roundedCorners: false,
     skipTaskbar: true,
+    hiddenInMissionControl: true,
     enableLargerThanScreen: true,
     // NSPanel(type:'panel') 은 macOS 의 floating window 표준 — fullscreen Space
     // (Slack/Opera 등) 위에도 그대로 떠서 Space 전환 없이 overlay 가 표시됨.
