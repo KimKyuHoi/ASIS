@@ -100,11 +100,11 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          # CSC_LINK / CSC_KEY_PASSWORD 는 electron-builder 가 인증서를 식별하는 데 사용.
-          # 앞 step 에서 keychain 에 set-key-partition-list 를 설정했으므로
-          # codesign 이 비밀번호 프롬프트 없이 접근 가능 → hang 발생하지 않는다.
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          # 앞 step 이 인증서를 import 하고 set-key-partition-list 까지 마친 keychain 을 그대로 쓴다.
+          # CSC_LINK 를 넘기면 electron-builder 가 자기 임시 keychain 을 또 만들어 import 하는데,
+          # macos-26 러너 이미지(25.6.0)에서 그 단계의 set-key-partition-list 가
+          # "SecKeychainUnlock: passphrase not correct" 로 실패했다(v0.8.0 첫 빌드).
+          CSC_KEYCHAIN: ${{ env.KEYCHAIN_PATH }}
         # tag push면 GitHub Release에 publish, 수동 실행이면 아티팩트만 업로드
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -z "${{ github.event.inputs.tag }}" ]; then
