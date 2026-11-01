@@ -69,6 +69,20 @@ button:disabled {
   padding-top: 28px;
 }
 
+.editor__titlebar {
+  /* 위 padding-top 은 자리만 비울 뿐이라 잡히지 않는다 — 그 위에 겹쳐 앉는
+     fixed 레이어로 실제 드래그 영역을 만든다 (레이아웃 영향 없음). */
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 28px;
+  /* 신호등 버튼은 네이티브라 웹 콘텐츠 위에 떠서 이 레이어에 가리지 않는다. */
+  z-index: 1;
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
 .editor__canvas {
   flex: 1;
   display: flex;
@@ -502,6 +516,10 @@ button:disabled {
 .context-menu {
   position: fixed;
   z-index: 9999;
+  /* 상단 근처에서 열리면 editor__titlebar 드래그 영역과 겹친다 — 항목 클릭이
+     창 이동으로 먹히지 않도록 예외 지정. */
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
   min-width: 120px;
   padding: 4px;
   background: rgba(36, 36, 42, 0.96);

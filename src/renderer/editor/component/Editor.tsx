@@ -582,6 +582,8 @@ export default function Editor(): JSX.Element {
 
   return (
     <div className="editor">
+      {/* 상단 28px 창 이동 손잡이 — hiddenInset 타이틀바 자리. */}
+      <div className="editor__titlebar" />
       {saveToast !== null && (
         <div className="editor__toast">
           {t.editor.savedToast(saveToast)}
