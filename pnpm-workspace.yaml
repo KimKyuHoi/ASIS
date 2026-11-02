@@ -19,6 +19,12 @@ nodeLinker: hoisted
 # 신규 의존성을 추가할 때 lockfile 갱신 강제
 strictPeerDependencies: false
 
+# 설치 후 스크립트 결과(electron/dist 등)를 저장소 캐시에 보관했다가 다음 설치 때 되살리지 않는다.
+# 되살릴 때 파일만 복사되고 심볼릭 링크가 빠져, Electron.app 의 프레임워크 링크
+# (Versions/Current, Electron Framework)가 사라지고 `pnpm dev` 가 dyld 오류로 죽었다.
+# 꺼 두면 electron 의 postinstall 이 매번 공식 zip 을 풀어 링크까지 그대로 만든다.
+sideEffectsCache: false
+
 # 설치 시 빌드 스크립트 실행을 허용할 패키지 (pnpm 11 의 allowBuilds).
 # 목록에 없는 패키지가 빌드 스크립트를 가지면 ERR_PNPM_IGNORED_BUILDS 로 실패한다.
 allowBuilds:
