@@ -52,8 +52,6 @@ export type GifExportOptions = {
   speed: number;
   /** 총 재생 횟수. 0 = 무한 반복. */
   plays: number;
-  /** 정방향 뒤에 역재생을 이어 붙인다. */
-  bounce: boolean;
 };
 
 export type GifExportTarget = 'folder' | 'save-as' | 'clipboard';

@@ -4,7 +4,7 @@ import { FPS_MAX, FPS_MIN, type ExportSettings } from '../../lib/export-settings
 import { gifStudioStrings } from '../../lib/strings';
 import { NumberField } from './NumberField';
 
-/** FPS · 품질 · 재생 횟수/무한 반복/바운스. */
+/** FPS · 품질 · 재생 횟수/무한 반복. */
 export function OutputFields({
   settings,
   onPatch,
@@ -66,14 +66,6 @@ export function OutputFields({
             onChange={(e): void => onPatch({ loopForever: e.currentTarget.checked })}
           />
           <span>{t.loopForever}</span>
-        </label>
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={settings.bounce}
-            onChange={(e): void => onPatch({ bounce: e.currentTarget.checked })}
-          />
-          <span>{t.bounce}</span>
         </label>
       </div>
     </>

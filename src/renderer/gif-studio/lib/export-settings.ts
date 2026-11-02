@@ -20,7 +20,6 @@ export type ExportSettings = {
   loopForever: boolean;
   /** loopForever=false 일 때의 총 재생 횟수. */
   plays: number;
-  bounce: boolean;
 };
 
 const DEFAULT_VIDEO_FPS = 10;
@@ -59,13 +58,12 @@ export function defaultSettings(media: GifStudioMedia): ExportSettings {
     speed: 1,
     loopForever: true,
     plays: 1,
-    bounce: false,
   };
 }
 
 /** 내보낸 GIF 의 재생 길이 (초). */
 export function outputDuration(start: number, end: number, s: ExportSettings): number {
-  return ((end - start) / s.speed) * (s.bounce ? 2 : 1);
+  return (end - start) / s.speed;
 }
 
 /**
@@ -88,6 +86,5 @@ export function toExportOptions(start: number, end: number, s: ExportSettings): 
     quality: s.quality,
     speed: s.speed,
     plays: s.loopForever ? 0 : s.plays,
-    bounce: s.bounce,
   };
 }

@@ -4,7 +4,7 @@ import { tGifStudio } from './strings';
 import type { GifExportOptions, GifStudioMedia } from './types';
 
 /**
- * GIF 스튜디오 내보내기 — 트림·속도·FPS·리사이즈·주석 오버레이·바운스를 한 번의
+ * GIF 스튜디오 내보내기 — 트림·속도·FPS·리사이즈·주석 오버레이를 한 번의
  * ffmpeg filter_complex 로 처리하고, palettegen → paletteuse 2-pass 로 GIF 를 만든다.
  *
  * capture/gif.ts 의 encodeGif 와 같은 palette 2-pass 이지만, 그쪽은 PNG 프레임
@@ -77,7 +77,7 @@ export type ExportSpec = {
 
 /** ffmpeg 인자 — 순수 함수라 실제 실행 없이 검증할 수 있다. */
 function buildExportArgs({ media, options, overlayPath, outputPath }: ExportSpec): string[] {
-  const { start, end, width, height, fps, speed, bounce } = options;
+  const { start, end, width, height, fps, speed } = options;
   const duration = end - start;
   const input: string[] = [];
   const chain: string[] = [];
@@ -106,13 +106,6 @@ function buildExportArgs({ media, options, overlayPath, outputPath }: ExportSpec
     graph.push(`[1:v]fps=${fps},scale=${width}:${height}:flags=lanczos,format=rgba[ann]`);
     graph.push(`[${last}][ann]overlay=0:0:format=auto:eof_action=repeat[comp]`);
     last = 'comp';
-  }
-
-  if (bounce) {
-    graph.push(`[${last}]split[fwd][rev0]`);
-    graph.push('[rev0]reverse[rev]');
-    graph.push('[fwd][rev]concat=n=2:v=1:a=0[bounced]');
-    last = 'bounced';
   }
 
   graph.push(`[${last}]split[pa][pb]`);
