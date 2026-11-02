@@ -11,35 +11,28 @@ import {
 import { gifStudioStrings } from '../../lib/strings';
 import { NumberField } from './NumberField';
 
-type Unit = 'px' | '%';
 type Props = {
   media: GifStudioMedia;
   settings: ExportSettings;
   onPatch: (p: Partial<ExportSettings>) => void;
 };
 
-/** 크기 프리셋 · 너비/높이(픽셀|퍼센트, 비율 고정) · 속도. */
+/** 크기 프리셋 · 너비/높이(픽셀, 비율 고정) · 속도. */
 export function DimensionFields({ media, settings, onPatch }: Props): JSX.Element {
   const t = gifStudioStrings[useLanguage()];
-  const [unit, setUnit] = useState<Unit>('px');
   const [lockAspect, setLockAspect] = useState(true);
-
-  const toDisplay = (px: number, original: number): number =>
-    unit === 'px' ? px : Math.round((px / original) * 1000) / 10;
-  const fromDisplay = (value: number, original: number): number =>
-    unit === 'px' ? value : (value / 100) * original;
 
   // NumberField 가 blur·Enter 때만 부르므로 여기서 clamp 해도 입력 도중 값이 튀지 않는다.
   const setWidth = (value: number): void => {
     if (value <= 0) return;
-    const width = clampSize(fromDisplay(value, media.width));
+    const width = clampSize(value);
     const height = lockAspect ? clampSize((width / media.width) * media.height) : settings.height;
     onPatch({ width, height });
   };
 
   const setHeight = (value: number): void => {
     if (value <= 0) return;
-    const height = clampSize(fromDisplay(value, media.height));
+    const height = clampSize(value);
     const width = lockAspect ? clampSize((height / media.height) * media.width) : settings.width;
     onPatch({ width, height });
   };
@@ -52,7 +45,7 @@ export function DimensionFields({ media, settings, onPatch }: Props): JSX.Elemen
           <span className="field__label">{t.width}</span>
           <NumberField
             min={1}
-            value={toDisplay(settings.width, media.width)}
+            value={settings.width}
             onCommit={setWidth}
           />
         </label>
@@ -61,18 +54,10 @@ export function DimensionFields({ media, settings, onPatch }: Props): JSX.Elemen
           <span className="field__label">{t.height}</span>
           <NumberField
             min={1}
-            value={toDisplay(settings.height, media.height)}
+            value={settings.height}
             onCommit={setHeight}
           />
         </label>
-        <select
-          className="mac-select field__unit"
-          value={unit}
-          onChange={(e): void => setUnit(e.currentTarget.value === '%' ? '%' : 'px')}
-        >
-          <option value="px">{t.unitPixels}</option>
-          <option value="%">{t.unitPercent}</option>
-        </select>
       </div>
       <label className="check">
         <input
