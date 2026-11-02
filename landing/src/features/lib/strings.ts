@@ -98,7 +98,7 @@ export const FEATURES_STRINGS = defineDict<FeaturesStrings>({
         points: [
           '영상 → GIF 변환 — MOV · MP4 · M4V · WebM · AVI · MKV',
           '.gif 파일을 열면 ASIS가 뷰어로 보여 줌 (기본 앱 연결)',
-          '주석을 앞뒤·선택 구간·모든 프레임에 복사, 반복 횟수',
+          '주석을 앞뒤·선택 구간·모든 프레임에 복사',
         ],
       },
       {
@@ -234,7 +234,7 @@ export const FEATURES_STRINGS = defineDict<FeaturesStrings>({
         points: [
           'Video to GIF — MOV, MP4, M4V, WebM, AVI, and MKV',
           'Open .gif files in ASIS as a viewer (registered as the default app)',
-          'Copy annotations to neighboring frames, a selection, or every frame; set loop count',
+          'Copy annotations to neighboring frames, a selection, or every frame',
         ],
       },
       {

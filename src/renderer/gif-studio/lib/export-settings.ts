@@ -17,9 +17,6 @@ export type ExportSettings = {
   fps: number;
   quality: number;
   speed: number;
-  loopForever: boolean;
-  /** loopForever=false 일 때의 총 재생 횟수. */
-  plays: number;
 };
 
 const DEFAULT_VIDEO_FPS = 10;
@@ -56,8 +53,6 @@ export function defaultSettings(media: GifStudioMedia): ExportSettings {
     fps,
     quality: 80,
     speed: 1,
-    loopForever: true,
-    plays: 1,
   };
 }
 
@@ -85,6 +80,5 @@ export function toExportOptions(start: number, end: number, s: ExportSettings): 
     fps: s.fps,
     quality: s.quality,
     speed: s.speed,
-    plays: s.loopForever ? 0 : s.plays,
   };
 }

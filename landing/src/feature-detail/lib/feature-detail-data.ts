@@ -249,7 +249,7 @@ export const WORKFLOW_FEATURES = defineDict<ToolSpec[]>({
       summary: '프레임별 주석 · 영상 → GIF',
       details: [
         '프레임마다 주석을 그리고, 앞뒤·선택 구간·모든 프레임에 복사한다.',
-        '구간 자르기, 크기·속도·FPS·품질, 반복 횟수를 정해 내보낸다.',
+        '구간 자르기, 크기·속도·FPS·품질을 정해 내보낸다.',
         'GIF와 MOV · MP4 · M4V · WebM · AVI · MKV 영상을 열 수 있다.',
         '.gif 파일을 ASIS 뷰어로 바로 연다(기본 앱으로 연결).',
       ],
@@ -335,7 +335,7 @@ export const WORKFLOW_FEATURES = defineDict<ToolSpec[]>({
       summary: 'Frame-by-frame annotation · Video to GIF',
       details: [
         'Annotate individual frames and copy them to neighboring frames, a selection, or every frame.',
-        'Trim, then export with your choice of size, speed, FPS, quality, and loop count.',
+        'Trim, then export with your choice of size, speed, FPS, and quality.',
         'Opens GIFs and MOV, MP4, M4V, WebM, AVI, and MKV videos.',
         'Opens .gif files in the ASIS viewer (registered as the default app).',
       ],

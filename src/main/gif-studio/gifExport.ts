@@ -24,7 +24,7 @@ type RangeRule = [string, number, number, number, boolean];
 
 /** 잘못된 값은 조용히 보정하지 않고 throw — renderer 버그를 숨기지 않는다. */
 function validateExportOptions(o: GifExportOptions, media: GifStudioMedia): void {
-  const numbers = [o.start, o.end, o.width, o.height, o.fps, o.quality, o.speed, o.plays];
+  const numbers = [o.start, o.end, o.width, o.height, o.fps, o.quality, o.speed];
   if (numbers.some((v) => !Number.isFinite(v))) {
     throw invalid(`GIF 내보내기 옵션에 숫자가 아닌 값: ${JSON.stringify(o)}`);
   }
@@ -37,8 +37,6 @@ function validateExportOptions(o: GifExportOptions, media: GifStudioMedia): void
     ['fps', o.fps, FPS_MIN, FPS_MAX, true],
     ['quality', o.quality, 1, 100, false],
     ['speed', o.speed, SPEED_MIN, SPEED_MAX, false],
-    // plays 0 = 무한 반복.
-    ['plays', o.plays, 0, 1000, true],
   ];
   for (const [name, value, min, max, integer] of rules) {
     if (value < min || value > max || (integer && !Number.isInteger(value))) {
@@ -55,16 +53,6 @@ function invalid(detail: string): UserFacingError {
 /** 품질(1~100) → palettegen max_colors(32~256). */
 function qualityToColors(quality: number): number {
   return Math.round(32 + (quality / 100) * 224);
-}
-
-/**
- * 총 재생 횟수 → ffmpeg gif muxer -loop 값.
- * -loop 0 = 무한, -1 = 반복 없음(1회), n = 첫 재생 뒤 n 번 더.
- */
-function playsToLoopArg(plays: number): number {
-  if (plays === 0) return 0;
-  if (plays === 1) return -1;
-  return plays - 1;
 }
 
 export type ExportSpec = {
@@ -121,8 +109,9 @@ function buildExportArgs({ media, options, overlayPath, outputPath }: ExportSpec
     '-filter_complex',
     graph.join(';'),
     '-an',
+    // gif muxer -loop 0 = 무한 반복 — 화면 녹화 GIF 는 항상 반복 재생한다.
     '-loop',
-    String(playsToLoopArg(options.plays)),
+    '0',
     outputPath,
   ];
 }

@@ -20,13 +20,17 @@ type Props = {
 /** 크기 프리셋 · 너비/높이(픽셀, 비율 고정) · 속도. */
 export function DimensionFields({ media, settings, onPatch }: Props): JSX.Element {
   const t = gifStudioStrings[useLanguage()];
-  const [lockAspect, setLockAspect] = useState(true);
+  // 처음엔 지금 크기가 원본 비율인지로 정한다 — 비율을 깬 채 다시 열린 설정이면 꺼진 상태로 보인다.
+  const [lockAspect, setLockAspect] = useState(() => keepsRatio(media, settings));
+
+  /** 너비를 기준으로 원본 비율에 맞춘 높이. */
+  const ratioHeight = (width: number): number => clampSize((width / media.width) * media.height);
 
   // NumberField 가 blur·Enter 때만 부르므로 여기서 clamp 해도 입력 도중 값이 튀지 않는다.
   const setWidth = (value: number): void => {
     if (value <= 0) return;
     const width = clampSize(value);
-    const height = lockAspect ? clampSize((width / media.width) * media.height) : settings.height;
+    const height = lockAspect ? ratioHeight(width) : settings.height;
     onPatch({ width, height });
   };
 
@@ -63,13 +67,24 @@ export function DimensionFields({ media, settings, onPatch }: Props): JSX.Elemen
         <input
           type="checkbox"
           checked={lockAspect}
-          onChange={(e): void => setLockAspect(e.currentTarget.checked)}
+          onChange={(e): void => {
+            const on = e.currentTarget.checked;
+            setLockAspect(on);
+            // 다시 켜면 깨진 비율을 바로 되돌린다 — 너비는 두고 높이를 원본 비율로 맞춘다.
+            if (on) onPatch({ height: ratioHeight(settings.width) });
+          }}
         />
         <span>{t.lockAspect}</span>
       </label>
       <SpeedSlider settings={settings} onPatch={onPatch} />
     </>
   );
+}
+
+/** 지금 크기가 원본 비율인지 — 정수 픽셀 반올림 오차(1px)는 같은 비율로 본다. */
+function keepsRatio(media: GifStudioMedia, settings: ExportSettings): boolean {
+  const expected = (settings.width / media.width) * media.height;
+  return Math.abs(expected - settings.height) <= 1;
 }
 
 function PresetSelect({ media, settings, onPatch }: Props): JSX.Element {

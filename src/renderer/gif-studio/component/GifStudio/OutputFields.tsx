@@ -2,9 +2,8 @@ import type { JSX } from 'react';
 import { useLanguage } from '../../../../shared/i18n/use-language';
 import { FPS_MAX, FPS_MIN, type ExportSettings } from '../../lib/export-settings';
 import { gifStudioStrings } from '../../lib/strings';
-import { NumberField } from './NumberField';
 
-/** FPS · 품질 · 재생 횟수/무한 반복. */
+/** FPS · 품질. 내보낸 GIF 는 항상 무한 반복한다. */
 export function OutputFields({
   settings,
   onPatch,
@@ -44,30 +43,6 @@ export function OutputFields({
           onChange={(e): void => onPatch({ quality: Number(e.currentTarget.value) })}
         />
       </label>
-
-      <div className="field field--row">
-        <label className="field__inline">
-          <span className="field__label">{t.loops}</span>
-          <NumberField
-            min={1}
-            max={1000}
-            disabled={settings.loopForever}
-            value={settings.plays}
-            onCommit={(v): void => {
-              // main 검증 범위(1~1000 정수) 안으로 맞춘다.
-              onPatch({ plays: Math.min(1000, Math.max(1, Math.round(v))) });
-            }}
-          />
-        </label>
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={settings.loopForever}
-            onChange={(e): void => onPatch({ loopForever: e.currentTarget.checked })}
-          />
-          <span>{t.loopForever}</span>
-        </label>
-      </div>
     </>
   );
 }

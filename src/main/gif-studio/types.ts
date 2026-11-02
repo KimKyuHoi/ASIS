@@ -50,8 +50,6 @@ export type GifExportOptions = {
   quality: number;
   /** 재생 속도 배율 (0.25~4). */
   speed: number;
-  /** 총 재생 횟수. 0 = 무한 반복. */
-  plays: number;
 };
 
 export type GifExportTarget = 'folder' | 'save-as' | 'clipboard';
