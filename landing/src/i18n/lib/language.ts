@@ -1,42 +1,18 @@
 export type Language = 'ko' | 'en';
 
-const STORAGE_KEY = 'asis-lang';
-
-function isLanguage(value: string | null): value is Language {
-  return value === 'ko' || value === 'en';
-}
+export const LANGUAGES: Language[] = ['en', 'ko'];
 
 /**
- * 초기 언어 결정: 저장된 값이 유효하면 그걸 쓰고,
- * 없으면 브라우저 언어가 한국어일 때만 'ko', 그 외에는 'en'.
+ * 언어는 URL(/ASIS/ vs /ASIS/ko/)로 정해진다. 여기 저장하는 값은 "다음에 어느 언어 URL 로
+ * 보낼지"에 대한 사용자 선택뿐이다 — index.html 의 인라인 스크립트가 같은 키를 읽어
+ * 첫 방문 언어를 고른다(키를 바꾸면 거기도 같이 바꿀 것).
  */
-function resolveInitial(): Language {
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (isLanguage(stored)) return stored;
-  return navigator.language.startsWith('ko') ? 'ko' : 'en';
-}
+export const LANG_STORAGE_KEY = 'asis-lang';
 
-let current: Language = resolveInitial();
-const listeners = new Set<() => void>();
-
-// index.html 의 하드코딩된 lang="ko" 를 실제 초기 언어로 맞춘다.
-document.documentElement.lang = current;
-
-export function getLanguage(): Language {
-  return current;
-}
-
-export function setLanguage(next: Language): void {
-  if (next === current) return;
-  current = next;
-  localStorage.setItem(STORAGE_KEY, next);
-  document.documentElement.lang = next;
-  for (const listener of listeners) listener();
-}
-
-export function subscribeLanguage(callback: () => void): () => void {
-  listeners.add(callback);
-  return () => {
-    listeners.delete(callback);
-  };
+export function rememberLanguage(lang: Language): void {
+  try {
+    localStorage.setItem(LANG_STORAGE_KEY, lang);
+  } catch {
+    // 저장소가 막힌 브라우저(사생활 보호 모드 등) — 링크 이동만으로도 언어는 바뀐다.
+  }
 }

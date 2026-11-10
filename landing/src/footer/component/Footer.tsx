@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import { useLanguage } from '../../i18n/hook/useLanguage';
 import { FOOTER_STRINGS } from '../lib/strings';
+import { pagePath } from '../../page/lib/page-path';
 
 export function Footer(): React.JSX.Element {
   const lang = useLanguage();
@@ -30,7 +31,7 @@ export function Footer(): React.JSX.Element {
           <span className="footer-sep">·</span>
           <a href="https://github.com/KimKyuHoi/ASIS/releases" target="_blank" rel="noopener noreferrer">{t.releases}</a>
           <span className="footer-sep">·</span>
-          <a href="#/bug">{t.bugReport}</a>
+          <a href={pagePath({ route: 'bug', lang })}>{t.bugReport}</a>
           <span className="footer-sep">·</span>
           <span>MIT License</span>
         </div>
