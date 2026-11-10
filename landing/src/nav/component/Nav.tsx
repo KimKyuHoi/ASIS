@@ -1,9 +1,10 @@
 import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
-import { NAV_ITEMS, type Route } from '../types/route';
+import { ROUTES, type Route } from '../types/route';
 import { NAV_STRINGS } from '../lib/strings';
 import { useLanguage } from '../../i18n/hook/useLanguage';
-import { setLanguage } from '../../i18n/lib/language';
+import { rememberLanguage } from '../../i18n/lib/language';
+import { pagePath } from '../../page/lib/page-path';
 import { useResolvedTheme } from '../../theme/hook/useTheme';
 import { setThemePreference } from '../../theme/lib/theme';
 
@@ -13,6 +14,7 @@ export function Nav({ route }: { route: Route }): React.JSX.Element {
   const t = NAV_STRINGS[lang];
   const theme = useResolvedTheme();
   const themeLabel = theme === 'dark' ? t.themeToLight : t.themeToDark;
+  const otherLang = lang === 'ko' ? 'en' : 'ko';
 
   useEffect(() => {
     const handler = (): void => setScrolled(window.scrollY > 48);
@@ -27,7 +29,7 @@ export function Nav({ route }: { route: Route }): React.JSX.Element {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, ease: [0.32, 0.72, 0, 1] }}
     >
-      <a href="#/" className="nav-logo">
+      <a href={pagePath({ route: 'home', lang })} className="nav-logo">
         <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
           <rect x="1" y="1" width="20" height="20" rx="5" stroke="var(--accent)" strokeWidth="2" />
           <rect x="5" y="5" width="5" height="5" rx="1" fill="var(--accent)" />
@@ -38,26 +40,28 @@ export function Nav({ route }: { route: Route }): React.JSX.Element {
         <span className="nav-logo-text">ASIS</span>
       </a>
       <div className="nav-links">
-        {NAV_ITEMS.map((item) => (
+        {ROUTES.map((r) => (
           <a
-            key={item.route}
-            href={item.hash}
-            className={`nav-tab${route === item.route ? ' nav-tab--active' : ''}`}
-            aria-current={route === item.route ? 'page' : undefined}
+            key={r}
+            href={pagePath({ route: r, lang })}
+            className={`nav-tab${route === r ? ' nav-tab--active' : ''}`}
+            aria-current={route === r ? 'page' : undefined}
           >
-            {t.labels[item.route]}
+            {t.labels[r]}
           </a>
         ))}
-        <button
-          type="button"
+        {/* 언어 전환 = 같은 탭의 다른 언어 URL 로 이동. 선택을 저장해 다음 방문에도 그 언어로 보낸다. */}
+        <a
+          href={pagePath({ route, lang: otherLang })}
+          hrefLang={otherLang}
           className="nav-lang"
-          onClick={() => setLanguage(lang === 'ko' ? 'en' : 'ko')}
+          onClick={() => rememberLanguage(otherLang)}
           aria-label={t.languageToggleAria}
         >
           <span className={`nav-lang-opt${lang === 'ko' ? ' nav-lang-opt--active' : ''}`}>KO</span>
           <span className="nav-lang-sep">/</span>
           <span className={`nav-lang-opt${lang === 'en' ? ' nav-lang-opt--active' : ''}`}>EN</span>
-        </button>
+        </a>
         <button
           type="button"
           className="nav-theme"

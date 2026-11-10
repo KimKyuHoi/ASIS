@@ -226,6 +226,7 @@ svg {
   border: 1px solid var(--border);
   cursor: pointer;
   flex-shrink: 0;
+  text-decoration: none; /* .nav-lang 은 다른 언어 URL 로 가는 링크(<a>)다 */
   transition:
     color 0.15s,
     background 0.15s,
@@ -369,12 +370,10 @@ svg {
 .hero-line--accent {
   color: var(--accent);
 }
+/* 단어 사이 간격은 margin 이 아니라 실제 공백 문자로 둔다 — 그래야 h1 텍스트가
+   검색엔진·스크린리더에 "Show your screen" 으로 읽힌다(margin 이면 "Showyourscreen"). */
 .hero-word {
   display: inline-block;
-  margin-right: 0.22em;
-}
-.hero-word:last-child {
-  margin-right: 0;
 }
 .hero-sub {
   font-size: clamp(16px, 2.2vw, 19px);

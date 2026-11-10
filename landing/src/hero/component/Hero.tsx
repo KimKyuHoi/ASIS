@@ -1,5 +1,5 @@
 import { motion, useScroll, useTransform } from 'framer-motion';
-import { useRef } from 'react';
+import { Fragment, useRef } from 'react';
 import { useLanguage } from '../../i18n/hook/useLanguage';
 import { HERO_STRINGS } from '../lib/strings';
 
@@ -94,28 +94,32 @@ export function Hero({ downloadHref, version }: HeroProps): React.JSX.Element {
         <h1 className="hero-title">
           <span className="hero-line">
             {t.titleLine1.map((w, i) => (
-              <motion.span
-                key={w}
-                className="hero-word"
-                initial={{ opacity: 0, y: 32 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.65, delay: 0.25 + i * 0.08, ease: [0.32, 0.72, 0, 1] }}
-              >
-                {w}
-              </motion.span>
+              <Fragment key={w}>
+                {i > 0 ? ' ' : null}
+                <motion.span
+                  className="hero-word"
+                  initial={{ opacity: 0, y: 32 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.65, delay: 0.25 + i * 0.08, ease: [0.32, 0.72, 0, 1] }}
+                >
+                  {w}
+                </motion.span>
+              </Fragment>
             ))}
-          </span>
+          </span>{' '}
           <span className="hero-line hero-line--accent">
             {t.titleLine2.map((w, i) => (
-              <motion.span
-                key={w}
-                className="hero-word"
-                initial={{ opacity: 0, y: 32 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.65, delay: 0.4 + i * 0.1, ease: [0.32, 0.72, 0, 1] }}
-              >
-                {w}
-              </motion.span>
+              <Fragment key={w}>
+                {i > 0 ? ' ' : null}
+                <motion.span
+                  className="hero-word"
+                  initial={{ opacity: 0, y: 32 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.65, delay: 0.4 + i * 0.1, ease: [0.32, 0.72, 0, 1] }}
+                >
+                  {w}
+                </motion.span>
+              </Fragment>
             ))}
           </span>
         </h1>

@@ -2,7 +2,8 @@
  * giscus 임베드 설정.
  * repoId / categoryId 는 GitHub GraphQL 로 조회한 node ID (build-time 고정값).
  * mapping='specific' + term 으로 탭마다 별도 Discussion 스레드에 매핑한다
- * (해시 라우팅이라 pathname 은 모든 탭이 동일 → pathname 매핑은 쓸 수 없다).
+ * (pathname 매핑은 쓰지 않는다 — 언어별 URL(/ASIS/faq/ · /ASIS/ko/faq/)이 달라서 같은 탭의
+ * 댓글이 언어마다 갈라지고, 예전 해시 라우팅 시절 스레드와도 끊긴다).
  */
 export type GiscusConfig = {
   category: string

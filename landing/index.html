@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="color-scheme" content="light dark" />
@@ -7,14 +7,49 @@
     <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1f1c1a" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <title>ASIS — macOS 캡처 &amp; 주석 도구</title>
-    <meta
-      name="description"
-      content="캡처·화면 녹화·GIF·스크롤 캡처·스텝 가이드를 만들고, 그 위에 바로 주석을 달아 공유하는 무료 macOS 앱."
-    />
+    <!--
+      첫 페인트 전에 실행한다. 키 이름은 i18n/lib/language.ts · theme/lib/theme.ts 와 같아야 한다.
+      1) 예전 해시 주소(/ASIS/#/faq 등)를 새 경로(/ASIS/faq/)로 옮긴다.
+      2) 언어: 저장한 선택이 있으면 그 언어 URL 로, 없으면 영어 URL 에 한국어 브라우저로 왔을 때만
+         /ko/ 로 보낸다. 크롤러는 저장값이 없고 브라우저 언어가 영어라 이동하지 않는다.
+      3) 저장한 테마를 data-theme 으로 먼저 걸어 깜빡임을 막는다.
+    -->
+    <script>
+      (function () {
+        var base = '/ASIS/';
+        var path = location.pathname;
+        if (path.indexOf(base) === 0) {
+          var parts = path.slice(base.length).split('/').filter(Boolean);
+          var isKo = parts[0] === 'ko';
+          var rest = (isKo ? parts.slice(1) : parts).join('/');
+          if (rest) rest += '/';
+          var legacy = { '#/': '', '#/features': 'features/', '#/faq': 'faq/', '#/bug': 'bug/' };
+          var hash = location.hash;
+          var isLegacy = Object.prototype.hasOwnProperty.call(legacy, hash);
+          if (isLegacy) rest = legacy[hash];
+          var stored = null;
+          try { stored = localStorage.getItem('asis-lang'); } catch (e) {}
+          var wantKo = stored === 'ko' || stored === 'en'
+            ? stored === 'ko'
+            : isKo || (navigator.language || '').toLowerCase().indexOf('ko') === 0;
+          if (wantKo !== isKo || isLegacy) {
+            location.replace(base + (wantKo ? 'ko/' : '') + rest + (isLegacy ? '' : hash));
+            return;
+          }
+        }
+        try {
+          var theme = localStorage.getItem('asis-theme');
+          if (theme === 'light' || theme === 'dark') {
+            document.documentElement.dataset.theme = theme;
+            document.documentElement.style.colorScheme = theme;
+          }
+        } catch (e) {}
+      })();
+    </script>
+    <!--app-head-->
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><!--app-html--></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
